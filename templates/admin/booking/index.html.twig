@@ -1,0 +1,81 @@
+{% extends 'admin/layout.html.twig' %}
+{% import 'admin/_icons.html.twig' as ui %}
+
+{% block title %}Брони — {{ parent() }}{% endblock %}
+
+{% block content %}
+    <div class="page-header">
+        <div>
+            <h1 class="page-title">Брони</h1>
+            <p class="page-subtitle">Неоплаченная бронь держит место 24 часа, затем снимается автоматически</p>
+        </div>
+    </div>
+
+    <form method="get" action="{{ path('admin_booking_index') }}" data-live-filter="booking-results" class="mb-4 max-w-md">
+        <label class="search-field">
+            <span class="sr-only">Поиск</span>
+            {{ ui.icon('search') }}
+            <input type="search" name="q" value="{{ q }}" class="input" autocomplete="off" placeholder="Клиент, телефон или конструкция…">
+        </label>
+        <input type="hidden" name="status" value="{{ filter ? filter.value : '' }}">
+    </form>
+
+    <div id="booking-results">
+        {% block results %}
+            {# Imported here too: renderBlock() (live filter) renders this block without the template top level #}
+            {% import 'admin/_icons.html.twig' as ui %}
+            {% set base = q ? {q: q} : {} %}
+            <div class="mb-4 flex flex-wrap gap-2">
+                {% set chip = 'inline-flex h-8 items-center rounded-full border px-3 text-sm font-medium transition-colors' %}
+                {% for tab in [{value: null, label: 'Все'}]|merge(enum_cases('App\\Enum\\BookingStatus')|map(s => {value: s, label: s.label})) %}
+                    <a href="{{ path('admin_booking_index', tab.value ? base|merge({status: tab.value.value}) : base) }}" data-live-link
+                       class="{{ chip }} {{ tab.value == filter ? 'border-zinc-900 bg-zinc-900 text-white' : 'border-default bg-white text-body hover:text-heading' }}">{{ tab.label }}</a>
+                {% endfor %}
+            </div>
+
+            <div class="table-card">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th scope="col" class="px-4 py-2.5">Конструкция</th>
+                            <th scope="col" class="px-4 py-2.5">Период</th>
+                            <th scope="col" class="px-4 py-2.5">Клиент</th>
+                            <th scope="col" class="px-4 py-2.5">Статус</th>
+                            <th scope="col" class="px-4 py-2.5">Создана</th>
+                            <th scope="col" class="px-4 py-2.5"><span class="sr-only">Действия</span></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for booking in bookings %}
+                            <tr>
+                                <th scope="row" class="px-4 py-3 font-medium text-heading">
+                                    <a href="{{ path('admin_booking_product', {id: booking.product.id}) }}" class="hover:underline">{{ booking.product.name|highlight(q) }}</a>
+                                    <div class="text-xs font-normal text-body-subtle">Сторона {{ booking.side.name }}</div>
+                                </th>
+                                <td class="px-4 py-3 whitespace-nowrap">{{ include('admin/booking/_period.html.twig') }}</td>
+                                <td class="px-4 py-3">
+                                    <div class="font-medium text-heading">{{ booking.clientName|highlight(q) }}</div>
+                                    <div class="text-xs text-body-subtle">{{ booking.clientPhone|highlight(q) }}</div>
+                                </td>
+                                <td class="px-4 py-3">{{ include('admin/booking/_status.html.twig') }}</td>
+                                <td class="px-4 py-3 whitespace-nowrap">
+                                    {{ booking.createdAt|date('d.m.Y H:i') }}
+                                    {% if booking.createdBy %}<div class="text-xs text-body-subtle">{{ booking.createdBy.name }}</div>{% endif %}
+                                </td>
+                                <td class="px-4 py-3">{{ include('admin/booking/_actions.html.twig', {return: 'list'}) }}</td>
+                            </tr>
+                        {% else %}
+                            <tr>
+                                <td colspan="6" class="px-4 py-16 text-center">
+                                    <span class="mx-auto mb-3 grid size-12 place-items-center rounded-full bg-zinc-100 text-zinc-400">{{ ui.icon('calendar') }}</span>
+                                    <p class="font-medium text-heading">{{ q or filter ? 'Ничего не найдено' : 'Броней пока нет' }}</p>
+                                    <p class="mt-1 text-sm text-body">Забронировать конструкцию можно из её карточки — вкладка «Бронирование».</p>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% endblock %}
+    </div>
+{% endblock %}

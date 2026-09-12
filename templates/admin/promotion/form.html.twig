@@ -1,0 +1,282 @@
+{% extends 'admin/layout.html.twig' %}
+{% import 'admin/_icons.html.twig' as ui %}
+
+{#
+    Promotion card: tabs over one form (assets/admin/tabs.js), like the structure card.
+    Vars: promotion, form, initialTab, tabErrors, usage (media plans where it was applied), now
+#}
+{% set heading = promotion.id ? promotion.title : 'Новая акция' %}
+{% set tab_errors = tabErrors|default([]) %}
+{% set target_count = promotion.categories|length + promotion.products|length %}
+{% set condition_count = (promotion.code ? 1 : 0) + (promotion.firstOrderOnly ? 1 : 0) + (promotion.minMonths ? 1 : 0) %}
+{% set tabs = {
+    main: {label: 'Скидка'},
+    targets: {label: 'На что действует', counter: promotion.appliesToAll ? 'все' : (target_count ?: null)},
+    conditions: {label: 'Условия', counter: condition_count ?: null},
+} %}
+
+{% macro panel_attrs(id, initialTab) %}id="tab-{{ id }}" data-tab-panel="{{ id }}" role="tabpanel"{% if id != initialTab %} class="hidden"{% endif %}{% endmacro %}
+
+{% block title %}{{ heading }} — {{ parent() }}{% endblock %}
+
+{% block content %}
+    {% set promo_state = promotion.id ? promotion.stateOn(now) : null %}
+    {% set state_styles = {
+        active: 'bg-success-soft text-fg-success-strong ring-success-subtle',
+        scheduled: 'bg-warning-soft text-fg-warning ring-warning-subtle',
+        finished: 'bg-zinc-100 text-body ring-zinc-200',
+        disabled: 'bg-zinc-100 text-body-subtle ring-zinc-200',
+    } %}
+    {% set state_labels = {active: 'Действует', scheduled: 'Запланирована', finished: 'Завершена', disabled: 'Выключена'} %}
+
+    <nav class="mb-2 text-sm">
+        <a href="{{ path('admin_promotion_index') }}" class="text-body hover:text-heading">Акции</a>
+        <span class="mx-1 text-body-subtle">/</span>
+        <span class="text-heading">{{ promotion.id ? '#' ~ promotion.id : 'Новая' }}</span>
+    </nav>
+
+    <div class="mb-5 flex flex-wrap items-start justify-between gap-4">
+        <div class="min-w-0">
+            <div class="flex flex-wrap items-center gap-3">
+                <h1 class="page-title">{{ heading }}</h1>
+                {% if promotion.id %}
+                    <span class="promo-badge !h-7 !px-2 !text-sm">{{ promotion.discountLabel }}</span>
+                    <span class="inline-flex h-7 items-center rounded-md px-2 text-sm font-medium ring-1 ring-inset {{ state_styles[promo_state] }}">{{ state_labels[promo_state] }}</span>
+                {% endif %}
+            </div>
+            {% if promotion.id %}
+                <p class="mt-1 text-sm text-body">
+                    {{ promotion.startsAt|date('d.m.Y') }} — {{ promotion.endsAt ? promotion.endsAt|date('d.m.Y') : 'бессрочно' }}
+                    · обновлена {{ promotion.updatedAt|date('d.m.Y H:i') }}
+                </p>
+            {% endif %}
+        </div>
+        {% if promotion.id %}
+            {{ include('admin/_delete_form.html.twig', {
+                action: path('admin_promotion_delete', {id: promotion.id}),
+                token_id: 'delete-promotion-' ~ promotion.id,
+                title: 'Удалить акцию?',
+                confirm: 'Акция «' ~ promotion.title ~ '» будет удалена. Цены в уже составленных медиапланах не изменятся.',
+                label: 'Удалить',
+                button_class: 'btn-danger-outline',
+            }) }}
+        {% endif %}
+    </div>
+
+    {# Tab bar #}
+    <div class="mb-6 overflow-x-auto overflow-y-hidden border-b border-default">
+        <ul class="-mb-px flex whitespace-nowrap text-center text-sm font-medium" role="tablist">
+            {% set tab_items = promotion.id ? tabs|merge({usage: {label: 'В медиапланах', counter: usage|length ?: null}}) : tabs %}
+            {% for id, tab in tab_items %}
+                {% set is_active = id == initialTab %}
+                {% set has_error = id in tab_errors %}
+                <li class="me-1" role="presentation">
+                    <a href="#{{ id }}" data-tab="{{ id }}" role="tab" aria-controls="tab-{{ id }}" aria-selected="{{ is_active ? 'true' : 'false' }}"
+                       {% if has_error %}data-tab-error{% endif %}
+                       class="inline-flex items-center gap-2 rounded-t-base border-b-2 px-4 py-3 {{ is_active ? 'text-fg-brand border-brand' : 'border-transparent text-body hover:text-heading hover:border-default-strong' }}">
+                        {{ tab.label }}
+                        {% if tab.counter is defined and tab.counter is not null %}
+                            <span class="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-zinc-100 px-1.5 text-xs font-semibold text-heading">{{ tab.counter }}</span>
+                        {% endif %}
+                        {% if has_error %}<span class="size-2 rounded-full bg-danger" title="Есть ошибки"></span>{% endif %}
+                    </a>
+                </li>
+            {% endfor %}
+        </ul>
+    </div>
+
+    {% form_theme form 'admin/form/theme.html.twig' %}
+    {% set percent_id = (form.discountType.children|first).vars.id %}
+
+    <div class="grid gap-6 {{ promotion.id ? 'lg:grid-cols-3' : '' }}">
+        {{ form_start(form, {attr: {id: 'promotion-form', novalidate: 'novalidate', class: (promotion.id ? 'lg:col-span-2' : 'max-w-4xl') ~ ' min-w-0'}}) }}
+            <input type="hidden" name="_tab" value="{{ initialTab }}" data-tab-input>
+            {{ form_errors(form) }}
+
+            {# Discount #}
+            <div {{ _self.panel_attrs('main', initialTab) }}>
+                <section class="card">
+                    {{ form_row(form.title) }}
+                    <div class="grid gap-x-6 md:grid-cols-2">
+                        <div class="mb-5">
+                            {{ form_label(form.discountType) }}
+                            <div class="grid grid-cols-2 gap-2">
+                                {% for child in form.discountType %}
+                                    <label class="flex cursor-pointer items-center gap-2.5 rounded-lg border border-default bg-white px-3 py-2.5 shadow-xs transition-colors hover:bg-zinc-50 has-checked:border-zinc-900 has-checked:bg-zinc-50 has-checked:ring-1 has-checked:ring-zinc-900">
+                                        {{ form_widget(child, {widget_class: 'checkbox !rounded-full'}) }}
+                                        <span class="text-sm text-heading">{{ child.vars.label }}</span>
+                                    </label>
+                                {% endfor %}
+                            </div>
+                            {{ form_errors(form.discountType) }}
+                        </div>
+                        <div class="mb-5">
+                            {{ form_label(form.discountValue) }}
+                            <div class="relative">
+                                {{ form_widget(form.discountValue, {widget_class: 'input pe-10'}) }}
+                                <span class="pointer-events-none absolute inset-y-0 end-0 flex items-center pe-3 text-sm text-body-subtle">
+                                    <span data-visible-when="{{ percent_id }}">%</span>
+                                    <span data-hidden-when="{{ percent_id }}">₽</span>
+                                </span>
+                            </div>
+                            {{ form_help(form.discountValue) }}
+                            {{ form_errors(form.discountValue) }}
+                        </div>
+                    </div>
+                    <div class="grid gap-x-6 md:grid-cols-3 md:items-start">
+                        {{ form_row(form.startsAt) }}
+                        {{ form_row(form.endsAt) }}
+                        <div class="md:pt-7">{{ form_row(form.active) }}</div>
+                    </div>
+                    {{ form_row(form.description, {row_attr: {class: 'mb-0'}}) }}
+                </section>
+            </div>
+
+            {# Targets #}
+            <div {{ _self.panel_attrs('targets', initialTab) }}>
+                <section class="card">
+                    <p class="mb-4 text-sm text-body">Можно выбрать категории, отдельные конструкции или и то и другое.</p>
+                    {{ form_row(form.appliesToAll) }}
+
+                    <div data-hidden-when="{{ form.appliesToAll.vars.id }}">
+                        {{ form_row(form.categories) }}
+
+                        <div class="mb-1.5 flex flex-wrap items-center justify-between gap-3">
+                            {{ form_label(form.products, null, {label_class: 'block text-sm font-medium text-heading'}) }}
+                            <label class="search-field w-full max-w-64">
+                                <span class="sr-only">Найти конструкцию</span>
+                                {{ ui.icon('search') }}
+                                <input type="search" class="input h-8 text-sm" autocomplete="off" placeholder="Найти конструкцию…" data-checklist-filter="promotion-products">
+                            </label>
+                        </div>
+                        <div id="promotion-products" class="max-h-96 overflow-y-auto rounded-lg border border-default">
+                            <ul class="divide-y divide-default">
+                                {% for child in form.products %}
+                                    {% set hint = child.vars.attr['data-hint'] ?? '' %}
+                                    <li data-search="{{ (child.vars.label ~ ' ' ~ hint)|lower }}">
+                                        <label class="flex cursor-pointer items-center gap-3 px-3 py-2 hover:bg-zinc-50 has-checked:bg-violet-50/60">
+                                            {{ form_widget(child, {widget_class: 'checkbox', attr: {}}) }}
+                                            <span class="min-w-0 flex-1 truncate text-sm text-heading">{{ child.vars.label }}</span>
+                                            {% if hint %}<span class="shrink-0 truncate text-xs text-body-subtle">{{ hint }}</span>{% endif %}
+                                        </label>
+                                    </li>
+                                {% else %}
+                                    <li class="px-3 py-6 text-center text-sm text-body">Конструкций пока нет.</li>
+                                {% endfor %}
+                                <li data-checklist-empty hidden class="px-3 py-6 text-center text-sm text-body">Ничего не найдено</li>
+                            </ul>
+                        </div>
+                        {{ form_errors(form.products) }}
+                    </div>
+                </section>
+            </div>
+
+            {# Conditions #}
+            <div {{ _self.panel_attrs('conditions', initialTab) }}>
+                <section class="card">
+                    <p class="mb-4 text-sm text-body">Необязательно. Без промокода и «первого заказа» акция достаётся любому клиенту и видна бейджем в списке конструкций и на карте.</p>
+                    <div class="grid gap-x-6 md:grid-cols-2">
+                        {{ form_row(form.code) }}
+                        {{ form_row(form.minMonths) }}
+                    </div>
+                    {{ form_row(form.firstOrderOnly, {row_attr: {class: 'mb-0'}}) }}
+                    <p class="mt-1.5 text-xs text-body-subtle">Отмечается в медиаплане галочкой «Первый заказ клиента».</p>
+                </section>
+            </div>
+
+            {# Where it was applied (read-only) #}
+            {% if promotion.id %}
+                <div {{ _self.panel_attrs('usage', initialTab) }}>
+                    <div class="table-card">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th scope="col" class="px-4 py-2.5">Медиаплан</th>
+                                    <th scope="col" class="px-4 py-2.5">Период</th>
+                                    <th scope="col" class="px-4 py-2.5 text-right">Позиций</th>
+                                    <th scope="col" class="px-4 py-2.5 text-right">Скидка клиенту</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in usage %}
+                                    <tr>
+                                        <th scope="row" class="px-4 py-3 font-normal">
+                                            <a href="{{ path('admin_media_plan_show', {id: row.plan.id}) }}" class="font-medium text-heading hover:underline">{{ row.plan.title }}</a>
+                                            <div class="text-xs text-body-subtle">{{ row.plan.clientName }}</div>
+                                        </th>
+                                        <td class="px-4 py-3 whitespace-nowrap">{{ row.plan.startMonth|month_label }}{% if row.plan.months > 1 %} — {{ row.plan.endMonth|month_label }}{% endif %}</td>
+                                        <td class="px-4 py-3 text-right tabular-nums">{{ row.items }}</td>
+                                        <td class="px-4 py-3 text-right font-medium text-heading tabular-nums whitespace-nowrap">{{ row.savings|number_format(0, ',', ' ') }}&nbsp;₽</td>
+                                    </tr>
+                                {% else %}
+                                    <tr>
+                                        <td colspan="4" class="px-4 py-14 text-center">
+                                            <span class="mx-auto mb-3 grid size-12 place-items-center rounded-full bg-violet-50 text-violet-500">{{ ui.icon('document') }}</span>
+                                            <p class="font-medium text-heading">Акция пока не применялась</p>
+                                            <p class="mt-1 text-sm text-body">Она подставится сама, когда подходящую конструкцию добавят в медиаплан.</p>
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            {% endif %}
+
+            <div class="mt-6 flex flex-wrap items-center gap-3" data-tab-hide="usage">
+                <button type="submit" class="btn btn-primary">{{ promotion.id ? 'Сохранить' : 'Создать акцию' }}</button>
+                <a href="{{ path('admin_promotion_index') }}" class="btn btn-secondary">К списку</a>
+            </div>
+        {{ form_end(form) }}
+
+        {# Summary of the saved promotion, visible on every tab #}
+        {% if promotion.id %}
+            <aside class="card content-start !p-5">
+                <h2 class="mb-4 text-base font-semibold text-heading">Сводка</h2>
+                <dl class="space-y-3 text-sm">
+                    <div>
+                        <dt class="text-xs text-body-subtle">Скидка</dt>
+                        <dd class="font-medium text-heading">{{ promotion.discountLabel }} {{ promotion.discountType.value == 'percent' ? 'от цены' : 'в месяц' }} за сторону</dd>
+                    </div>
+                    <div>
+                        <dt class="text-xs text-body-subtle">На что</dt>
+                        <dd class="text-heading">
+                            {% if promotion.appliesToAll %}
+                                Все конструкции
+                            {% else %}
+                                {{ promotion.categories|map(c => c.name)|merge(promotion.products|map(p => p.name))|join(', ') }}
+                            {% endif %}
+                        </dd>
+                    </div>
+                    <div>
+                        <dt class="text-xs text-body-subtle">Условия</dt>
+                        <dd class="mt-0.5 flex flex-wrap gap-1">
+                            {% if promotion.code %}<span class="promo-badge font-mono">{{ ui.icon('tag', 'size-3') }} {{ promotion.code }}</span>{% endif %}
+                            {% if promotion.firstOrderOnly %}<span class="promo-badge">Первый заказ</span>{% endif %}
+                            {% if promotion.minMonths %}<span class="promo-badge">от {{ promotion.minMonths }} мес.</span>{% endif %}
+                            {% if condition_count == 0 %}<span class="text-heading">Без условий</span>{% endif %}
+                        </dd>
+                    </div>
+                    <div>
+                        <dt class="text-xs text-body-subtle">Клиенты видят</dt>
+                        <dd class="text-heading">{{ promotion.public ? 'Бейдж в списке конструкций и на карте' : 'Только в медиаплане, при выполнении условия' }}</dd>
+                    </div>
+                    <div class="flex justify-between gap-3 border-t border-default pt-3">
+                        <dt class="text-body">Применена в медиапланах</dt>
+                        <dd class="font-medium text-heading tabular-nums">{{ usage|length }}</dd>
+                    </div>
+                    <div class="flex justify-between gap-3">
+                        <dt class="text-body">Скидка клиентам</dt>
+                        <dd class="font-medium text-heading tabular-nums whitespace-nowrap">{{ usage|reduce((sum, row) => sum + row.savings, 0)|number_format(0, ',', ' ') }} ₽</dd>
+                    </div>
+                </dl>
+
+                <form method="post" action="{{ path('admin_promotion_toggle', {id: promotion.id}) }}" class="mt-5 border-t border-default pt-4">
+                    <input type="hidden" name="_token" value="{{ csrf_token('promotion-' ~ promotion.id) }}">
+                    <input type="hidden" name="back" value="card">
+                    <button type="submit" class="btn btn-secondary btn-sm w-full">{{ promotion.active ? 'Выключить акцию' : 'Включить акцию' }}</button>
+                </form>
+            </aside>
+        {% endif %}
+    </div>
+{% endblock %}

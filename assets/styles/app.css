@@ -1,0 +1,210 @@
+@import "tailwindcss";
+@import "flowbite/src/themes/default";
+
+@plugin "flowbite/plugin";
+@source "../../node_modules/flowbite";
+
+/* dark: utilities follow the .dark class (like Flowbite's theme tokens), not the OS setting */
+@custom-variant dark (&:where(.dark, .dark *));
+/* Collapsed admin sidebar: <html data-sidebar="collapsed"> (assets/admin/sidebar.js) */
+@custom-variant sidebar-collapsed (&:where([data-sidebar=collapsed], [data-sidebar=collapsed] *));
+
+/* Scrollable without a visible scrollbar */
+@utility no-scrollbar {
+    scrollbar-width: none;
+    &::-webkit-scrollbar {
+        display: none;
+    }
+}
+
+/*
+ * Redbox CRM design tokens, overriding Flowbite's defaults.
+ * Reference: Linear / Vercel dashboards (shadcn/ui look) — neutral zinc surfaces, near-black primary
+ * actions, thin borders, soft shadows, Inter. Redbox red is an accent (logo, active nav, highlights),
+ * deliberately not the primary button colour so it never competes with destructive (danger) actions.
+ */
+@theme {
+    --font-sans: 'Inter Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    --font-body: var(--font-sans);
+
+    --color-accent: #e5484d;
+    --color-accent-strong: #ce2c31;
+    --color-accent-soft: #feebec;
+
+    --color-body: var(--color-zinc-600);
+    --color-body-subtle: var(--color-zinc-500);
+    --color-heading: var(--color-zinc-900);
+
+    --color-brand: var(--color-zinc-900);
+    --color-brand-strong: var(--color-zinc-700);
+    --color-brand-medium: var(--color-zinc-300);
+    --color-brand-light: var(--color-zinc-700);
+    --color-brand-soft: var(--color-zinc-200);
+    --color-brand-softer: var(--color-zinc-100);
+    --color-brand-subtle: var(--color-zinc-200);
+    --color-fg-brand: var(--color-zinc-900);
+    --color-fg-brand-strong: var(--color-zinc-950);
+    --color-fg-brand-subtle: var(--color-zinc-400);
+
+    --color-neutral-secondary-soft: var(--color-zinc-50);
+    --color-neutral-secondary: var(--color-zinc-50);
+    --color-neutral-secondary-medium: var(--color-white);
+    --color-neutral-tertiary-soft: var(--color-zinc-100);
+    --color-neutral-tertiary: var(--color-zinc-100);
+    --color-neutral-tertiary-medium: var(--color-zinc-100);
+    --color-neutral-quaternary: var(--color-zinc-200);
+
+    --color-default-subtle: var(--color-zinc-100);
+    --color-default: var(--color-zinc-200);
+    --color-default-medium: var(--color-zinc-200);
+    --color-default-strong: var(--color-zinc-300);
+
+    --radius-base: 10px;
+}
+
+@layer base {
+    html {
+        -webkit-font-smoothing: antialiased;
+        font-feature-settings: 'cv11', 'ss01';
+    }
+    body {
+        @apply bg-zinc-50 text-body;
+    }
+    ::selection {
+        @apply bg-accent/20;
+    }
+    kbd {
+        @apply inline-flex items-center rounded border border-default bg-white px-1.5 font-sans text-[11px] font-medium text-body-subtle shadow-xs;
+    }
+}
+
+/* Shared component styles, so templates stay readable */
+@layer components {
+    /* Buttons */
+    .btn {
+        @apply inline-flex h-9 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border px-3.5 text-sm font-medium leading-5 shadow-xs transition-colors cursor-pointer focus:outline-none focus-visible:ring-4 disabled:pointer-events-none disabled:opacity-50;
+    }
+    .btn-sm {
+        @apply h-8 px-2.5 text-xs;
+    }
+    .btn-primary {
+        @apply border-transparent bg-brand text-white hover:bg-brand-strong focus-visible:ring-zinc-900/15;
+    }
+    .btn-secondary {
+        @apply border-default bg-white text-heading hover:bg-zinc-50 focus-visible:ring-zinc-900/10;
+    }
+    .btn-ghost {
+        @apply border-transparent bg-transparent text-body shadow-none hover:bg-zinc-100 hover:text-heading;
+    }
+    .btn-danger {
+        @apply border-transparent bg-danger text-white hover:bg-danger-strong focus-visible:ring-danger/20;
+    }
+    .btn-danger-outline {
+        @apply border-default bg-white text-fg-danger hover:border-danger-subtle hover:bg-danger-soft focus-visible:ring-danger/15;
+    }
+
+    /* Surfaces */
+    .card {
+        @apply rounded-xl border border-default bg-white p-6 shadow-xs;
+    }
+    .page-header {
+        @apply mb-6 flex flex-wrap items-end justify-between gap-4;
+    }
+    .page-title {
+        @apply text-2xl font-semibold tracking-tight text-heading;
+    }
+    .page-subtitle {
+        @apply mt-1 text-sm text-body;
+    }
+
+    /* Form controls */
+    .input {
+        @apply block w-full rounded-lg border border-default bg-white px-3 py-2 text-sm text-heading shadow-xs transition placeholder:text-zinc-400 focus:border-zinc-400 focus:outline-none focus:ring-4 focus:ring-zinc-900/5;
+    }
+    .input-file {
+        @apply block w-full cursor-pointer rounded-lg border border-default bg-white text-sm text-heading shadow-xs file:me-3 file:cursor-pointer file:border-0 file:border-e file:border-default file:bg-zinc-50 file:px-4 file:py-2 file:font-medium file:text-heading hover:file:bg-zinc-100;
+    }
+    .checkbox {
+        @apply h-4 w-4 rounded border-zinc-300 text-brand shadow-xs focus:ring-2 focus:ring-zinc-900/10;
+    }
+
+    /* Tables */
+    .table-card {
+        @apply relative overflow-x-auto rounded-xl border border-default bg-white shadow-xs;
+    }
+    .data-table {
+        @apply w-full text-left text-sm text-body;
+    }
+    .data-table thead {
+        @apply border-b border-default bg-zinc-50/70 text-xs uppercase tracking-wide text-body-subtle;
+    }
+    .data-table thead th {
+        @apply font-medium;
+    }
+    .data-table tbody tr {
+        @apply border-b border-default transition-colors last:border-0 hover:bg-zinc-50/70;
+    }
+
+    /* Search field with icon (live filters, command palette trigger) */
+    .search-field {
+        @apply relative;
+    }
+    .search-field > svg {
+        @apply pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400;
+    }
+    .search-field > .input {
+        @apply ps-9;
+    }
+
+    mark.hl {
+        @apply rounded-[3px] bg-amber-100 px-0.5 text-inherit;
+    }
+}
+
+/* Maps (assets/admin/map.js) */
+@layer components {
+    .map-dot {
+        @apply inline-block size-2.5 shrink-0 rounded-full bg-zinc-400;
+    }
+    .map-dot[data-status='free'] { @apply bg-success; }
+    .map-dot[data-status='booked'] { @apply bg-warning; }
+    .map-dot[data-status='occupied'] { @apply bg-danger; }
+    .map-side-chip {
+        @apply inline-flex h-6 items-center rounded-md border px-1.5 text-xs font-medium;
+    }
+    .map-side-chip[data-status='free'] { @apply border-success-subtle bg-success-soft text-fg-success-strong; }
+    .map-side-chip[data-status='booked'] { @apply border-warning-subtle bg-warning-soft text-fg-warning; }
+    .map-side-chip[data-status='occupied'] { @apply border-danger-subtle bg-danger-soft text-fg-danger-strong; }
+
+    /* Promotions: violet, so they never read as a booking status */
+    .promo-badge {
+        @apply inline-flex h-5 items-center gap-1 whitespace-nowrap rounded-md bg-violet-50 px-1.5 text-[11px] font-semibold text-violet-700 ring-1 ring-violet-600/20 ring-inset;
+    }
+    .promo-text {
+        @apply inline-flex items-center gap-0.5 font-medium text-violet-700;
+    }
+}
+
+/* Calmer, desaturated base map on the structures map so the coloured pins stand out
+   (Yandex Maps class names carry the API version, e.g. ymaps-2-1-79-ground-pane) */
+[data-map] [class*='ground-pane'] {
+    filter: grayscale(0.7) contrast(1.02);
+}
+/* Balloon content of the structures map (assets/admin/map.js) */
+.map-balloon {
+    font-family: var(--font-sans);
+}
+.map-balloon p {
+    margin: 0;
+}
+.map-balloon a.btn-primary {
+    color: white;
+}
+.map-balloon a.btn-secondary {
+    color: var(--color-heading);
+}
+
+/* Live filters: dim the results while a request is in flight */
+[aria-busy='true'] {
+    @apply pointer-events-none opacity-60 transition-opacity;
+}

@@ -1,0 +1,82 @@
+{#
+    Product card header: breadcrumbs, title, status, actions and the tab bar shared by
+    the edit/new page (client-side tabs over one form, see assets/admin/tabs.js) and the booking page (link tabs).
+    Vars: product, active_tab ('main'|'location'|'sides'|'seo'|'booking'), in_form (bool),
+          tabErrors? (tab ids with invalid fields), availability?, activeBookings?
+#}
+{% import 'admin/_icons.html.twig' as ui %}
+{% set tabs = {main: 'Основное', location: 'Расположение', sides: 'Стороны и фото', seo: 'SEO'} %}
+{% set tab_errors = tabErrors|default([]) %}
+
+<nav class="text-sm mb-2">
+    <a href="{{ path('admin_product_index') }}" class="text-body hover:text-fg-brand">Конструкции</a>
+    <span class="text-body mx-1">/</span>
+    <span class="text-heading">{{ product.id ? '#' ~ product.id : 'Новая' }}</span>
+</nav>
+
+<div class="flex flex-wrap items-start justify-between gap-4 mb-5">
+    <div class="min-w-0">
+        <div class="flex flex-wrap items-center gap-3">
+            <h1 class="page-title">{{ product.id ? product.name : 'Новая конструкция' }}</h1>
+            {% if availability|default(null) %}
+                {{ include('admin/_availability_badge.html.twig', {status: availability.status, size: 'lg'}) }}
+            {% endif %}
+            {% if product.id %}
+                {% for promotion in promotions_for(product) %}
+                    <a href="{{ path('admin_promotion_edit', {id: promotion.id}) }}" class="promo-badge !h-7 !px-2 !text-xs hover:bg-violet-100"
+                       title="{{ promotion.public ? 'Для всех клиентов' : 'С условием' }}{{ promotion.code ? ' · промокод ' ~ promotion.code : '' }}{{ promotion.firstOrderOnly ? ' · первый заказ' : '' }}{{ promotion.minMonths ? ' · от ' ~ promotion.minMonths ~ ' мес.' : '' }}">
+                        {{ ui.icon('tag', 'size-3.5') }} {{ promotion.discountLabel }} · {{ promotion.title }}
+                    </a>
+                {% endfor %}
+            {% endif %}
+        </div>
+        {% if product.id %}
+            <p class="text-sm text-body mt-1">
+                {{ product.category.name ?? '' }}{% if product.productType %} · {{ product.productType.name }}{% endif %}
+                · обновлено {{ product.updatedAt|date('d.m.Y H:i') }}
+            </p>
+        {% endif %}
+    </div>
+    {% if product.id %}
+        <div class="flex flex-wrap gap-2">
+            {% if active_tab != 'booking' %}
+                <a href="{{ path('admin_booking_product', {id: product.id}) }}" class="btn btn-primary">Забронировать</a>
+            {% endif %}
+            <form method="post" action="{{ path('admin_product_delete', {id: product.id}) }}"
+                  data-confirm="Конструкция «{{ product.name }}» будет удалена вместе со сторонами и фотографиями."
+                  data-confirm-title="Удалить конструкцию?">
+                <input type="hidden" name="_token" value="{{ csrf_token('delete-product-' ~ product.id) }}">
+                <button type="submit" class="btn btn-danger-outline">Удалить</button>
+            </form>
+        </div>
+    {% endif %}
+</div>
+
+<div class="mb-6 overflow-x-auto overflow-y-hidden border-b border-default">
+    <ul class="flex -mb-px text-sm font-medium text-center whitespace-nowrap" role="tablist">
+        {% for id, label in tabs %}
+            {% set is_active = id == active_tab %}
+            {% set has_error = id in tab_errors %}
+            <li class="me-1" role="presentation">
+                <a href="{{ in_form ? '#' ~ id : path('admin_product_edit', {id: product.id}) ~ '#' ~ id }}"
+                   {% if in_form %}data-tab="{{ id }}" role="tab" aria-controls="tab-{{ id }}" aria-selected="{{ is_active ? 'true' : 'false' }}"{% endif %}
+                   {% if has_error %}data-tab-error{% endif %}
+                   class="inline-flex items-center gap-2 px-4 py-3 border-b-2 rounded-t-base {{ is_active ? 'text-fg-brand border-brand' : 'border-transparent text-body hover:text-heading hover:border-default-strong' }}">
+                    {{ label }}
+                    {% if has_error %}<span class="w-2 h-2 rounded-full bg-danger" title="Есть ошибки"></span>{% endif %}
+                </a>
+            </li>
+        {% endfor %}
+        {% if product.id %}
+            <li class="me-1" role="presentation">
+                <a href="{{ path('admin_booking_product', {id: product.id}) }}"
+                   class="inline-flex items-center gap-2 px-4 py-3 border-b-2 rounded-t-base {{ active_tab == 'booking' ? 'text-fg-brand border-brand' : 'border-transparent text-body hover:text-heading hover:border-default-strong' }}">
+                    Бронирование
+                    {% if activeBookings|default(0) > 0 %}
+                        <span class="inline-flex items-center justify-center min-w-5 h-5 px-1 text-xs font-semibold rounded-full bg-brand-softer text-fg-brand-strong" title="Действующие брони">{{ activeBookings }}</span>
+                    {% endif %}
+                </a>
+            </li>
+        {% endif %}
+    </ul>
+</div>

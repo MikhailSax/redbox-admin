@@ -1,0 +1,22 @@
+{# Pay / cancel buttons for `booking` as of `now`; `return` = 'list' | 'product' #}
+{% set status = booking.statusAt(now) %}
+<div class="flex justify-end gap-2">
+    {% if status.value == 'hold' %}
+        <form method="post" action="{{ path('admin_booking_pay', {id: booking.id}) }}"
+              data-confirm="Клиент {{ booking.clientName }} оплатил бронь? Она будет закреплена и больше не снимется автоматически."
+              data-confirm-title="Отметить оплату" data-confirm-button="Да, оплачено" data-confirm-variant="primary">
+            <input type="hidden" name="_token" value="{{ csrf_token('pay-booking-' ~ booking.id) }}">
+            <input type="hidden" name="return" value="{{ return }}">
+            <button type="submit" class="btn btn-primary btn-sm">Оплачено</button>
+        </form>
+    {% endif %}
+    {% if status.value in ['hold', 'paid'] %}
+        <form method="post" action="{{ path('admin_booking_cancel', {id: booking.id}) }}"
+              data-confirm="Бронь клиента {{ booking.clientName }} будет отменена, место освободится."
+              data-confirm-title="Отменить бронь?" data-confirm-button="Да, отменить">
+            <input type="hidden" name="_token" value="{{ csrf_token('cancel-booking-' ~ booking.id) }}">
+            <input type="hidden" name="return" value="{{ return }}">
+            <button type="submit" class="btn btn-danger-outline btn-sm">Отменить</button>
+        </form>
+    {% endif %}
+</div>

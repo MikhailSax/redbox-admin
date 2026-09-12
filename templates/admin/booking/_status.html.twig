@@ -1,0 +1,17 @@
+{# Status badge of `booking` as of `now` #}
+{% set status = booking.statusAt(now) %}
+{% set classes = {
+    hold: 'bg-warning-soft border-warning-subtle text-fg-warning',
+    paid: 'bg-success-soft border-success-subtle text-fg-success-strong',
+    cancelled: 'bg-neutral-secondary-medium border-default-medium text-body',
+    expired: 'bg-neutral-secondary-medium border-default-medium text-body',
+} %}
+<span class="inline-flex items-center whitespace-nowrap text-xs font-medium px-1.5 py-0.5 rounded-sm border {{ classes[status.value] }}">{{ status.label }}</span>
+{% if status.value == 'hold' %}
+    {% set hours_left = ((booking.expiresAt.timestamp - now.timestamp) / 3600)|round(0, 'floor') %}
+    <div class="text-xs text-body mt-1 whitespace-nowrap" title="Без оплаты бронь снимется автоматически">
+        до {{ booking.expiresAt|date('d.m H:i') }} · {{ hours_left > 0 ? 'осталось ' ~ hours_left ~ ' ч' : 'меньше часа' }}
+    </div>
+{% elseif status.value == 'paid' and booking.paidAt %}
+    <div class="text-xs text-body mt-1 whitespace-nowrap">{{ booking.paidAt|date('d.m.Y H:i') }}</div>
+{% endif %}

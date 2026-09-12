@@ -1,0 +1,68 @@
+{% extends 'admin/layout.html.twig' %}
+
+{% set heading = category.id ? category.name : 'Новая категория' %}
+
+{% block title %}{{ heading }} — {{ parent() }}{% endblock %}
+
+{% block content %}
+    <nav class="text-sm mb-2">
+        <a href="{{ path('admin_category_index') }}" class="text-body hover:text-fg-brand">Категории</a>
+        <span class="text-body mx-1">/</span>
+        <span class="text-heading">{{ category.id ? '#' ~ category.id : 'Новая' }}</span>
+    </nav>
+    <div class="flex flex-wrap items-start justify-between gap-4 mb-6">
+        <h1 class="page-title">{{ heading }}</h1>
+        {% if category.id %}
+            {{ include('admin/_delete_form.html.twig', {
+                action: path('admin_category_delete', {id: category.id}),
+                token_id: 'delete-category-' ~ category.id,
+                confirm: 'Удалить категорию?',
+                label: 'Удалить категорию',
+                button_class: 'btn-danger',
+            }) }}
+        {% endif %}
+    </div>
+
+    {% form_theme form 'admin/form/theme.html.twig' %}
+    {{ form_start(form, {attr: {novalidate: 'novalidate'}}) }}
+        {{ form_errors(form) }}
+
+        <div class="grid gap-6 lg:grid-cols-3 mb-6">
+            <div class="card lg:col-span-2">
+                <h2 class="text-lg font-semibold text-heading mb-4">Основное</h2>
+                {{ form_row(form.name) }}
+                {{ form_row(form.shortDescription) }}
+                {{ form_row(form.description) }}
+                {{ form_row(form.productTypes, {row_attr: {class: 'mb-0'}}) }}
+            </div>
+
+            <div class="grid gap-6 content-start">
+                <div class="card">
+                    <h2 class="text-lg font-semibold text-heading mb-4">Изображение</h2>
+                    {% if category.imagePath %}
+                        <a href="{{ asset(category.imagePath) }}" target="_blank" rel="noopener" class="block mb-4">
+                            <img src="{{ asset(category.imagePath) }}" alt="{{ category.name }}" class="w-full aspect-video object-cover rounded-base border border-default">
+                        </a>
+                        {{ form_row(form.removeImage) }}
+                    {% else %}
+                        <div class="w-full aspect-video mb-4 rounded-base bg-neutral-tertiary-medium flex items-center justify-center text-sm text-body">Изображение не загружено</div>
+                        {% do form.removeImage.setRendered() %}
+                    {% endif %}
+                    {{ form_row(form.imageFile, {row_attr: {class: 'mb-0'}, attr: {class: 'input-file', accept: 'image/jpeg,image/png,image/webp', 'data-file-preview': ''}}) }}
+                </div>
+
+                <div class="card">
+                    <h2 class="text-lg font-semibold text-heading mb-4">SEO</h2>
+                    {{ form_row(form.seoTitle) }}
+                    {{ form_row(form.seoDescription) }}
+                    {{ form_row(form.seoKeywords, {row_attr: {class: 'mb-0'}}) }}
+                </div>
+            </div>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-3">
+            <button type="submit" class="btn btn-primary">{{ category.id ? 'Сохранить' : 'Создать' }}</button>
+            <a href="{{ path('admin_category_index') }}" class="btn btn-secondary">К списку</a>
+        </div>
+    {{ form_end(form) }}
+{% endblock %}

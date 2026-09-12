@@ -1,0 +1,100 @@
+{#
+    Admin sidebar: dark, fixed on desktop, a Flowbite drawer on mobile (toggled from the top bar).
+    On desktop it can be collapsed to an icon rail: <html data-sidebar="collapsed">, set by assets/admin/sidebar.js
+    (remembered in localStorage, applied before paint in base.html.twig); labels then pop up as tooltips.
+    Badges come from admin_counters() (src/Twig/AdminExtension.php).
+#}
+{% import 'admin/_icons.html.twig' as ui %}
+{% set current_route = app.request.attributes.get('_route', '') %}
+{% set counters = admin_counters() %}
+
+{% macro nav_item(label, href, icon, active, badge = null, badge_tone = 'neutral') %}
+    {% import 'admin/_icons.html.twig' as ui %}
+    <li>
+        <a href="{{ href }}" {% if active %}aria-current="page"{% endif %} data-sidebar-tip="{{ label }}{{ badge ? ' · ' ~ badge }}"
+           class="group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors lg:sidebar-collapsed:justify-center lg:sidebar-collapsed:px-0 {{ active ? 'bg-white/10 text-white' : 'text-zinc-400 hover:bg-white/5 hover:text-white' }}">
+            {% if active %}<span class="absolute -left-3 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-accent"></span>{% endif %}
+            {{ ui.icon(icon, 'size-5 shrink-0 ' ~ (active ? 'text-white' : 'text-zinc-500 group-hover:text-zinc-300')) }}
+            <span class="flex-1 truncate lg:sidebar-collapsed:hidden">{{ label }}</span>
+            {% if badge %}
+                <span class="ms-auto rounded-md px-1.5 py-0.5 text-[11px] font-semibold tabular-nums lg:sidebar-collapsed:absolute lg:sidebar-collapsed:-top-0.5 lg:sidebar-collapsed:right-1.5 lg:sidebar-collapsed:px-1 lg:sidebar-collapsed:py-0 lg:sidebar-collapsed:text-[9px] lg:sidebar-collapsed:leading-4 {{ badge_tone == 'warning' ? 'bg-amber-400/15 text-amber-300 lg:sidebar-collapsed:bg-amber-400 lg:sidebar-collapsed:text-zinc-950' : 'bg-white/10 text-zinc-300 lg:sidebar-collapsed:bg-zinc-700 lg:sidebar-collapsed:text-white' }}">{{ badge }}</span>
+            {% endif %}
+        </a>
+    </li>
+{% endmacro %}
+
+{% macro section(title) %}
+    <p class="mb-2 px-3 text-[11px] font-semibold uppercase tracking-wider text-zinc-500 lg:sidebar-collapsed:hidden">{{ title }}</p>
+    <div class="mx-3 mb-3 hidden border-t border-white/10 lg:sidebar-collapsed:block" aria-hidden="true"></div>
+{% endmacro %}
+
+<aside id="default-sidebar" aria-label="Навигация"
+       class="fixed inset-y-0 left-0 z-40 flex w-64 -translate-x-full flex-col bg-zinc-950 transition-[transform,width] duration-200 lg:translate-x-0 lg:sidebar-collapsed:w-18">
+    <a href="{{ path('admin_dashboard') }}" data-sidebar-tip="Redbox CRM"
+       class="flex h-14 shrink-0 items-center gap-2.5 overflow-hidden border-b border-white/10 px-5 lg:sidebar-collapsed:justify-center lg:sidebar-collapsed:px-0">
+        <img src="{{ asset('images/brand/logo-28.png') }}" srcset="{{ asset('images/brand/logo-28.png') }} 1x, {{ asset('images/brand/logo-56.png') }} 2x, {{ asset('images/brand/logo-180.png') }} 3x"
+             alt="" width="28" height="28" class="size-7 shrink-0 rounded-md shadow-[0_0_20px_-2px] shadow-accent/60">
+        <span class="text-[15px] font-semibold tracking-tight text-white lg:sidebar-collapsed:hidden">Redbox</span>
+        <span class="rounded bg-white/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-400 lg:sidebar-collapsed:hidden">CRM</span>
+    </a>
+
+    {# Scrolls when the window is low, without a visible scrollbar #}
+    <nav class="no-scrollbar flex-1 space-y-7 overflow-y-auto px-3 py-5">
+        <div>
+            {{ _self.section('Работа') }}
+            <ul class="space-y-0.5">
+                {{ _self.nav_item('Обзор', path('admin_dashboard'), 'dashboard', current_route == 'admin_dashboard') }}
+                {{ _self.nav_item('Конструкции', path('admin_product_index'), 'billboard', (current_route starts with 'admin_product_' and not (current_route starts with 'admin_product_type_')) or current_route == 'admin_booking_product') }}
+                {{ _self.nav_item('Карта', path('admin_map'), 'map', current_route == 'admin_map') }}
+                {{ _self.nav_item('Брони', path('admin_booking_index'), 'calendar', current_route == 'admin_booking_index', counters.holds ?: null, 'warning') }}
+                {{ _self.nav_item('Медиапланы', path('admin_media_plan_index'), 'document', current_route starts with 'admin_media_plan_') }}
+                {{ _self.nav_item('Клиенты', path('admin_client_index'), 'client', current_route starts with 'admin_client_') }}
+                {{ _self.nav_item('Акции', path('admin_promotion_index'), 'percent', current_route starts with 'admin_promotion_') }}
+                {{ _self.nav_item('Партнёры', path('admin_partner_index'), 'briefcase', current_route starts with 'admin_partner_') }}
+            </ul>
+        </div>
+        <div>
+            {{ _self.section('Справочники') }}
+            <ul class="space-y-0.5">
+                {{ _self.nav_item('Категории', path('admin_category_index'), 'tag', current_route starts with 'admin_category_') }}
+                {{ _self.nav_item('Типы', path('admin_product_type_index'), 'stack', current_route starts with 'admin_product_type_') }}
+                {{ _self.nav_item('Районы', path('admin_district_index'), 'pin', current_route starts with 'admin_district_') }}
+                {{ _self.nav_item('Услуги', path('admin_service_index'), 'tag', current_route starts with 'admin_service_') }}
+            </ul>
+        </div>
+        {% if is_granted('ROLE_ADMIN') %}
+            <div>
+                {{ _self.section('Администрирование') }}
+                <ul class="space-y-0.5">
+                    {{ _self.nav_item('Пользователи', path('admin_user_index'), 'users', current_route starts with 'admin_user_') }}
+                </ul>
+            </div>
+        {% endif %}
+    </nav>
+
+    {# Collapse / expand (desktop only) #}
+    <div class="hidden shrink-0 px-3 pb-2 lg:block">
+        <button type="button" data-sidebar-toggle aria-controls="default-sidebar" aria-expanded="true" data-sidebar-tip="Развернуть меню"
+                class="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-zinc-500 transition-colors hover:bg-white/5 hover:text-white lg:sidebar-collapsed:justify-center lg:sidebar-collapsed:px-0">
+            {{ ui.icon('chevrons_left', 'size-5 shrink-0 transition-transform lg:sidebar-collapsed:rotate-180') }}
+            <span class="lg:sidebar-collapsed:hidden">Свернуть меню</span>
+        </button>
+    </div>
+
+    {% if app.user %}
+        <div class="shrink-0 border-t border-white/10 p-3">
+            <div class="flex items-center gap-3 rounded-lg px-2 py-2 lg:sidebar-collapsed:flex-col lg:sidebar-collapsed:gap-2 lg:sidebar-collapsed:px-0">
+                <span data-sidebar-tip="{{ app.user.name }} · {{ app.user.roleLabel }}"
+                      class="grid size-8 shrink-0 place-items-center rounded-full bg-gradient-to-br from-zinc-600 to-zinc-800 text-xs font-semibold text-white ring-1 ring-white/10">{{ app.user.name|initials }}</span>
+                <div class="min-w-0 flex-1 lg:sidebar-collapsed:hidden">
+                    <div class="truncate text-sm font-medium text-white" title="{{ app.user.email }}">{{ app.user.name }}</div>
+                    <div class="truncate text-xs text-zinc-500">{{ app.user.roleLabel }}</div>
+                </div>
+                <a href="{{ logout_path() }}" title="Выйти" aria-label="Выйти" data-sidebar-tip="Выйти"
+                   class="grid size-8 place-items-center rounded-md text-zinc-500 transition-colors hover:bg-white/5 hover:text-white">
+                    {{ ui.icon('logout', 'size-4') }}
+                </a>
+            </div>
+        </div>
+    {% endif %}
+</aside>

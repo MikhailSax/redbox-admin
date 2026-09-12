@@ -1,0 +1,51 @@
+{% extends 'admin/layout.html.twig' %}
+
+{% set heading = partner.id ? partner.name : 'Новый партнёр' %}
+
+{% block title %}{{ heading }} — {{ parent() }}{% endblock %}
+
+{% block content %}
+    <nav class="mb-2 text-sm">
+        <a href="{{ path('admin_partner_index') }}" class="text-body hover:text-heading">Партнёры</a>
+        <span class="mx-1 text-body-subtle">/</span>
+        <span class="text-heading">{{ partner.id ? '#' ~ partner.id : 'Новый' }}</span>
+    </nav>
+    <div class="page-header">
+        <h1 class="page-title">{{ heading }}</h1>
+        {% if partner.id %}
+            <div class="flex gap-2">
+                <a href="{{ path('admin_product_index', {owner: partner.id}) }}" class="btn btn-secondary">Конструкции партнёра</a>
+                {{ include('admin/_delete_form.html.twig', {
+                    action: path('admin_partner_delete', {id: partner.id}),
+                    token_id: 'delete-partner-' ~ partner.id,
+                    title: 'Удалить партнёра?',
+                    confirm: 'Партнёр «' ~ partner.name ~ '» будет удалён.',
+                    label: 'Удалить',
+                    button_class: 'btn-danger-outline',
+                }) }}
+            </div>
+        {% endif %}
+    </div>
+
+    {% form_theme form 'admin/form/theme.html.twig' %}
+    {{ form_start(form, {attr: {novalidate: 'novalidate'}}) }}
+        <div class="card mb-6 max-w-3xl">
+            {{ form_errors(form) }}
+            <div class="grid gap-x-6 md:grid-cols-[1fr_12rem]">
+                {{ form_row(form.name) }}
+                {{ form_row(form.inn) }}
+            </div>
+            <div class="grid gap-x-6 md:grid-cols-3">
+                {{ form_row(form.contactName) }}
+                {{ form_row(form.phone) }}
+                {{ form_row(form.email) }}
+            </div>
+            {{ form_row(form.comment, {row_attr: {class: 'mb-0'}}) }}
+        </div>
+
+        <div class="flex flex-wrap items-center gap-3">
+            <button type="submit" class="btn btn-primary">{{ partner.id ? 'Сохранить' : 'Создать' }}</button>
+            <a href="{{ path('admin_partner_index') }}" class="btn btn-secondary">К списку</a>
+        </div>
+    {{ form_end(form) }}
+{% endblock %}

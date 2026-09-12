@@ -1,0 +1,11 @@
+twig:
+    file_name_pattern: '*.twig'
+    globals:
+        # Map settings for data-* attributes of map widgets (see config/services.yaml)
+        map_config:
+            api_key: '%app.map.api_key%'
+            view: '%app.map.default_view%'
+
+when@test:
+    twig:
+        strict_variables: true

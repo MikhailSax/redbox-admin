@@ -1,0 +1,52 @@
+{#
+    Ctrl/⌘+K command palette (assets/admin/command-palette.js).
+    Empty query shows the quick actions below; typing searches /admin/search (src/Service/GlobalSearch.php).
+#}
+{% import 'admin/_icons.html.twig' as ui %}
+<div id="command-palette" data-search-url="{{ path('admin_search') }}" class="fixed inset-0 z-[70] hidden" role="dialog" aria-modal="true" aria-label="Поиск">
+    <div data-command-close class="absolute inset-0 bg-zinc-950/40 backdrop-blur-sm"></div>
+
+    <div class="relative mx-auto mt-[12vh] w-[calc(100%-2rem)] max-w-xl overflow-hidden rounded-2xl border border-default bg-white shadow-2xl ring-1 ring-black/5">
+        <div class="flex items-center gap-3 border-b border-default px-4">
+            {{ ui.icon('search', 'size-5 shrink-0 text-zinc-400') }}
+            <input type="text" data-command-input autocomplete="off" spellcheck="false"
+                   role="combobox" aria-expanded="true" aria-controls="command-results" aria-autocomplete="list"
+                   placeholder="Найти конструкцию, клиента, телефон…"
+                   class="h-14 w-full border-0 bg-transparent px-0 text-base text-heading placeholder:text-zinc-400 focus:ring-0">
+            <span data-command-spinner class="hidden size-4 shrink-0 animate-spin rounded-full border-2 border-zinc-200 border-t-zinc-600"></span>
+            <kbd>Esc</kbd>
+        </div>
+
+        <div id="command-results" data-command-results role="listbox" class="max-h-[60vh] overflow-y-auto p-2">
+            {# Quick actions, shown for an empty query #}
+            <div data-command-defaults>
+                <p class="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-zinc-400">Быстрые действия</p>
+                {% for action in [
+                    {title: 'Добавить конструкцию', subtitle: 'Новая карточка', url: path('admin_product_new'), icon: 'plus'},
+                    {title: 'Брони, ждущие оплаты', subtitle: 'Снимутся через 24 часа без оплаты', url: path('admin_booking_index', {status: 'hold'}), icon: 'clock'},
+                    {title: 'Свободные конструкции', subtitle: 'На текущий месяц', url: path('admin_product_index', {status: 'free'}), icon: 'billboard'},
+                    {title: 'Обзор', subtitle: 'Загрузка и статусы', url: path('admin_dashboard'), icon: 'chart'},
+                ] %}
+                    <a href="{{ action.url }}" data-command-item role="option"
+                       class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm aria-selected:bg-zinc-100">
+                        <span class="grid size-8 place-items-center rounded-lg border border-default bg-white text-zinc-500 shadow-xs">{{ ui.icon(action.icon, 'size-4') }}</span>
+                        <span class="min-w-0 flex-1">
+                            <span class="block font-medium text-heading">{{ action.title }}</span>
+                            <span class="block truncate text-xs text-body-subtle">{{ action.subtitle }}</span>
+                        </span>
+                    </a>
+                {% endfor %}
+            </div>
+            <div data-command-found></div>
+            <div data-command-empty class="hidden px-3 py-10 text-center text-sm text-body">
+                Ничего не найдено по запросу «<span data-command-term class="font-medium text-heading"></span>»
+            </div>
+        </div>
+
+        <div class="flex items-center gap-4 border-t border-default bg-zinc-50/80 px-4 py-2.5 text-xs text-body-subtle">
+            <span class="flex items-center gap-1.5"><kbd>↑</kbd><kbd>↓</kbd> выбрать</span>
+            <span class="flex items-center gap-1.5"><kbd>↵</kbd> открыть</span>
+            <span class="ms-auto hidden sm:inline">Название, район, клиент, телефон</span>
+        </div>
+    </div>
+</div>

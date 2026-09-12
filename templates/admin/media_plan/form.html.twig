@@ -1,0 +1,51 @@
+{% extends 'admin/layout.html.twig' %}
+
+{% set heading = plan.id ? plan.title : 'Новый медиаплан' %}
+
+{% block title %}{{ heading }} — {{ parent() }}{% endblock %}
+
+{% block content %}
+    <nav class="mb-2 text-sm">
+        <a href="{{ path('admin_media_plan_index') }}" class="text-body hover:text-heading">Медиапланы</a>
+        <span class="mx-1 text-body-subtle">/</span>
+        {% if plan.id %}
+            <a href="{{ path('admin_media_plan_show', {id: plan.id}) }}" class="text-body hover:text-heading">{{ plan.title }}</a>
+            <span class="mx-1 text-body-subtle">/</span>
+            <span class="text-heading">Параметры</span>
+        {% else %}
+            <span class="text-heading">Новый</span>
+        {% endif %}
+    </nav>
+    <h1 class="page-title mb-6">{{ plan.id ? 'Параметры медиаплана' : heading }}</h1>
+
+    {% form_theme form 'admin/form/theme.html.twig' %}
+    {{ form_start(form, {attr: {novalidate: 'novalidate'}}) }}
+        <div class="card mb-6 max-w-3xl">
+            {{ form_errors(form) }}
+            {{ form_row(form.title) }}
+            <div class="grid gap-x-6 md:grid-cols-2">
+                {{ form_row(form.clientName) }}
+                {{ form_row(form.clientContact) }}
+            </div>
+            <div class="grid gap-x-6 md:grid-cols-3">
+                {{ form_row(form.startMonth) }}
+                {{ form_row(form.months) }}
+                {{ form_row(form.discountPercent) }}
+            </div>
+            <fieldset class="mb-5 rounded-lg border border-default p-4 pb-0">
+                <legend class="px-1 text-sm font-medium text-heading">Акции</legend>
+                <p class="mb-4 text-sm text-body">Цены конструкций пересчитаются по лучшей подходящей акции. Цены, заданные вручную, не меняются.</p>
+                <div class="grid gap-x-6 md:grid-cols-2 md:items-start">
+                    {{ form_row(form.promoCode) }}
+                    <div class="md:pt-7">{{ form_row(form.firstOrder) }}</div>
+                </div>
+            </fieldset>
+            {{ form_row(form.comment, {row_attr: {class: 'mb-0'}}) }}
+        </div>
+
+        <div class="flex flex-wrap items-center gap-3">
+            <button type="submit" class="btn btn-primary">{{ plan.id ? 'Сохранить' : 'Создать и подобрать конструкции' }}</button>
+            <a href="{{ plan.id ? path('admin_media_plan_show', {id: plan.id}) : path('admin_media_plan_index') }}" class="btn btn-secondary">Отмена</a>
+        </div>
+    {{ form_end(form) }}
+{% endblock %}

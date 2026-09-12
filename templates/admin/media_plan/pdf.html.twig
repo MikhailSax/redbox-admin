@@ -1,0 +1,142 @@
+{# Commercial proposal PDF (dompdf: CSS 2.1, tables instead of flex/grid). Vars: plan, photos[itemId] (data URI|null), generatedAt #}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Медиаплан — {{ plan.title }}</title>
+    <style>
+        @page { margin: 18mm 16mm 20mm 16mm; }
+        * { font-family: 'DejaVu Sans', sans-serif; }
+        body { color: #27272a; font-size: 10pt; line-height: 1.45; }
+        h1 { font-size: 20pt; margin: 0 0 2mm; color: #09090b; }
+        .muted { color: #71717a; }
+        .small { font-size: 8.5pt; }
+        .logo td.mark { width: 9mm; vertical-align: middle; }
+        .logo td.mark img { width: 9mm; height: 9mm; }
+        .logo td.brand { padding-left: 2.5mm; font-size: 14pt; font-weight: bold; color: #09090b; vertical-align: middle; }
+        table { border-collapse: collapse; width: 100%; }
+        .header td { vertical-align: middle; }
+        .client { margin: 7mm 0 6mm; background: #f4f4f5; border-radius: 3mm; }
+        .client td { padding: 3.5mm 4mm; vertical-align: top; width: 33%; }
+        .label { font-size: 7.5pt; text-transform: uppercase; letter-spacing: 0.4pt; color: #71717a; }
+        .value { font-size: 11pt; font-weight: bold; color: #09090b; }
+        .item { border: 0.3mm solid #e4e4e7; margin-bottom: 3mm; page-break-inside: avoid; }
+        .item td { vertical-align: top; }
+        .photo { width: 50mm; padding: 3mm; }
+        .photo img { width: 50mm; height: 31mm; border-radius: 2mm; }
+        .nophoto { width: 50mm; height: 31mm; background: #f4f4f5; border-radius: 2mm; text-align: center; line-height: 31mm; color: #a1a1aa; }
+        .info { padding: 3.5mm 4mm 3.5mm 1mm; }
+        .name { font-size: 12pt; font-weight: bold; color: #09090b; margin-bottom: 1mm; }
+        .specs td { padding: 0.6mm 0; font-size: 9pt; }
+        .specs td.k { color: #71717a; width: 25mm; }
+        .price { text-align: right; padding: 3.5mm 4mm; width: 34mm; }
+        .price .sum { font-size: 13pt; font-weight: bold; color: #09090b; }
+        .services td { padding: 2mm 2.5mm; border-bottom: 0.3mm solid #e4e4e7; font-size: 9.5pt; }
+        .services .head td { font-size: 7.5pt; text-transform: uppercase; letter-spacing: 0.4pt; color: #71717a; background: #f4f4f5; }
+        .services td.r { text-align: right; white-space: nowrap; }
+        .totals { width: 90mm; margin-left: auto; margin-top: 5mm; }
+        .totals td { padding: 1.6mm 0; }
+        .totals td.r { text-align: right; }
+        .totals .grand td { border-top: 0.4mm solid #09090b; padding-top: 2.5mm; font-size: 14pt; font-weight: bold; color: #09090b; }
+        .promo { color: #6d28d9; font-size: 8pt; font-weight: bold; }
+        .old { text-decoration: line-through; color: #a1a1aa; }
+        .note { margin-top: 8mm; padding: 4mm; border-left: 1mm solid #e5484d; background: #fafafa; page-break-inside: avoid; }
+        .footer { position: fixed; bottom: -12mm; left: 0; right: 0; font-size: 7.5pt; color: #a1a1aa; }
+    </style>
+</head>
+<body>
+    <div class="footer">Redbox · медиаплан «{{ plan.title }}» · подготовлен {{ generatedAt|date('d.m.Y') }}{% if plan.createdBy %} · менеджер {{ plan.createdBy.name }}, {{ plan.createdBy.email }}{% endif %}</div>
+
+    <table class="header">
+        <tr>
+            <td><table class="logo" style="width: auto"><tr><td class="mark">{% if logo %}<img src="{{ logo }}" alt="">{% endif %}</td><td class="brand">Redbox</td></tr></table></td>
+            <td style="text-align: right" class="muted small">Коммерческое предложение<br>от {{ generatedAt|date('d.m.Y') }}</td>
+        </tr>
+    </table>
+
+    <h1 style="margin-top: 8mm">{{ plan.title }}</h1>
+    <div class="muted">Размещение наружной рекламы</div>
+
+    <table class="client">
+        <tr>
+            <td><div class="label">Клиент</div><div class="value">{{ plan.clientName }}</div>{% if plan.clientContact %}<div class="small muted">{{ plan.clientContact }}</div>{% endif %}</td>
+            <td><div class="label">Период</div><div class="value">{{ plan.startMonth|month_label }}{% if plan.months > 1 %} — {{ plan.endMonth|month_label }}{% endif %}</div><div class="small muted">{{ plan.months }} мес.</div></td>
+            <td><div class="label">Конструкций</div><div class="value">{{ plan.items|length }} {{ plan.items|length % 10 == 1 and plan.items|length % 100 != 11 ? 'сторона' : (plan.items|length % 10 in [2, 3, 4] and plan.items|length % 100 not in [12, 13, 14] ? 'стороны' : 'сторон') }}</div></td>
+        </tr>
+    </table>
+
+    {% for item in plan.items %}
+        {% set product = item.product %}
+        <table class="item">
+            <tr>
+                <td class="photo">
+                    {% if photos[item.id] %}
+                        <img src="{{ photos[item.id] }}" alt="">
+                    {% else %}
+                        <div class="nophoto">нет фото</div>
+                    {% endif %}
+                </td>
+                <td class="info">
+                    <div class="name">{{ product.name }}</div>
+                    <table class="specs">
+                        <tr><td class="k">Формат</td><td>{{ product.category.name }}, {{ product.productType.name|lower }}</td></tr>
+                        <tr><td class="k">Сторона</td><td>{{ item.side.name }}{% if item.clipDuration %} · ролик {{ item.clipDuration }} сек в петле 120 сек{% endif %}</td></tr>
+                        {% if product.district %}<tr><td class="k">Район</td><td>{{ product.district.name }}</td></tr>{% endif %}
+                        {% if product.latitude and product.longitude %}<tr><td class="k">Координаты</td><td>{{ product.latitude|number_format(5, '.', '') }}, {{ product.longitude|number_format(5, '.', '') }}</td></tr>{% endif %}
+                        {% if product.shortDescription %}<tr><td class="k">Описание</td><td>{{ product.shortDescription }}</td></tr>{% endif %}
+                    </table>
+                </td>
+                <td class="price">
+                    {% if item.hasPromotionPrice %}
+                        <div class="small old">{{ item.basePrice|number_format(0, ',', ' ') }} ₽</div>
+                    {% endif %}
+                    <div class="small muted">{{ item.monthlyPrice|number_format(0, ',', ' ') }} ₽ × {{ plan.months }} мес.</div>
+                    <div class="sum">{{ (item.monthlyPrice * plan.months)|number_format(0, ',', ' ') }} ₽</div>
+                    {% if item.hasPromotionPrice %}<div class="promo">Акция «{{ item.promotionTitle }}»</div>{% endif %}
+                </td>
+            </tr>
+        </table>
+    {% endfor %}
+
+    {% if plan.serviceLines is not empty %}
+        <div style="font-size: 12pt; font-weight: bold; color: #09090b; margin: 6mm 0 2mm">Дополнительные услуги</div>
+        <table class="services">
+            <tr class="head"><td>Услуга</td><td class="r">Кол-во</td><td class="r">Цена</td><td class="r">Сумма</td></tr>
+            {% for line in plan.serviceLines %}
+                <tr>
+                    <td>{{ line.name }}</td>
+                    <td class="r">{{ line.quantity == line.quantity|round ? line.quantity|round : line.quantity|number_format(2, ',', ' ') }} {{ line.unit }}</td>
+                    <td class="r">{{ line.unitPrice|number_format(0, ',', ' ') }} ₽</td>
+                    <td class="r"><b>{{ line.total|number_format(0, ',', ' ') }} ₽</b></td>
+                </tr>
+            {% endfor %}
+        </table>
+    {% endif %}
+
+    <table class="totals">
+        {% if plan.promotionSavings > 0 %}
+            <tr><td>По прайсу, {{ plan.months }} мес.</td><td class="r old">{{ plan.listSubtotal|number_format(0, ',', ' ') }} ₽</td></tr>
+            <tr><td>Скидка по акциям</td><td class="r">−{{ plan.promotionSavings|number_format(0, ',', ' ') }} ₽</td></tr>
+        {% endif %}
+        <tr><td>Размещение, {{ plan.months }} мес.</td><td class="r">{{ plan.placementSubtotal|number_format(0, ',', ' ') }} ₽</td></tr>
+        {% if plan.discountPercent > 0 %}
+            <tr><td>Скидка {{ plan.discountPercent }}% на размещение</td><td class="r">−{{ plan.discountAmount|number_format(0, ',', ' ') }} ₽</td></tr>
+        {% endif %}
+        {% if plan.serviceLines is not empty %}
+            <tr><td>Дополнительные услуги</td><td class="r">{{ plan.servicesTotal|number_format(0, ',', ' ') }} ₽</td></tr>
+        {% endif %}
+        <tr class="grand"><td>Итого</td><td class="r">{{ plan.total|number_format(0, ',', ' ') }} ₽</td></tr>
+    </table>
+
+    <div class="note small">
+        {% if plan.comment %}<div style="margin-bottom: 2mm; white-space: pre-line">{{ plan.comment }}</div>{% endif %}
+        {% set applied = [] %}
+        {% for item in plan.items %}{% if item.hasPromotionPrice and item.promotion and item.promotion.description and item.promotion not in applied %}{% set applied = applied|merge([item.promotion]) %}{% endif %}{% endfor %}
+        {% for promotion in applied %}
+            <div style="margin-bottom: 2mm"><span class="promo">{{ promotion.title }}.</span> {{ promotion.description }}</div>
+        {% endfor %}
+        Цены указаны за весь период размещения. Предложение не является бронью: после подтверждения
+        конструкции резервируются на 24 часа до оплаты. Наличие свободных сторон уточняйте у менеджера.
+    </div>
+</body>
+</html>

@@ -1,0 +1,36 @@
+{% extends 'admin/layout.html.twig' %}
+
+{% set heading = user.id ? user.name : 'Новый пользователь' %}
+
+{% block title %}{{ heading }} — {{ parent() }}{% endblock %}
+
+{% block content %}
+    <nav class="text-sm mb-2">
+        <a href="{{ path('admin_user_index') }}" class="text-body hover:text-fg-brand">Пользователи</a>
+        <span class="text-body mx-1">/</span>
+        <span class="text-heading">{{ user.id ? '#' ~ user.id : 'Новый' }}</span>
+    </nav>
+    <h1 class="page-title mb-6">{{ heading }}</h1>
+
+    {% form_theme form 'admin/form/theme.html.twig' %}
+    {{ form_start(form, {attr: {novalidate: 'novalidate'}}) }}
+        <div class="card max-w-2xl mb-6">
+            {{ form_errors(form) }}
+            <div class="grid gap-x-6 md:grid-cols-2">
+                {{ form_row(form.name) }}
+                {{ form_row(form.email) }}
+            </div>
+            {{ form_row(form.role) }}
+            <div class="mb-2">{{ form_errors(form.plainPassword) }}</div>
+            <div class="grid gap-x-6 md:grid-cols-2">
+                {{ form_row(form.plainPassword.first, {row_attr: {class: 'mb-0'}}) }}
+                {{ form_row(form.plainPassword.second, {row_attr: {class: 'mb-0'}}) }}
+            </div>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-3">
+            <button type="submit" class="btn btn-primary">{{ user.id ? 'Сохранить' : 'Создать' }}</button>
+            <a href="{{ path('admin_user_index') }}" class="btn btn-secondary">К списку</a>
+        </div>
+    {{ form_end(form) }}
+{% endblock %}

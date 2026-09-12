@@ -1,0 +1,221 @@
+{% extends 'admin/layout.html.twig' %}
+{% import 'admin/_icons.html.twig' as ui %}
+
+{#
+    Client card: profile (account of the website's personal account), documents, photo reports — tabs (assets/admin/tabs.js).
+    Vars: client, form, initialTab; for a saved client also documents, reports, documentForm, reportForm.
+#}
+{% set heading = client.id ? (client.company ?? client.name) : 'Новый клиент' %}
+{% set tabs = {profile: {label: 'Профиль'}} %}
+{% if client.id %}
+    {% set tabs = tabs|merge({
+        documents: {label: 'Документы', counter: documents|length ?: null},
+        reports: {label: 'Фотоотчёты', counter: reports|length ?: null},
+    }) %}
+{% endif %}
+
+{% macro panel_attrs(id, initialTab) %}id="tab-{{ id }}" data-tab-panel="{{ id }}" role="tabpanel"{% if id != initialTab %} class="hidden"{% endif %}{% endmacro %}
+
+{% macro file_size(bytes) %}
+    {%- if bytes >= 1048576 %}{{ (bytes / 1048576)|number_format(1, ',', ' ') }} МБ{% elseif bytes >= 1024 %}{{ (bytes / 1024)|round }} КБ{% else %}{{ bytes }} Б{% endif -%}
+{% endmacro %}
+
+{% block title %}{{ heading }} — {{ parent() }}{% endblock %}
+
+{% block content %}
+    <nav class="mb-2 text-sm">
+        <a href="{{ path('admin_client_index') }}" class="text-body hover:text-heading">Клиенты</a>
+        <span class="mx-1 text-body-subtle">/</span>
+        <span class="text-heading">{{ client.id ? '#' ~ client.id : 'Новый' }}</span>
+    </nav>
+
+    <div class="mb-5 flex flex-wrap items-start justify-between gap-4">
+        <div class="min-w-0">
+            <h1 class="page-title">{{ heading }}</h1>
+            {% if client.id %}
+                <p class="mt-1 text-sm text-body">
+                    {% if client.company %}{{ client.name }} · {% endif %}{{ client.email }}{% if client.phone %} · {{ client.phone }}{% endif %}
+                </p>
+            {% endif %}
+        </div>
+        {% if client.id %}
+            {{ include('admin/_delete_form.html.twig', {
+                action: path('admin_client_delete', {id: client.id}),
+                token_id: 'delete-client-' ~ client.id,
+                title: 'Удалить клиента?',
+                confirm: 'Учётная запись «' ~ heading ~ '» будет удалена вместе со всеми документами и фотоотчётами. Клиент больше не сможет войти в личный кабинет.',
+                label: 'Удалить',
+                button_class: 'btn-danger-outline',
+            }) }}
+        {% endif %}
+    </div>
+
+    {# Tab bar #}
+    <div class="mb-6 overflow-x-auto overflow-y-hidden border-b border-default">
+        <ul class="-mb-px flex whitespace-nowrap text-center text-sm font-medium" role="tablist">
+            {% for id, tab in tabs %}
+                {% set is_active = id == initialTab %}
+                <li class="me-1" role="presentation">
+                    <a href="#{{ id }}" data-tab="{{ id }}" role="tab" aria-controls="tab-{{ id }}" aria-selected="{{ is_active ? 'true' : 'false' }}"
+                       class="inline-flex items-center gap-2 rounded-t-base border-b-2 px-4 py-3 {{ is_active ? 'text-fg-brand border-brand' : 'border-transparent text-body hover:text-heading hover:border-default-strong' }}">
+                        {{ tab.label }}
+                        {% if tab.counter is defined and tab.counter is not null %}
+                            <span class="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-zinc-100 px-1.5 text-xs font-semibold text-heading">{{ tab.counter }}</span>
+                        {% endif %}
+                    </a>
+                </li>
+            {% endfor %}
+        </ul>
+    </div>
+
+    {# Profile #}
+    <div {{ _self.panel_attrs('profile', initialTab) }}>
+        {% form_theme form 'admin/form/theme.html.twig' %}
+        {{ form_start(form, {attr: {novalidate: 'novalidate', class: 'max-w-3xl'}}) }}
+            <input type="hidden" name="_tab" value="profile" data-tab-input>
+            <section class="card mb-6">
+                {{ form_errors(form) }}
+                <div class="grid gap-x-6 md:grid-cols-2">
+                    {{ form_row(form.company) }}
+                    {{ form_row(form.name) }}
+                    {{ form_row(form.email) }}
+                    {{ form_row(form.phone) }}
+                </div>
+                <fieldset class="rounded-lg border border-default bg-zinc-50/60 p-4 pb-0">
+                    <legend class="px-1 text-sm font-medium text-heading">Личный кабинет на сайте</legend>
+                    <div class="grid gap-x-6 md:grid-cols-2">
+                        {{ form_row(form.plainPassword.first) }}
+                        {{ form_row(form.plainPassword.second) }}
+                    </div>
+                    {{ form_errors(form.plainPassword) }}
+                </fieldset>
+            </section>
+            <div class="flex flex-wrap items-center gap-3">
+                <button type="submit" class="btn btn-primary">{{ client.id ? 'Сохранить' : 'Добавить клиента' }}</button>
+                <a href="{{ path('admin_client_index') }}" class="btn btn-secondary">К списку</a>
+            </div>
+        {{ form_end(form) }}
+    </div>
+
+    {% if client.id %}
+        {# Documents #}
+        <div {{ _self.panel_attrs('documents', initialTab) }}>
+            {% form_theme documentForm 'admin/form/theme.html.twig' %}
+            {{ form_start(documentForm, {attr: {novalidate: 'novalidate', class: 'card mb-6'}}) }}
+                <h2 class="mb-1 text-base font-semibold text-heading">Загрузить документы</h2>
+                <p class="mb-4 text-sm text-body">Договоры, приложения, счета и акты. Клиент увидит их в истории документов в личном кабинете.</p>
+                <div class="grid gap-x-6 md:grid-cols-[14rem_1fr]">
+                    {{ form_row(documentForm.type) }}
+                    {{ form_row(documentForm.title) }}
+                </div>
+                {{ form_row(documentForm.files, {attr: {class: 'input-file'}}) }}
+                {{ form_row(documentForm.comment) }}
+                <button type="submit" class="btn btn-primary">{{ ui.icon('plus', 'size-4') }} Загрузить</button>
+            {{ form_end(documentForm) }}
+
+            <div class="table-card">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th scope="col" class="px-4 py-2.5">Документ</th>
+                            <th scope="col" class="px-4 py-2.5">Тип</th>
+                            <th scope="col" class="px-4 py-2.5">Загружен</th>
+                            <th scope="col" class="px-4 py-2.5"><span class="sr-only">Действия</span></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for document in documents %}
+                            <tr>
+                                <th scope="row" class="px-4 py-3 font-normal">
+                                    <div class="flex items-center gap-3">
+                                        <span class="grid h-10 w-9 shrink-0 place-items-center rounded-md bg-zinc-100 text-[10px] font-bold uppercase text-body ring-1 ring-zinc-200">{{ document.extension|slice(0, 4) ?: 'файл' }}</span>
+                                        <span class="min-w-0">
+                                            <a href="{{ path('admin_client_document', {document: document.id, inline: document.viewable ? 1 : null}) }}" {% if document.viewable %}target="_blank"{% endif %}
+                                               class="block truncate font-medium text-heading hover:underline">{{ document.title }}</a>
+                                            <span class="block truncate text-xs text-body-subtle">{{ document.originalName }} · {{ _self.file_size(document.size) }}</span>
+                                            {% if document.comment %}<span class="block text-xs text-body">{{ document.comment }}</span>{% endif %}
+                                        </span>
+                                    </div>
+                                </th>
+                                <td class="px-4 py-3"><span class="inline-flex rounded-md bg-zinc-100 px-1.5 py-0.5 text-xs font-medium text-heading ring-1 ring-zinc-200">{{ document.type.label }}</span></td>
+                                <td class="px-4 py-3 whitespace-nowrap">
+                                    {{ document.createdAt|date('d.m.Y H:i') }}
+                                    {% if document.uploadedBy %}<div class="text-xs text-body-subtle">{{ document.uploadedBy.name }}</div>{% endif %}
+                                </td>
+                                <td class="px-4 py-3">
+                                    <div class="flex justify-end gap-1">
+                                        <a href="{{ path('admin_client_document', {document: document.id}) }}" class="btn btn-secondary btn-sm">{{ ui.icon('download', 'size-4') }} Скачать</a>
+                                        {{ include('admin/_delete_form.html.twig', {
+                                            action: path('admin_client_delete_document', {document: document.id}),
+                                            token_id: 'delete-document-' ~ document.id,
+                                            title: 'Удалить документ?',
+                                            confirm: 'Документ «' ~ document.title ~ '» пропадёт и из личного кабинета клиента.',
+                                            button_class: 'btn-ghost btn-sm text-fg-danger hover:bg-danger-soft',
+                                        }) }}
+                                    </div>
+                                </td>
+                            </tr>
+                        {% else %}
+                            <tr><td colspan="4" class="px-4 py-12 text-center text-sm text-body">Документов пока нет — загрузите договор выше.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        {# Photo reports #}
+        <div {{ _self.panel_attrs('reports', initialTab) }}>
+            {% form_theme reportForm 'admin/form/theme.html.twig' %}
+            {{ form_start(reportForm, {attr: {novalidate: 'novalidate', class: 'card mb-6'}}) }}
+                <h2 class="mb-1 text-base font-semibold text-heading">Новый фотоотчёт</h2>
+                <p class="mb-4 text-sm text-body">Фото размещения для клиента: смонтированный баннер, ролик на экране. Появится в личном кабинете.</p>
+                <div class="grid gap-x-6 md:grid-cols-3">
+                    {{ form_row(reportForm.title) }}
+                    {{ form_row(reportForm.shotAt) }}
+                    {{ form_row(reportForm.product) }}
+                </div>
+                {{ form_row(reportForm.photos, {attr: {class: 'input-file'}}) }}
+                {{ form_row(reportForm.comment) }}
+                <button type="submit" class="btn btn-primary">{{ ui.icon('plus', 'size-4') }} Добавить фотоотчёт</button>
+            {{ form_end(reportForm) }}
+
+            <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {% for report in reports %}
+                    <article class="card !p-0 overflow-hidden">
+                        <div class="grid grid-cols-3 gap-0.5 bg-zinc-100">
+                            {% for photo in report.photos|slice(0, 6) %}
+                                <a href="{{ path('admin_client_photo', {photo: photo.id}) }}" target="_blank" class="relative block aspect-[4/3] overflow-hidden {{ loop.first and report.photos|length < 3 ? 'col-span-3 aspect-[16/9]' : '' }}">
+                                    <img src="{{ path('admin_client_photo', {photo: photo.id}) }}" alt="{{ photo.originalName }}" loading="lazy" class="h-full w-full object-cover transition-transform hover:scale-105">
+                                    {% if loop.index == 6 and report.photos|length > 6 %}
+                                        <span class="absolute inset-0 grid place-items-center bg-black/50 text-sm font-semibold text-white">+{{ report.photos|length - 5 }}</span>
+                                    {% endif %}
+                                </a>
+                            {% endfor %}
+                        </div>
+                        <div class="p-4">
+                            <div class="flex items-start justify-between gap-3">
+                                <div class="min-w-0">
+                                    <h3 class="truncate font-semibold text-heading">{{ report.title }}</h3>
+                                    <p class="text-xs text-body-subtle">
+                                        Съёмка {{ report.shotAt|date('d.m.Y') }} · фото: {{ report.photos|length }}
+                                        {% if report.product %}<br><a href="{{ path('admin_product_edit', {id: report.product.id}) }}" class="hover:underline">{{ report.product.name }}</a>{% endif %}
+                                    </p>
+                                    {% if report.comment %}<p class="mt-1 text-sm text-body">{{ report.comment }}</p>{% endif %}
+                                </div>
+                                {{ include('admin/_delete_form.html.twig', {
+                                    action: path('admin_client_delete_report', {report: report.id}),
+                                    token_id: 'delete-report-' ~ report.id,
+                                    title: 'Удалить фотоотчёт?',
+                                    confirm: 'Фотоотчёт «' ~ report.title ~ '» и все его фото пропадут и из личного кабинета клиента.',
+                                    button_class: 'btn-ghost btn-sm text-fg-danger hover:bg-danger-soft',
+                                }) }}
+                            </div>
+                        </div>
+                    </article>
+                {% else %}
+                    <p class="card text-center text-sm text-body md:col-span-2 xl:col-span-3">Фотоотчётов пока нет.</p>
+                {% endfor %}
+            </div>
+        </div>
+    {% endif %}
+{% endblock %}

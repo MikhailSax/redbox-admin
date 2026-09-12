@@ -1,0 +1,65 @@
+{% extends 'admin/layout.html.twig' %}
+{% import 'admin/_icons.html.twig' as ui %}
+
+{% block title %}Услуги — {{ parent() }}{% endblock %}
+
+{% block content %}
+    <div class="page-header">
+        <div>
+            <h1 class="page-title">Услуги</h1>
+            <p class="page-subtitle">Изготовление макетов, печать, монтаж — добавляются в медиапланы вместе с размещением</p>
+        </div>
+        <a href="{{ path('admin_service_new') }}" class="btn btn-primary">{{ ui.icon('plus', 'size-4') }} Добавить услугу</a>
+    </div>
+
+    <div class="table-card">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th scope="col" class="px-4 py-2.5">Услуга</th>
+                    <th scope="col" class="px-4 py-2.5 text-right">Цена</th>
+                    <th scope="col" class="px-4 py-2.5 text-right">Себестоимость</th>
+                    <th scope="col" class="px-4 py-2.5 text-right">Маржа</th>
+                    <th scope="col" class="px-4 py-2.5"><span class="sr-only">Действия</span></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for service in services %}
+                    <tr class="{{ service.active ? '' : 'opacity-60' }}">
+                        <th scope="row" class="px-4 py-3 font-normal">
+                            <a href="{{ path('admin_service_edit', {id: service.id}) }}" class="font-medium text-heading hover:underline">{{ service.name }}</a>
+                            {% if not service.active %}<span class="ms-1 rounded bg-zinc-100 px-1.5 py-px text-[11px] text-body">не используется</span>{% endif %}
+                            {% if service.description %}<div class="text-xs text-body-subtle">{{ service.description }}</div>{% endif %}
+                        </th>
+                        <td class="px-4 py-3 text-right font-medium text-heading tabular-nums whitespace-nowrap">{{ service.price|number_format(0, ',', ' ') }}&nbsp;₽ <span class="font-normal text-body-subtle">/ {{ service.unit }}</span></td>
+                        <td class="px-4 py-3 text-right tabular-nums whitespace-nowrap">{{ service.costPrice is not null ? service.costPrice|number_format(0, ',', ' ') ~ ' ₽' : '—' }}</td>
+                        <td class="px-4 py-3 text-right tabular-nums whitespace-nowrap">
+                            {% if service.costPrice is not null %}
+                                <span class="text-fg-success-strong">{{ (service.price - service.costPrice)|number_format(0, ',', ' ') }}&nbsp;₽</span>
+                            {% else %}—{% endif %}
+                        </td>
+                        <td class="px-4 py-3">
+                            <div class="flex justify-end gap-1">
+                                <a href="{{ path('admin_service_edit', {id: service.id}) }}" class="btn btn-secondary btn-sm">Изменить</a>
+                                {{ include('admin/_delete_form.html.twig', {
+                                    action: path('admin_service_delete', {id: service.id}),
+                                    token_id: 'delete-service-' ~ service.id,
+                                    title: 'Удалить услугу?',
+                                    confirm: 'Услуга «' ~ service.name ~ '» будет удалена из справочника. В уже созданных медиапланах она останется.',
+                                    button_class: 'btn-ghost btn-sm text-fg-danger hover:bg-danger-soft',
+                                }) }}
+                            </div>
+                        </td>
+                    </tr>
+                {% else %}
+                    <tr>
+                        <td colspan="5" class="px-4 py-16 text-center">
+                            <p class="font-medium text-heading">Услуг пока нет</p>
+                            <p class="mt-1 text-sm text-body">Например: «Изготовление макета» за макет, «Печать баннера» за м², «Монтаж» за штуку. <a href="{{ path('admin_service_new') }}" class="font-medium text-heading underline">Добавить</a></p>
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+{% endblock %}

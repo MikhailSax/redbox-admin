@@ -1,0 +1,5 @@
+{# POST delete button with CSRF token and a confirmation dialog. Vars: action, token_id, confirm, title?, label?, button_class? #}
+<form method="post" action="{{ action }}" data-confirm="{{ confirm }}" data-confirm-title="{{ title|default('Удалить?') }}">
+    <input type="hidden" name="_token" value="{{ csrf_token(token_id) }}">
+    <button type="submit" class="btn {{ button_class|default('btn-danger-outline btn-sm') }}">{{ label|default('Удалить') }}</button>
+</form>

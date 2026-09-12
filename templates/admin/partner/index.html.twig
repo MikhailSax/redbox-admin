@@ -1,0 +1,72 @@
+{% extends 'admin/layout.html.twig' %}
+{% import 'admin/_icons.html.twig' as ui %}
+
+{% block title %}Партнёры — {{ parent() }}{% endblock %}
+
+{% block content %}
+    <div class="page-header">
+        <div>
+            <h1 class="page-title">Партнёры</h1>
+            <p class="page-subtitle">Владельцы конструкций, которые вы перепродаёте. Своих конструкций: {{ ownCount }}</p>
+        </div>
+        <a href="{{ path('admin_partner_new') }}" class="btn btn-primary">{{ ui.icon('plus', 'size-4') }} Добавить партнёра</a>
+    </div>
+
+    <div class="table-card">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th scope="col" class="px-4 py-2.5">Партнёр</th>
+                    <th scope="col" class="px-4 py-2.5">Контакт</th>
+                    <th scope="col" class="px-4 py-2.5 text-right">Конструкций</th>
+                    <th scope="col" class="px-4 py-2.5"><span class="sr-only">Действия</span></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for partner in partners %}
+                    {% set used = productCounts[partner.id] ?? 0 %}
+                    <tr>
+                        <th scope="row" class="px-4 py-3 font-normal">
+                            <a href="{{ path('admin_partner_edit', {id: partner.id}) }}" class="group flex items-center gap-3">
+                                <span class="grid size-9 shrink-0 place-items-center rounded-lg bg-zinc-100 text-xs font-semibold text-heading">{{ partner.name|initials }}</span>
+                                <span class="min-w-0">
+                                    <span class="block truncate font-medium text-heading group-hover:underline">{{ partner.name }}</span>
+                                    {% if partner.inn %}<span class="block text-xs text-body-subtle">ИНН {{ partner.inn }}</span>{% endif %}
+                                </span>
+                            </a>
+                        </th>
+                        <td class="px-4 py-3">
+                            <div class="text-heading">{{ partner.contactName ?? '—' }}</div>
+                            <div class="text-xs text-body-subtle">{{ [partner.phone, partner.email]|filter(v => v)|join(' · ') }}</div>
+                        </td>
+                        <td class="px-4 py-3 text-right tabular-nums">
+                            {% if used %}
+                                <a href="{{ path('admin_product_index', {owner: partner.id}) }}" class="font-medium text-heading underline decoration-zinc-300 underline-offset-4 hover:decoration-zinc-900">{{ used }}</a>
+                            {% else %}0{% endif %}
+                        </td>
+                        <td class="px-4 py-3">
+                            <div class="flex justify-end gap-1">
+                                <a href="{{ path('admin_partner_edit', {id: partner.id}) }}" class="btn btn-secondary btn-sm">Изменить</a>
+                                {{ include('admin/_delete_form.html.twig', {
+                                    action: path('admin_partner_delete', {id: partner.id}),
+                                    token_id: 'delete-partner-' ~ partner.id,
+                                    title: 'Удалить партнёра?',
+                                    confirm: 'Партнёр «' ~ partner.name ~ '» будет удалён.',
+                                    button_class: 'btn-ghost btn-sm text-fg-danger hover:bg-danger-soft',
+                                }) }}
+                            </div>
+                        </td>
+                    </tr>
+                {% else %}
+                    <tr>
+                        <td colspan="4" class="px-4 py-16 text-center">
+                            <span class="mx-auto mb-3 grid size-12 place-items-center rounded-full bg-zinc-100 text-zinc-400">{{ ui.icon('users') }}</span>
+                            <p class="font-medium text-heading">Партнёров пока нет</p>
+                            <p class="mt-1 text-sm text-body">Все конструкции сейчас — ваши собственные. <a href="{{ path('admin_partner_new') }}" class="font-medium text-heading underline">Добавить партнёра</a></p>
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+{% endblock %}

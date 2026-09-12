@@ -1,0 +1,57 @@
+{% extends 'base.html.twig' %}
+{% import 'admin/_icons.html.twig' as ui %}
+
+{% block title %}Redbox CRM{% endblock %}
+
+{% block body %}
+    {{ include('components/navbar.html.twig') }}
+
+    <div class="min-h-screen transition-[padding] duration-200 lg:pl-64 lg:sidebar-collapsed:pl-18">
+        {# Top bar: mobile menu, global search (Ctrl/⌘+K), quick action #}
+        <header class="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-default bg-white/80 px-4 backdrop-blur-md sm:px-6 lg:px-8">
+            <button type="button" data-drawer-target="default-sidebar" data-drawer-toggle="default-sidebar" aria-controls="default-sidebar"
+                    class="-ms-1.5 grid size-9 place-items-center rounded-lg text-body hover:bg-zinc-100 lg:hidden" aria-label="Открыть меню">
+                {{ ui.icon('menu') }}
+            </button>
+
+            <button type="button" data-command-open
+                    class="group flex h-9 min-w-0 flex-1 items-center gap-2.5 rounded-lg border border-default bg-zinc-50/80 px-3 text-sm text-zinc-400 shadow-xs transition-colors hover:border-zinc-300 hover:bg-white sm:max-w-md">
+                {{ ui.icon('search', 'size-4 text-zinc-400 group-hover:text-zinc-500') }}
+                <span class="flex-1 truncate text-left">Поиск конструкций, клиентов, справочников…</span>
+                <kbd class="hidden sm:inline-flex" data-shortcut-label>Ctrl K</kbd>
+            </button>
+
+            <div class="ms-auto flex shrink-0 items-center gap-2">
+                <a href="{{ path('admin_product_new') }}" class="btn btn-primary btn-sm">
+                    {{ ui.icon('plus', 'size-4') }}<span class="hidden sm:inline">Конструкция</span>
+                </a>
+            </div>
+        </header>
+
+        <main class="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+
+    {# Flash messages as toasts (assets/admin/toasts.js dismisses success ones automatically) #}
+    <div class="pointer-events-none fixed bottom-4 right-4 z-[60] flex w-full max-w-sm flex-col gap-2" aria-live="polite">
+        {% for type, messages in app.flashes %}
+            {% for message in messages %}
+                {% set ok = type == 'success' %}
+                <div role="alert" data-toast="{{ ok ? 'auto' : 'sticky' }}"
+                     class="pointer-events-auto flex items-start gap-3 rounded-xl border bg-white p-4 text-sm shadow-lg ring-1 ring-black/5 transition-all duration-300 {{ ok ? 'border-default' : 'border-danger-subtle' }}">
+                    <span class="grid size-6 shrink-0 place-items-center rounded-full {{ ok ? 'bg-success-soft text-fg-success-strong' : 'bg-danger-soft text-fg-danger-strong' }}">
+                        {{ ui.icon(ok ? 'check' : 'warning', 'size-4') }}
+                    </span>
+                    <p class="flex-1 pt-0.5 text-heading">{{ message }}</p>
+                    <button type="button" data-toast-close class="-m-1 grid size-7 place-items-center rounded-md text-zinc-400 hover:bg-zinc-100 hover:text-heading" aria-label="Закрыть">
+                        {{ ui.icon('x', 'size-4') }}
+                    </button>
+                </div>
+            {% endfor %}
+        {% endfor %}
+    </div>
+
+    {{ include('admin/_command_palette.html.twig') }}
+    {{ include('admin/_confirm_modal.html.twig') }}
+{% endblock %}

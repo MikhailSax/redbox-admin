@@ -1,0 +1,57 @@
+{% extends 'admin/layout.html.twig' %}
+
+{% block title %}Пользователи — {{ parent() }}{% endblock %}
+
+{% block content %}
+    <div class="page-header">
+        <div>
+            <h1 class="page-title">Пользователи</h1>
+            <p class="text-sm text-body">Администраторы и супер менеджеры панели управления</p>
+        </div>
+        <a href="{{ path('admin_user_new') }}" class="btn btn-primary">+ Добавить пользователя</a>
+    </div>
+
+    <div class="table-card">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th scope="col" class="px-4 py-3 font-medium">Имя</th>
+                    <th scope="col" class="px-4 py-3 font-medium">Email</th>
+                    <th scope="col" class="px-4 py-3 font-medium">Роль</th>
+                    <th scope="col" class="px-4 py-3 font-medium">Создан</th>
+                    <th scope="col" class="px-4 py-3 font-medium"><span class="sr-only">Действия</span></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for user in users %}
+                    {% set is_me = user.id == app.user.id %}
+                    <tr>
+                        <th scope="row" class="px-4 py-3 font-medium text-heading">
+                            <a href="{{ path('admin_user_edit', {id: user.id}) }}" class="hover:underline">{{ user.name }}</a>
+                            {% if is_me %}<span class="ms-1 text-xs font-normal text-body">(это вы)</span>{% endif %}
+                        </th>
+                        <td class="px-4 py-3">{{ user.email }}</td>
+                        <td class="px-4 py-3">
+                            <span class="text-xs font-medium px-1.5 py-0.5 rounded-sm border {{ user.admin ? 'bg-brand-softer border-brand-subtle text-fg-brand-strong' : 'bg-neutral-secondary-medium border-default-medium text-heading' }}">
+                                {{ user.roleLabel }}
+                            </span>
+                        </td>
+                        <td class="px-4 py-3 whitespace-nowrap">{{ user.createdAt|date('d.m.Y') }}</td>
+                        <td class="px-4 py-3">
+                            <div class="flex justify-end gap-2">
+                                <a href="{{ path('admin_user_edit', {id: user.id}) }}" class="btn btn-secondary btn-sm">Изменить</a>
+                                {% if not is_me %}
+                                    {{ include('admin/_delete_form.html.twig', {
+                                        action: path('admin_user_delete', {id: user.id}),
+                                        token_id: 'delete-user-' ~ user.id,
+                                        confirm: 'Удалить пользователя ' ~ user.email ~ '?',
+                                    }) }}
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+{% endblock %}

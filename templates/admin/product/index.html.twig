@@ -1,0 +1,212 @@
+{% extends 'admin/layout.html.twig' %}
+{% import 'admin/_icons.html.twig' as ui %}
+
+{% block title %}Конструкции — {{ parent() }}{% endblock %}
+
+{% block content %}
+    <div class="page-header">
+        <div>
+            <h1 class="page-title">Конструкции</h1>
+            <p class="page-subtitle">Свои и партнёрские рекламные конструкции и их занятость</p>
+        </div>
+        <a href="{{ path('admin_product_new') }}" class="btn btn-primary">{{ ui.icon('plus', 'size-4') }} Добавить</a>
+    </div>
+
+    {# Filters apply as you type / choose (assets/admin/live-filter.js); without JS the form still submits normally #}
+    <form method="get" action="{{ path('admin_product_index') }}" data-live-filter="product-results"
+          class="mb-4 grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(12rem,1fr)_10rem_10rem_11rem_13rem]">
+        <label class="search-field">
+            <span class="sr-only">Поиск</span>
+            {{ ui.icon('search') }}
+            <input type="search" name="q" value="{{ query.q }}" class="input" autocomplete="off"
+                   placeholder="Название, район, категория…" data-live-filter-input>
+        </label>
+        <select name="category" class="input" aria-label="Категория">
+            <option value="">Все категории</option>
+            {% for category in categories %}
+                <option value="{{ category.id }}" {{ query.category == category.id ? 'selected' }}>{{ category.name }}</option>
+            {% endfor %}
+        </select>
+        <select name="type" class="input" aria-label="Тип">
+            <option value="">Все типы</option>
+            {% for type in types %}
+                <option value="{{ type.id }}" {{ query.type == type.id ? 'selected' }}>{{ type.name }}</option>
+            {% endfor %}
+        </select>
+        <select name="owner" class="input" aria-label="Владелец">
+            <option value="">Все владельцы</option>
+            <option value="own" {{ query.owner == "own" ? "selected" }}>Свои конструкции</option>
+            {% for partner in partners %}
+                <option value="{{ partner.id }}" {{ query.owner == partner.id ~ "" ? "selected" }}>{{ partner.name }}</option>
+            {% endfor %}
+        </select>
+        <select name="month" class="input" aria-label="Статус на месяц">
+            {% for m in months %}
+                <option value="{{ loop.first ? '' : m|date('Y-m') }}" {{ m|date('Y-m') == month|date('Y-m') ? 'selected' }}>{{ loop.first ? 'Сейчас · ' : '' }}{{ m|month_label }}</option>
+            {% endfor %}
+        </select>
+        <input type="hidden" name="status" value="{{ query.status }}">
+        <noscript><button type="submit" class="btn btn-primary">Найти</button></noscript>
+    </form>
+
+    <div id="product-results">
+        {% block results %}
+            {# Imported here too: renderBlock() (live filter) renders this block without the template top level #}
+            {% import 'admin/_icons.html.twig' as ui %}
+            {% set selected_month = month|date('Y-m') %}
+            {# Query params kept by pagination and the status chips #}
+            {% set filters = {
+                q: query.q,
+                category: query.category,
+                type: query.type,
+                month: selected_month != months|first|date('Y-m') ? selected_month : null,
+                owner: query.owner,
+                status: query.status,
+            }|filter(v => v is not null and v != '') %}
+            {% set tones = {
+                free: 'bg-success-soft border-success-subtle text-fg-success-strong',
+                booked: 'bg-warning-soft border-warning-subtle text-fg-warning',
+                occupied: 'bg-danger-soft border-danger-subtle text-fg-danger-strong',
+            } %}
+            {% set dots = {free: 'bg-success', booked: 'bg-warning', occupied: 'bg-danger'} %}
+
+            {# Status chips with counts #}
+            <div class="mb-4 flex flex-wrap items-center gap-2">
+                {% set chip = 'inline-flex h-8 items-center gap-2 rounded-full border px-3 text-sm font-medium transition-colors' %}
+                <a href="{{ path('admin_product_index', filters|filter((v, k) => k != 'status')) }}" data-live-link
+                   class="{{ chip }} {{ query.status ? 'border-default bg-white text-body hover:text-heading' : 'border-zinc-900 bg-zinc-900 text-white' }}">
+                    Все <span class="tabular-nums opacity-60">{{ statusCounts|reduce((sum, n) => sum + n, 0) }}</span>
+                </a>
+                {% for status in enum_cases('App\\Enum\\AvailabilityStatus') %}
+                    {% set active = query.status == status.value %}
+                    <a href="{{ path('admin_product_index', filters|merge({status: status.value})) }}" data-live-link
+                       class="{{ chip }} {{ active ? tones[status.value] ~ ' ring-2 ring-current/20' : 'border-default bg-white text-body hover:text-heading' }}">
+                        <span class="size-2 rounded-full {{ dots[status.value] }}"></span>
+                        {{ {free: 'Свободны', booked: 'Забронированы', occupied: 'Заняты'}[status.value] }}
+                        <span class="tabular-nums opacity-60">{{ statusCounts[status.value] }}</span>
+                    </a>
+                {% endfor %}
+                <span class="ms-auto text-sm text-body-subtle">
+                    {{ total }} {{ total % 10 == 1 and total % 100 != 11 ? 'конструкция' : (total % 10 in [2, 3, 4] and total % 100 not in [12, 13, 14] ? 'конструкции' : 'конструкций') }}
+                    · статус на {{ month|month_label|lower }}
+                </span>
+            </div>
+
+            <div class="table-card">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th scope="col" class="px-4 py-2.5">Конструкция</th>
+                            <th scope="col" class="px-4 py-2.5">Статус</th>
+                            <th scope="col" class="px-4 py-2.5">Стороны</th>
+                            <th scope="col" class="px-4 py-2.5">Район</th>
+                            <th scope="col" class="px-4 py-2.5 text-right">Цена / мес.</th>
+                            <th scope="col" class="px-4 py-2.5"><span class="sr-only">Действия</span></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for product in products %}
+                            {% set cover = product.coverPhoto %}
+                            {% set item = availability[product.id] %}
+                            <tr>
+                                <th scope="row" class="px-4 py-3 font-normal">
+                                    <a href="{{ path('admin_product_edit', {id: product.id}) }}" class="group flex items-center gap-3">
+                                        {% if cover %}
+                                            <img src="{{ asset(cover.webPath) }}" alt="" class="h-11 w-16 shrink-0 rounded-lg object-cover ring-1 ring-black/5">
+                                        {% else %}
+                                            <span class="grid h-11 w-16 shrink-0 place-items-center rounded-lg bg-zinc-100 text-zinc-400">{{ ui.icon('billboard') }}</span>
+                                        {% endif %}
+                                        <span class="min-w-0">
+                                            <span class="block truncate font-medium text-heading group-hover:underline">{{ product.name|highlight(query.q) }}</span>
+                                            <span class="block truncate text-xs text-body-subtle">
+                                                {%- if product.schemeNumber %}№{{ product.schemeNumber|highlight(query.q) }} · {% endif -%}
+                                                {{ product.category.name|highlight(query.q) }} · {{ product.productType.name }}
+                                                {%- if product.size %} · {{ product.sizeLabel }}{% endif -%}
+                                            </span>
+                                            <span class="mt-1 flex flex-wrap items-center gap-1">
+                                                <span class="inline-flex items-center rounded px-1.5 py-px text-[11px] font-medium {{ product.own ? "bg-zinc-100 text-heading ring-1 ring-zinc-200" : "bg-sky-50 text-sky-700 ring-1 ring-sky-200" }}">{{ product.own ? "Своя" : product.owner.name }}</span>
+                                                {% for promotion in promotions_for(product, true)|slice(0, 2) %}
+                                                    <span class="promo-badge !h-[18px]" title="Акция «{{ promotion.title }}»">{{ promotion.discountLabel }}</span>
+                                                {% endfor %}
+                                            </span>
+                                        </span>
+                                    </a>
+                                </th>
+                                <td class="px-4 py-3" data-status="{{ item.status.value ?? '' }}">
+                                    {{ include('admin/_availability_badge.html.twig', {status: item.status}) }}
+                                </td>
+                                <td class="px-4 py-3 whitespace-nowrap">
+                                    <div class="flex gap-1">
+                                        {% for side in item.sides %}
+                                            {% set side_status = side.status %}
+                                            <span class="inline-flex h-6 min-w-6 items-center justify-center rounded-md border px-1.5 text-xs font-medium {{ tones[side_status.value] }}"
+                                                  title="Сторона {{ side.sideName }}: {{ side_status.label|lower }}{{ side.airtime ? ', эфир ' ~ side.usedSeconds ~ '/120 сек' : '' }}">
+                                                {{ side.sideName }}{% if side.airtime %}<span class="ms-1 opacity-70">{{ side.usedSeconds }}″</span>{% endif %}
+                                            </span>
+                                        {% else %}
+                                            <span class="text-body-subtle">—</span>
+                                        {% endfor %}
+                                    </div>
+                                </td>
+                                <td class="px-4 py-3">{{ product.district ? product.district.name|highlight(query.q) : '—' }}</td>
+                                <td class="px-4 py-3 text-right font-medium text-heading tabular-nums whitespace-nowrap">
+                                    {% if product.price is not null %}
+                                        {% if product.sides|filter(s => s.price is not null) is not empty %}<span class="font-normal text-body-subtle" title="У сторон разные цены">от </span>{% endif -%}
+                                        {{ product.price|number_format(product.price ends with ".00" ? 0 : 2, ",", " ") }}&nbsp;₽
+                                        {% if product.margin is not null %}<div class="text-xs font-normal text-fg-success-strong" title="Маржа в месяц">+{{ product.margin|number_format(0, ",", " ") }}&nbsp;₽ · {{ product.marginPercent|round }}%</div>{% endif %}
+                                    {% else %}
+                                        <span class="font-normal text-body-subtle">—</span>
+                                    {% endif %}
+                                </td>
+                                <td class="px-4 py-3">
+                                    <div class="flex justify-end gap-1">
+                                        <a href="{{ path('admin_booking_product', {id: product.id}) }}" class="btn btn-ghost btn-sm">Брони</a>
+                                        <a href="{{ path('admin_product_edit', {id: product.id}) }}" class="btn btn-secondary btn-sm">Открыть</a>
+                                        <form method="post" action="{{ path('admin_product_delete', {id: product.id}) }}"
+                                              data-confirm="Конструкция «{{ product.name }}» будет удалена вместе со сторонами и фотографиями."
+                                              data-confirm-title="Удалить конструкцию?">
+                                            <input type="hidden" name="_token" value="{{ csrf_token('delete-product-' ~ product.id) }}">
+                                            <button type="submit" class="btn btn-ghost btn-sm text-fg-danger hover:bg-danger-soft hover:text-fg-danger-strong">Удалить</button>
+                                        </form>
+                                    </div>
+                                </td>
+                            </tr>
+                        {% else %}
+                            <tr>
+                                <td colspan="6" class="px-4 py-16 text-center">
+                                    <span class="mx-auto mb-3 grid size-12 place-items-center rounded-full bg-zinc-100 text-zinc-400">{{ ui.icon('search') }}</span>
+                                    {% if filters is not empty %}
+                                        <p class="font-medium text-heading">Ничего не найдено</p>
+                                        <p class="mt-1 text-sm text-body">Попробуйте изменить запрос или <a href="{{ path('admin_product_index') }}" class="font-medium text-heading underline">сбросить фильтры</a></p>
+                                    {% else %}
+                                        <p class="font-medium text-heading">Конструкций пока нет</p>
+                                        <p class="mt-1 text-sm text-body"><a href="{{ path('admin_product_new') }}" class="font-medium text-heading underline">Добавьте первую</a></p>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            {% if pages > 1 %}
+                <nav aria-label="Страницы" class="mt-6 flex items-center justify-between gap-4">
+                    <p class="text-sm text-body">Страница {{ query.page }} из {{ pages }}</p>
+                    <ul class="flex gap-1 text-sm">
+                        {% for p in 1..pages %}
+                            {% if p == 1 or p == pages or (p - query.page)|abs <= 2 %}
+                                <li>
+                                    <a href="{{ path('admin_product_index', filters|merge({page: p})) }}" data-live-link
+                                       {% if p == query.page %}aria-current="page"{% endif %}
+                                       class="grid h-8 min-w-8 place-items-center rounded-lg px-2 font-medium tabular-nums {{ p == query.page ? 'bg-zinc-900 text-white' : 'text-body hover:bg-zinc-100 hover:text-heading' }}">{{ p }}</a>
+                                </li>
+                            {% elseif (p - query.page)|abs == 3 %}
+                                <li class="grid h-8 min-w-8 place-items-center text-body-subtle">…</li>
+                            {% endif %}
+                        {% endfor %}
+                    </ul>
+                </nav>
+            {% endif %}
+        {% endblock %}
+    </div>
+{% endblock %}

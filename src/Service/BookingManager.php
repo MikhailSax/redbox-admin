@@ -1,0 +1,231 @@
+<?php
+
+namespace App\Service;
+
+use App\Dto\BookingRequest;
+use App\Entity\Booking;
+use App\Entity\Product;
+use App\Entity\ProductSide;
+use App\Entity\User;
+use App\Enum\BookingMode;
+use App\Enum\BookingStatus;
+use App\Repository\BookingRepository;
+use Doctrine\ORM\EntityManagerInterface;
+use Symfony\Component\Clock\ClockInterface;
+use Symfony\Component\Lock\LockFactory;
+
+/**
+ * Booking rules:
+ *  - whole-side types: a side is booked for whole months, one active booking at a time;
+ *  - airtime types (video): sold by days; clips of 5/10/15 s share a 120 s loop on every day;
+ *  - a new booking is a hold that blocks the slot for 24 hours; unpaid holds stop
+ *    blocking at the deadline and are marked Expired by the scheduled cleanup.
+ */
+class BookingManager
+{
+    public const HOLD_TTL = '+24 hours';
+
+    public function __construct(
+        private readonly EntityManagerInterface $entityManager,
+        private readonly BookingRepository $bookings,
+        private readonly LockFactory $lockFactory,
+        private readonly ClockInterface $clock,
+    ) {
+    }
+
+    /**
+     * Creates a 24h hold if the side is free for the whole period.
+     *
+     * @throws BookingException when the side or the airtime is already taken
+     */
+    public function hold(BookingRequest $request, ?User $createdBy = null): Booking
+    {
+        $side = $request->side;
+        [$start, $end] = $request->period();
+        $clip = $this->isAirtime($side) ? $request->clipDuration : null;
+
+        // Serialises bookings of the same side, so two managers can't take the last slot at once.
+        $lock = $this->lockFactory->createLock('booking-side-'.$side->getId(), 30);
+        $lock->acquire(true);
+
+        try {
+            $now = $this->clock->now();
+            if ($request->isByDays() && $start < $now->setTime(0, 0)) {
+                throw new BookingException('Первый день брони уже прошёл — выберите сегодня или позже.');
+            }
+            $this->assertAvailable($side, $start, $end, $clip, $now);
+
+            $booking = new Booking($side, $start, $end, $clip, trim($request->clientName), trim($request->clientPhone), $request->comment, $createdBy);
+            $booking->hold($now->modify(self::HOLD_TTL));
+
+            $this->entityManager->persist($booking);
+            $this->entityManager->flush();
+
+            return $booking;
+        } finally {
+            $lock->release();
+        }
+    }
+
+    /**
+     * @throws BookingException
+     */
+    public function markPaid(Booking $booking): void
+    {
+        $now = $this->clock->now();
+        if ($booking->isHoldOverdue($now)) {
+            throw new BookingException('Срок брони истёк — место могли занять. Создайте новую бронь.');
+        }
+        if (BookingStatus::Hold !== $booking->getStatus()) {
+            throw new BookingException('Оплатить можно только бронь, которая ждёт оплаты.');
+        }
+
+        $booking->markPaid($now);
+        $this->entityManager->flush();
+    }
+
+    /**
+     * @throws BookingException
+     */
+    public function cancel(Booking $booking): void
+    {
+        if (!$booking->isActiveAt($this->clock->now())) {
+            throw new BookingException('Эта бронь уже не действует.');
+        }
+
+        $booking->cancel();
+        $this->entityManager->flush();
+    }
+
+    /**
+     * Marks unpaid holds past their deadline as Expired. Run every few minutes by the scheduler.
+     *
+     * @return int number of expired holds
+     */
+    public function expireOverdueHolds(): int
+    {
+        $overdue = $this->bookings->findOverdueHolds($this->clock->now());
+        foreach ($overdue as $booking) {
+            $booking->expire();
+        }
+        $this->entityManager->flush();
+
+        return \count($overdue);
+    }
+
+    /**
+     * Occupancy of each side of the product per column (a month or a day of the grid).
+     * "used" is the seconds of the loop taken on the busiest day of the column.
+     *
+     * @param array<string, array{0: \DateTimeImmutable, 1: \DateTimeImmutable}> $columns key => [first day, last day]
+     *
+     * @return array<int, array<string, array{bookings: list<Booking>, used: int}>> [sideId][column key]
+     */
+    public function occupancy(Product $product, array $columns): array
+    {
+        $grid = [];
+        foreach ($product->getSides() as $side) {
+            foreach ($columns as $key => $period) {
+                $grid[$side->getId()][$key] = ['bookings' => [], 'used' => 0];
+            }
+        }
+        if ([] === $columns) {
+            return $grid;
+        }
+
+        $first = reset($columns)[0];
+        $last = end($columns)[1];
+        $active = $this->bookings->findActiveForProduct($product, $first, $last, $this->clock->now());
+        foreach ($product->getSides() as $side) {
+            $sideBookings = array_values(array_filter($active, static fn (Booking $b) => $b->getSide() === $side));
+            foreach ($columns as $key => [$from, $to]) {
+                $inColumn = array_values(array_filter($sideBookings, static fn (Booking $b) => $b->overlaps($from, $to)));
+                $grid[$side->getId()][$key] = ['bookings' => $inColumn, 'used' => self::peak($inColumn, $from, $to)['used']];
+            }
+        }
+
+        return $grid;
+    }
+
+    /**
+     * The busiest day of [$from, $to]: seconds of the loop taken by $bookings on it
+     * (a whole-side booking takes the full loop).
+     *
+     * @param list<Booking> $bookings
+     *
+     * @return array{day: \DateTimeImmutable, used: int}
+     */
+    public static function peak(array $bookings, \DateTimeImmutable $from, \DateTimeImmutable $to): array
+    {
+        // Sweep over the days where the load changes: +clip on the first day, -clip the day after the last one
+        $changes = [];
+        foreach ($bookings as $booking) {
+            $seconds = $booking->getClipDuration() ?? BookingMode::LOOP_SECONDS;
+            $start = max($booking->getStartDate(), $from)->format('Y-m-d');
+            $end = min($booking->getEndDate(), $to)->modify('+1 day')->format('Y-m-d');
+            if ($start < $end) {
+                $changes[$start] = ($changes[$start] ?? 0) + $seconds;
+                $changes[$end] = ($changes[$end] ?? 0) - $seconds;
+            }
+        }
+        ksort($changes);
+
+        $peak = ['day' => $from, 'used' => 0];
+        $used = 0;
+        foreach ($changes as $day => $change) {
+            $used += $change;
+            if ($used > $peak['used']) {
+                $peak = ['day' => new \DateTimeImmutable($day), 'used' => $used];
+            }
+        }
+
+        return $peak;
+    }
+
+    /**
+     * Why the side can't be booked for the days [$start, $end] right now, or null when it can.
+     * A read-only check (no lock): the real booking re-checks under the lock.
+     */
+    public function availabilityProblem(ProductSide $side, \DateTimeImmutable $start, \DateTimeImmutable $end, ?int $clip): ?string
+    {
+        try {
+            $this->assertAvailable($side, $start, $end, $this->isAirtime($side) ? $clip : null, $this->clock->now());
+
+            return null;
+        } catch (BookingException $e) {
+            return $e->getMessage();
+        }
+    }
+
+    public function isAirtime(ProductSide $side): bool
+    {
+        return BookingMode::Airtime === $side->getProduct()?->getProductType()?->getBookingMode();
+    }
+
+    /**
+     * @throws BookingException
+     */
+    private function assertAvailable(ProductSide $side, \DateTimeImmutable $start, \DateTimeImmutable $end, ?int $clip, \DateTimeImmutable $now): void
+    {
+        $existing = $this->bookings->findActiveOverlapping($side, $start, $end, $now);
+
+        if (null === $clip) {
+            if ([] !== $existing) {
+                $taken = $existing[0];
+                throw new BookingException(\sprintf('Сторона %s уже забронирована: %s (%s).', $side->getName(), MonthCalendar::periodLabel($taken->getStartDate(), $taken->getEndDate()), $taken->getClientName()));
+            }
+
+            return;
+        }
+
+        // Every day of the period must have room for the clip; checking the busiest one is enough.
+        // A whole-side booking on an airtime side (e.g. type switched later) takes the full loop.
+        $peak = self::peak($existing, $start, $end);
+        if ($peak['used'] + $clip > BookingMode::LOOP_SECONDS) {
+            throw new BookingException(\sprintf(
+                'На %s в петле стороны %s свободно %d сек из %d — ролик %d сек не помещается.',
+                MonthCalendar::periodLabel($peak['day'], $peak['day']), $side->getName(), max(0, BookingMode::LOOP_SECONDS - $peak['used']), BookingMode::LOOP_SECONDS, $clip,
+            ));
+        }
+    }
+}

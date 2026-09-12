@@ -1,0 +1,41 @@
+{% extends 'admin/layout.html.twig' %}
+
+{% set heading = type.id ? type.name : 'Новый тип' %}
+
+{% block title %}{{ heading }} — {{ parent() }}{% endblock %}
+
+{% block content %}
+    <nav class="text-sm mb-2">
+        <a href="{{ path('admin_product_type_index') }}" class="text-body hover:text-fg-brand">Типы</a>
+        <span class="text-body mx-1">/</span>
+        <span class="text-heading">{{ type.id ? '#' ~ type.id : 'Новый' }}</span>
+    </nav>
+    <div class="flex flex-wrap items-start justify-between gap-4 mb-6">
+        <h1 class="page-title">{{ heading }}</h1>
+        {% if type.id %}
+            {{ include('admin/_delete_form.html.twig', {
+                action: path('admin_product_type_delete', {id: type.id}),
+                token_id: 'delete-type-' ~ type.id,
+                confirm: 'Удалить тип?',
+                label: 'Удалить тип',
+                button_class: 'btn-danger',
+            }) }}
+        {% endif %}
+    </div>
+
+    {% form_theme form 'admin/form/theme.html.twig' %}
+    {{ form_start(form, {attr: {novalidate: 'novalidate'}}) }}
+        <div class="card max-w-3xl mb-6">
+            {{ form_errors(form) }}
+            {{ form_row(form.name) }}
+            {{ form_row(form.description) }}
+            {{ form_row(form.bookingMode) }}
+            {{ form_row(form.categories, {row_attr: {class: 'mb-0'}}) }}
+        </div>
+
+        <div class="flex flex-wrap items-center gap-3">
+            <button type="submit" class="btn btn-primary">{{ type.id ? 'Сохранить' : 'Создать' }}</button>
+            <a href="{{ path('admin_product_type_index') }}" class="btn btn-secondary">К списку</a>
+        </div>
+    {{ form_end(form) }}
+{% endblock %}

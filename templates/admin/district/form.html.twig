@@ -1,0 +1,39 @@
+{% extends 'admin/layout.html.twig' %}
+
+{% set heading = district.id ? district.name : 'Новый район' %}
+
+{% block title %}{{ heading }} — {{ parent() }}{% endblock %}
+
+{% block content %}
+    <nav class="text-sm mb-2">
+        <a href="{{ path('admin_district_index') }}" class="text-body hover:text-fg-brand">Районы</a>
+        <span class="text-body mx-1">/</span>
+        <span class="text-heading">{{ district.id ? '#' ~ district.id : 'Новый' }}</span>
+    </nav>
+    <div class="flex flex-wrap items-start justify-between gap-4 mb-6">
+        <h1 class="page-title">{{ heading }}</h1>
+        {% if district.id %}
+            {{ include('admin/_delete_form.html.twig', {
+                action: path('admin_district_delete', {id: district.id}),
+                token_id: 'delete-district-' ~ district.id,
+                confirm: 'Удалить район? У конструкций этого района он станет не указан.',
+                label: 'Удалить район',
+                button_class: 'btn-danger',
+            }) }}
+        {% endif %}
+    </div>
+
+    {% form_theme form 'admin/form/theme.html.twig' %}
+    {{ form_start(form, {attr: {novalidate: 'novalidate'}}) }}
+        <div class="card max-w-2xl mb-6">
+            {{ form_errors(form) }}
+            {{ form_row(form.name) }}
+            {{ form_row(form.shortDescription, {row_attr: {class: 'mb-0'}}) }}
+        </div>
+
+        <div class="flex flex-wrap items-center gap-3">
+            <button type="submit" class="btn btn-primary">{{ district.id ? 'Сохранить' : 'Создать' }}</button>
+            <a href="{{ path('admin_district_index') }}" class="btn btn-secondary">К списку</a>
+        </div>
+    {{ form_end(form) }}
+{% endblock %}

@@ -1,0 +1,81 @@
+{% extends 'admin/layout.html.twig' %}
+{% import 'admin/_icons.html.twig' as ui %}
+
+{% block title %}Медиапланы — {{ parent() }}{% endblock %}
+
+{% block content %}
+    <div class="page-header">
+        <div>
+            <h1 class="page-title">Медиапланы</h1>
+            <p class="page-subtitle">Подборки конструкций для клиентов: PDF-предложение и бронь в один клик</p>
+        </div>
+        <a href="{{ path('admin_media_plan_new') }}" class="btn btn-primary">{{ ui.icon('plus', 'size-4') }} Новый медиаплан</a>
+    </div>
+
+    <form method="get" action="{{ path('admin_media_plan_index') }}" data-live-filter="media-plan-results" class="mb-4 max-w-md">
+        <label class="search-field">
+            <span class="sr-only">Поиск</span>
+            {{ ui.icon('search') }}
+            <input type="search" name="q" value="{{ q }}" class="input" autocomplete="off" placeholder="Название, клиент, контакт…">
+        </label>
+    </form>
+
+    <div id="media-plan-results">
+        {% block results %}
+            {% import 'admin/_icons.html.twig' as ui %}
+            <div class="table-card">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th scope="col" class="px-4 py-2.5">Медиаплан</th>
+                            <th scope="col" class="px-4 py-2.5">Период</th>
+                            <th scope="col" class="px-4 py-2.5 text-right">Сторон</th>
+                            <th scope="col" class="px-4 py-2.5 text-right">Сумма</th>
+                            <th scope="col" class="px-4 py-2.5">Обновлён</th>
+                            <th scope="col" class="px-4 py-2.5"><span class="sr-only">Действия</span></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for plan in plans %}
+                            <tr>
+                                <th scope="row" class="px-4 py-3 font-normal">
+                                    <a href="{{ path('admin_media_plan_show', {id: plan.id}) }}" class="group block">
+                                        <span class="block font-medium text-heading group-hover:underline">{{ plan.title|highlight(q) }}</span>
+                                        <span class="block text-xs text-body-subtle">{{ plan.clientName|highlight(q) }}{% if plan.clientContact %} · {{ plan.clientContact|highlight(q) }}{% endif %}</span>
+                                    </a>
+                                </th>
+                                <td class="px-4 py-3 whitespace-nowrap">
+                                    {{ plan.startMonth|month_label }}{% if plan.months > 1 %} — {{ plan.endMonth|month_label }}{% endif %}
+                                    <div class="text-xs text-body-subtle">{{ plan.months }} мес.</div>
+                                </td>
+                                <td class="px-4 py-3 text-right tabular-nums">{{ plan.items|length }}</td>
+                                <td class="px-4 py-3 text-right font-medium text-heading tabular-nums whitespace-nowrap">
+                                    {{ plan.total|number_format(0, ',', ' ') }}&nbsp;₽
+                                    {% if plan.discountPercent > 0 %}<div class="text-xs font-normal text-body-subtle">скидка {{ plan.discountPercent }}%</div>{% endif %}
+                                </td>
+                                <td class="px-4 py-3 whitespace-nowrap">
+                                    {{ plan.updatedAt|date('d.m.Y H:i') }}
+                                    {% if plan.createdBy %}<div class="text-xs text-body-subtle">{{ plan.createdBy.name }}</div>{% endif %}
+                                </td>
+                                <td class="px-4 py-3">
+                                    <div class="flex justify-end gap-1">
+                                        <a href="{{ path('admin_media_plan_pdf', {id: plan.id}) }}" target="_blank" class="btn btn-ghost btn-sm">{{ ui.icon('download', 'size-4') }} PDF</a>
+                                        <a href="{{ path('admin_media_plan_show', {id: plan.id}) }}" class="btn btn-secondary btn-sm">Открыть</a>
+                                    </div>
+                                </td>
+                            </tr>
+                        {% else %}
+                            <tr>
+                                <td colspan="6" class="px-4 py-16 text-center">
+                                    <span class="mx-auto mb-3 grid size-12 place-items-center rounded-full bg-zinc-100 text-zinc-400">{{ ui.icon('document') }}</span>
+                                    <p class="font-medium text-heading">{{ q ? 'Ничего не найдено' : 'Медиапланов пока нет' }}</p>
+                                    <p class="mt-1 text-sm text-body">Соберите подборку конструкций для клиента и отправьте ему PDF. <a href="{{ path('admin_media_plan_new') }}" class="font-medium text-heading underline">Создать</a></p>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% endblock %}
+    </div>
+{% endblock %}

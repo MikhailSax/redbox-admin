@@ -1,0 +1,310 @@
+{% extends 'admin/layout.html.twig' %}
+{% import 'admin/_icons.html.twig' as ui %}
+
+{% block title %}{{ plan.title }} — {{ parent() }}{% endblock %}
+
+{% block content %}
+    {% set token = csrf_token('media-plan-' ~ plan.id) %}
+    {% set free_items = problems|filter(p => p is null)|length %}
+
+    <nav class="mb-2 text-sm">
+        <a href="{{ path('admin_media_plan_index') }}" class="text-body hover:text-heading">Медиапланы</a>
+        <span class="mx-1 text-body-subtle">/</span>
+        <span class="text-heading">#{{ plan.id }}</span>
+    </nav>
+    <div class="page-header">
+        <div class="min-w-0">
+            <h1 class="page-title">{{ plan.title }}</h1>
+            <p class="page-subtitle">
+                <b class="font-medium text-heading">{{ plan.clientName }}</b>{% if plan.clientContact %} · {{ plan.clientContact }}{% endif %}
+                · {{ plan.startMonth|month_label }}{% if plan.months > 1 %} — {{ plan.endMonth|month_label }}{% endif %} ({{ plan.months }} мес.)
+            </p>
+            {% if plan.promoCode or plan.firstOrder %}
+                <div class="mt-2 flex flex-wrap gap-1.5">
+                    {% if plan.promoCode %}<span class="promo-badge">{{ ui.icon('tag', 'size-3.5') }} Промокод {{ plan.promoCode }}</span>{% endif %}
+                    {% if plan.firstOrder %}<span class="promo-badge">Первый заказ</span>{% endif %}
+                </div>
+            {% endif %}
+        </div>
+        <div class="flex flex-wrap gap-2">
+            <a href="{{ path('admin_media_plan_edit', {id: plan.id}) }}" class="btn btn-ghost">Параметры</a>
+            <a href="{{ path('admin_media_plan_pdf', {id: plan.id}) }}" target="_blank" class="btn btn-secondary">{{ ui.icon('download', 'size-4') }} Скачать PDF</a>
+            {% if free_items > 0 %}
+                <form method="post" action="{{ path('admin_media_plan_book', {id: plan.id}) }}"
+                      data-confirm="Для {{ free_items }} свободных позиций будут созданы брони на клиента «{{ plan.clientName }}». Без оплаты они снимутся через 24 часа."
+                      data-confirm-title="Забронировать медиаплан?" data-confirm-button="Забронировать" data-confirm-variant="primary">
+                    <input type="hidden" name="_token" value="{{ token }}">
+                    <button type="submit" class="btn btn-primary">{{ ui.icon('calendar', 'size-4') }} Забронировать свободные ({{ free_items }})</button>
+                </form>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="mb-6 grid gap-6 xl:grid-cols-[minmax(0,1fr)_18rem]">
+        {# Items #}
+        <div class="table-card">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th scope="col" class="px-4 py-2.5">Конструкция</th>
+                        <th scope="col" class="px-4 py-2.5">На период</th>
+                        <th scope="col" class="px-4 py-2.5 text-right">Цена / мес.</th>
+                        <th scope="col" class="px-4 py-2.5 text-right">Сумма</th>
+                        <th scope="col" class="px-4 py-2.5"><span class="sr-only">Убрать</span></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in plan.items %}
+                        {% set product = item.product %}
+                        {% set photo = item.side.photos|first ?: product.coverPhoto %}
+                        <tr>
+                            <th scope="row" class="px-4 py-3 font-normal">
+                                <a href="{{ path('admin_product_edit', {id: product.id}) }}" class="group flex items-center gap-3">
+                                    {% if photo %}
+                                        <img src="{{ asset(photo.webPath) }}" alt="" class="hidden h-10 w-14 shrink-0 rounded-md object-cover ring-1 ring-black/5 2xl:block">
+                                    {% else %}
+                                        <span class="hidden h-10 w-14 shrink-0 place-items-center rounded-md bg-zinc-100 text-zinc-400 2xl:grid">{{ ui.icon('billboard', 'size-4') }}</span>
+                                    {% endif %}
+                                    <span class="min-w-0">
+                                        <span class="line-clamp-2 min-w-40 font-medium text-heading group-hover:underline">{{ product.name }}</span>
+                                        <span class="block text-xs text-body-subtle">
+                                            Сторона {{ item.side.name }}{% if item.clipDuration %} · ролик {{ item.clipDuration }} сек{% endif %}
+                                            {% if not product.own %} · {{ product.owner.name }}{% endif %}
+                                        </span>
+                                    </span>
+                                </a>
+                            </th>
+                            <td class="px-4 py-3">
+                                {% if item.booking and item.booking.activeAt(now) %}
+                                    {{ include('admin/booking/_status.html.twig', {booking: item.booking}) }}
+                                {% elseif problems[item.id] is null %}
+                                    {{ include('admin/_availability_badge.html.twig', {status: constant('App\\Enum\\AvailabilityStatus::Free'), label: 'Свободна'}) }}
+                                {% else %}
+                                    <span class="inline-flex items-center gap-1 text-xs font-medium text-fg-danger-strong" title="{{ problems[item.id] }}">
+                                        {{ ui.icon('warning', 'size-4') }} Занята
+                                    </span>
+                                    <div class="mt-0.5 max-w-44 text-[11px] leading-snug text-body-subtle">{{ problems[item.id] }}</div>
+                                {% endif %}
+                            </td>
+                            <td class="px-4 py-3 text-right">
+                                <form method="post" action="{{ path('admin_media_plan_item_price', {id: plan.id, item: item.id}) }}" class="ms-auto flex w-32 items-center gap-1">
+                                    <input type="hidden" name="_token" value="{{ token }}">
+                                    <input type="text" name="price" value="{{ item.monthlyPrice|number_format(0, '', '') }}" inputmode="decimal" aria-label="Цена за месяц"
+                                           class="input h-8 !px-2 text-right tabular-nums">
+                                    <button type="submit" class="grid size-8 shrink-0 place-items-center rounded-lg text-zinc-400 hover:bg-zinc-100 hover:text-heading" title="Сохранить цену">{{ ui.icon('check', 'size-4') }}</button>
+                                </form>
+                                {% if item.manualPrice %}
+                                    <form method="post" action="{{ path('admin_media_plan_item_auto_price', {id: plan.id, item: item.id}) }}" class="mt-1 flex items-center justify-end gap-1 text-[11px] text-body-subtle">
+                                        <input type="hidden" name="_token" value="{{ token }}">
+                                        цена вручную ·
+                                        <button type="submit" class="font-medium text-heading underline decoration-dotted underline-offset-2 hover:decoration-solid" title="Вернуть цену по прайсу {{ item.basePrice|number_format(0, ',', ' ') }} ₽ с учётом акций">по прайсу</button>
+                                    </form>
+                                {% elseif item.hasPromotionPrice %}
+                                    <div class="ms-auto mt-1 flex w-32 flex-col items-end text-[11px] leading-snug" title="Акция «{{ item.promotionTitle }}», по прайсу {{ item.basePrice|number_format(0, ',', ' ') }} ₽">
+                                        <s class="text-body-subtle tabular-nums">{{ item.basePrice|number_format(0, ',', ' ') }} ₽</s>
+                                        <span class="promo-text max-w-full"><span class="shrink-0">{{ ui.icon('tag', 'size-3') }}</span> <span class="truncate">{{ item.promotionTitle }}</span></span>
+                                    </div>
+                                {% endif %}
+                            </td>
+                            <td class="px-4 py-3 text-right font-medium text-heading tabular-nums whitespace-nowrap">{{ (item.monthlyPrice * plan.months)|number_format(0, ',', ' ') }}&nbsp;₽</td>
+                            <td class="px-2 py-3">
+                                <form method="post" action="{{ path('admin_media_plan_remove_item', {id: plan.id, item: item.id}) }}"
+                                      data-confirm="«{{ product.name }}», сторона {{ item.side.name }} будет убрана из медиаплана." data-confirm-title="Убрать позицию?" data-confirm-button="Убрать">
+                                    <input type="hidden" name="_token" value="{{ token }}">
+                                    <button type="submit" class="grid size-8 place-items-center rounded-lg text-zinc-400 hover:bg-danger-soft hover:text-fg-danger" title="Убрать">{{ ui.icon('x', 'size-4') }}</button>
+                                </form>
+                            </td>
+                        </tr>
+                    {% else %}
+                        <tr>
+                            <td colspan="5" class="px-4 py-14 text-center">
+                                <span class="mx-auto mb-3 grid size-12 place-items-center rounded-full bg-zinc-100 text-zinc-400">{{ ui.icon('billboard') }}</span>
+                                <p class="font-medium text-heading">В медиаплане пока пусто</p>
+                                <p class="mt-1 text-sm text-body">Найдите конструкции ниже или добавьте их с <a href="{{ path('admin_map', {plan: plan.id}) }}" class="font-medium text-heading underline">карты</a>.</p>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {# Totals #}
+        <aside class="card content-start !p-5">
+            <h2 class="mb-4 text-base font-semibold text-heading">Итого</h2>
+            <dl class="space-y-2.5 text-sm">
+                <div class="flex justify-between gap-3"><dt class="text-body">Сторон</dt><dd class="font-medium text-heading tabular-nums">{{ plan.items|length }}</dd></div>
+                {% if plan.promotionSavings > 0 %}
+                    <div class="flex justify-between gap-3"><dt class="text-body">По прайсу, {{ plan.months }} мес.</dt><dd class="shrink-0 whitespace-nowrap tabular-nums text-body-subtle line-through">{{ plan.listSubtotal|number_format(0, ',', ' ') }} ₽</dd></div>
+                    <div class="flex justify-between gap-3"><dt class="text-body">Акции</dt><dd class="shrink-0 whitespace-nowrap tabular-nums text-fg-danger-strong">−{{ plan.promotionSavings|number_format(0, ',', ' ') }} ₽</dd></div>
+                {% endif %}
+                <div class="flex justify-between gap-3"><dt class="text-body">Размещение, {{ plan.months }} мес.</dt><dd class="shrink-0 whitespace-nowrap tabular-nums text-heading">{{ plan.placementSubtotal|number_format(0, ',', ' ') }} ₽</dd></div>
+                {% if plan.discountPercent > 0 %}
+                    <div class="flex justify-between gap-3"><dt class="text-body">Скидка {{ plan.discountPercent }}% на размещение</dt><dd class="shrink-0 whitespace-nowrap tabular-nums text-fg-danger-strong">−{{ plan.discountAmount|number_format(0, ',', ' ') }} ₽</dd></div>
+                {% endif %}
+                <div class="flex justify-between gap-3"><dt class="text-body">Услуги</dt><dd class="shrink-0 whitespace-nowrap tabular-nums text-heading">{{ plan.servicesTotal|number_format(0, ',', ' ') }} ₽</dd></div>
+                <div class="flex items-baseline justify-between border-t border-default pt-3"><dt class="font-medium text-heading">К оплате</dt><dd class="text-2xl font-semibold tracking-tight text-heading tabular-nums">{{ plan.total|number_format(0, ',', ' ') }} ₽</dd></div>
+            </dl>
+
+            <div class="mt-5 rounded-lg bg-zinc-50 p-3 text-sm ring-1 ring-default">
+                <p class="mb-2 text-xs font-medium uppercase tracking-wide text-body-subtle">Для вас, не попадает в PDF</p>
+                <div class="flex justify-between"><span class="text-body">Оплата партнёрам</span><span class="tabular-nums text-heading">{{ plan.partnerCost|number_format(0, ',', ' ') }} ₽</span></div>
+                <div class="mt-1 flex justify-between"><span class="text-body">Себестоимость услуг</span><span class="tabular-nums text-heading">{{ plan.servicesCost|number_format(0, ',', ' ') }} ₽</span></div>
+                <div class="mt-1 flex justify-between"><span class="text-body">Маржа</span><span class="font-semibold tabular-nums {{ plan.margin >= 0 ? 'text-fg-success-strong' : 'text-fg-danger-strong' }}">{{ plan.margin|number_format(0, ',', ' ') }} ₽</span></div>
+            </div>
+
+            {% if plan.items is not empty %}
+                <form method="post" action="{{ path('admin_media_plan_recalculate', {id: plan.id}) }}" class="mt-4">
+                    <input type="hidden" name="_token" value="{{ token }}">
+                    <button type="submit" class="btn btn-secondary btn-sm w-full" title="Применить действующие сейчас акции. Цены, заданные вручную, не меняются.">{{ ui.icon('tag', 'size-4') }} Пересчитать по акциям</button>
+                </form>
+            {% endif %}
+
+            {% if plan.comment %}
+                <p class="mt-4 whitespace-pre-line text-sm text-body">{{ plan.comment }}</p>
+            {% endif %}
+
+            <div class="mt-5 border-t border-default pt-4">
+                {{ include('admin/_delete_form.html.twig', {
+                    action: path('admin_media_plan_delete', {id: plan.id}),
+                    token_id: 'delete-media-plan-' ~ plan.id,
+                    title: 'Удалить медиаплан?',
+                    confirm: 'Медиаплан «' ~ plan.title ~ '» будет удалён. Созданные из него брони останутся.',
+                    label: 'Удалить медиаплан',
+                    button_class: 'btn-ghost btn-sm w-full text-fg-danger hover:bg-danger-soft',
+                }) }}
+            </div>
+        </aside>
+    </div>
+
+    {# One-off services: layouts, printing, mounting #}
+    <div id="services" class="card mb-6 scroll-mt-20 !p-0">
+        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-default p-5">
+            <div>
+                <h2 class="text-base font-semibold text-heading">Услуги</h2>
+                <p class="text-sm text-body">Изготовление макетов, печать, монтаж. Разовые: на месяцы не умножаются, скидка на них не действует.</p>
+            </div>
+            <a href="{{ path('admin_service_index') }}" class="btn btn-ghost btn-sm">Справочник услуг</a>
+        </div>
+
+        {% if plan.serviceLines is not empty %}
+            <div class="overflow-x-auto">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th scope="col" class="px-5 py-2.5">Услуга</th>
+                            <th scope="col" class="px-3 py-2.5 text-right">Количество и цена</th>
+                            <th scope="col" class="px-3 py-2.5 text-right">Сумма</th>
+                            <th scope="col" class="px-2 py-2.5"><span class="sr-only">Убрать</span></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for line in plan.serviceLines %}
+                            <tr>
+                                <th scope="row" class="px-5 py-3 font-medium text-heading">
+                                    {{ line.name }}
+                                    {% if line.unitCost is not null %}<div class="text-xs font-normal text-body-subtle">себестоимость {{ line.unitCost|number_format(0, ',', ' ') }} ₽/{{ line.unit }}</div>{% endif %}
+                                </th>
+                                <td class="px-3 py-3">
+                                    <form method="post" action="{{ path('admin_media_plan_update_service', {id: plan.id, line: line.id}) }}" class="ms-auto flex w-max items-center gap-1.5">
+                                        <input type="hidden" name="_token" value="{{ token }}">
+                                        <input type="text" name="quantity" value="{{ line.quantity == line.quantity|round ? line.quantity|round : line.quantity }}" inputmode="decimal" aria-label="Количество"
+                                               class="input h-8 !w-20 !px-2 text-right tabular-nums">
+                                        <span class="text-xs text-body-subtle">{{ line.unit }} ×</span>
+                                        <input type="text" name="price" value="{{ line.unitPrice == line.unitPrice|round ? line.unitPrice|round : line.unitPrice }}" inputmode="decimal" aria-label="Цена за единицу"
+                                               class="input h-8 !w-28 !px-2 text-right tabular-nums">
+                                        <span class="text-xs text-body-subtle">₽</span>
+                                        <button type="submit" class="grid size-8 shrink-0 place-items-center rounded-lg text-zinc-400 hover:bg-zinc-100 hover:text-heading" title="Сохранить">{{ ui.icon('check', 'size-4') }}</button>
+                                    </form>
+                                </td>
+                                <td class="px-3 py-3 text-right font-medium text-heading tabular-nums whitespace-nowrap">{{ line.total|number_format(0, ',', ' ') }}&nbsp;₽</td>
+                                <td class="px-2 py-3">
+                                    <form method="post" action="{{ path('admin_media_plan_remove_service', {id: plan.id, line: line.id}) }}"
+                                          data-confirm="Услуга «{{ line.name }}» будет убрана из медиаплана." data-confirm-title="Убрать услугу?" data-confirm-button="Убрать">
+                                        <input type="hidden" name="_token" value="{{ token }}">
+                                        <button type="submit" class="grid size-8 place-items-center rounded-lg text-zinc-400 hover:bg-danger-soft hover:text-fg-danger" title="Убрать">{{ ui.icon('x', 'size-4') }}</button>
+                                    </form>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% endif %}
+
+        {# Add a service: pick from the catalog (prefills, assets/admin/service-line.js) or type a custom one #}
+        {% form_theme serviceForm 'admin/form/theme.html.twig' %}
+        {{ form_start(serviceForm, {attr: {class: 'grid items-end gap-3 border-t border-default bg-zinc-50/60 p-5 md:grid-cols-2 xl:grid-cols-[minmax(12rem,1.2fr)_minmax(10rem,1fr)_6rem_7rem_9rem_auto]', novalidate: 'novalidate'}}) }}
+            {{ form_row(serviceForm.service, {row_attr: {class: 'mb-0'}}) }}
+            {{ form_row(serviceForm.name, {row_attr: {class: 'mb-0'}}) }}
+            {{ form_row(serviceForm.quantity, {row_attr: {class: 'mb-0'}}) }}
+            {{ form_row(serviceForm.unit, {row_attr: {class: 'mb-0'}}) }}
+            {{ form_row(serviceForm.unitPrice, {row_attr: {class: 'mb-0'}}) }}
+            <button type="submit" class="btn btn-primary">{{ ui.icon('plus', 'size-4') }} Добавить</button>
+        {{ form_end(serviceForm) }}
+        {{ include('admin/_service_units.html.twig') }}
+    </div>
+
+    {# Picker #}
+    <div class="card !p-0">
+        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-default p-5">
+            <div>
+                <h2 class="text-base font-semibold text-heading">Добавить конструкции</h2>
+                <p class="text-sm text-body">Статус проверяется на весь период медиаплана. Или выбирайте на <a href="{{ path('admin_map', {plan: plan.id}) }}" class="font-medium text-heading underline">карте</a>.</p>
+            </div>
+            <form method="get" action="{{ path('admin_media_plan_show', {id: plan.id}) }}" data-live-filter="plan-picker" class="w-full max-w-sm">
+                <label class="search-field">
+                    <span class="sr-only">Поиск</span>
+                    {{ ui.icon('search') }}
+                    <input type="search" name="q" value="{{ q }}" class="input" autocomplete="off" placeholder="Название, район, категория…">
+                </label>
+            </form>
+        </div>
+
+        <div id="plan-picker">
+            {% block picker %}
+                {% import 'admin/_icons.html.twig' as ui %}
+                <ul class="divide-y divide-default">
+                    {% for product in candidates %}
+                        <li class="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-3">
+                            <div class="min-w-0 flex-1">
+                                <p class="flex min-w-0 items-center gap-2 text-sm font-medium text-heading">
+                                    <span class="truncate">{{ product.name|highlight(q) }}</span>
+                                    {% for promotion in promotions_for(product, true)|slice(0, 2) %}
+                                        <span class="promo-badge shrink-0" title="{{ promotion.title }}">{{ promotion.discountLabel }}</span>
+                                    {% endfor %}
+                                </p>
+                                <p class="truncate text-xs text-body-subtle">
+                                    {{ product.category.name }} · {{ product.productType.name }}{% if product.district %} · {{ product.district.name|highlight(q) }}{% endif %}
+                                    {% if product.price is not null %} · {{ product.price|number_format(0, ',', ' ') }} ₽/мес{% endif %}
+                                </p>
+                            </div>
+                            <div class="flex flex-wrap gap-1.5">
+                                {% for side in product.sides %}
+                                    {% set in_plan = plan.hasSide(side) %}
+                                    {% set problem = sideProblems[side.id] ?? null %}
+                                    <form method="post" action="{{ path('admin_media_plan_add_items', {id: plan.id}) }}" class="flex items-center gap-1">
+                                        <input type="hidden" name="_token" value="{{ csrf_token('media-plan-' ~ plan.id) }}">
+                                        <input type="hidden" name="sides[]" value="{{ side.id }}">
+                                        {% if product.productType.bookingMode.value == 'airtime' and not in_plan %}
+                                            <select name="clip" class="input h-8 !w-auto !py-0 !pe-7 text-xs" aria-label="Длина ролика">
+                                                {% for clip in [5, 10, 15] %}<option value="{{ clip }}" {{ clip == 15 ? 'selected' }}>{{ clip }}″</option>{% endfor %}
+                                            </select>
+                                        {% endif %}
+                                        <button type="submit" {% if in_plan %}disabled{% endif %}
+                                                title="{{ in_plan ? 'Уже в медиаплане' : (problem ?? 'Свободна на весь период') }}"
+                                                class="btn btn-sm {{ in_plan ? 'btn-secondary' : (problem ? 'btn-danger-outline' : 'btn-secondary') }}">
+                                            <span class="map-dot" data-status="{{ in_plan ? 'none' : (problem ? 'occupied' : 'free') }}"></span>
+                                            {{ in_plan ? '✓ ' : '+ ' }}Сторона {{ side.name }}
+                                        </button>
+                                    </form>
+                                {% endfor %}
+                            </div>
+                        </li>
+                    {% else %}
+                        <li class="px-5 py-10 text-center text-sm text-body">Ничего не найдено{{ q ? ' по запросу «' ~ q ~ '»' : '' }}</li>
+                    {% endfor %}
+                </ul>
+            {% endblock %}
+        </div>
+    </div>
+{% endblock %}

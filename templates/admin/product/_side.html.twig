@@ -1,0 +1,66 @@
+{#
+    One entry of the "sides" collection. Also rendered as the collection prototype,
+    in which case side_form.vars.data is null and there are no photos yet.
+#}
+{% set side = side_form.vars.data %}
+{% set photos = side and side.id ? side.photos : [] %}
+<div class="card" data-collection-item>
+    <div class="flex items-start justify-between gap-4 mb-4">
+        <h3 class="text-lg font-semibold text-heading">
+            Сторона {{ side and side.name ? side.name : '' }}
+            {% if photos is not empty %}<span class="text-sm font-normal text-body">· фото: {{ photos|length }}</span>{% endif %}
+        </h3>
+        <button type="button" class="btn btn-danger-outline btn-sm" data-collection-remove
+                data-confirm="{{ photos is not empty ? 'Сторона и её фотографии (' ~ photos|length ~ ') будут удалены после сохранения формы.' : '' }}" data-confirm-title="Удалить сторону?">
+            Удалить сторону
+        </button>
+    </div>
+
+    {{ form_errors(side_form) }}
+
+    <div class="grid gap-x-6 md:grid-cols-[10rem_12rem_1fr]">
+        {{ form_row(side_form.name) }}
+        {{ form_row(side_form.price) }}
+        {{ form_row(side_form.description) }}
+    </div>
+
+    {% if photos is not empty %}
+        <div class="relative overflow-x-auto mb-5 rounded-base border border-default">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th scope="col" class="px-4 py-2 font-medium w-12">№</th>
+                        <th scope="col" class="px-4 py-2 font-medium">Превью</th>
+                        <th scope="col" class="px-4 py-2 font-medium">Файл</th>
+                        <th scope="col" class="px-4 py-2 font-medium">Загружено</th>
+                        <th scope="col" class="px-4 py-2 font-medium"><span class="sr-only">Действия</span></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for photo in photos %}
+                        {% set url = asset(photo.webPath) %}
+                        <tr>
+                            <td class="px-4 py-2">{{ loop.index }}</td>
+                            <td class="px-4 py-2">
+                                <a href="{{ url }}" target="_blank" rel="noopener">
+                                    <img src="{{ url }}" alt="{{ photo.originalName }}" class="w-28 h-20 object-cover rounded-base border border-default">
+                                </a>
+                            </td>
+                            <td class="px-4 py-2 text-heading break-all">{{ photo.originalName ?? photo.filename }}</td>
+                            <td class="px-4 py-2 whitespace-nowrap">{{ photo.createdAt|date('d.m.Y H:i') }}</td>
+                            <td class="px-4 py-2 text-right">
+                                {# Submits the standalone form rendered after the main form (forms can't be nested) #}
+                                <button type="submit" form="delete-photo-{{ photo.id }}" class="btn btn-danger-outline btn-sm"
+                                        data-confirm="Фото будет удалено сразу. Несохранённые изменения на странице потеряются." data-confirm-title="Удалить фото?">
+                                    Удалить
+                                </button>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% endif %}
+
+    {{ form_row(side_form.newPhotos, {row_attr: {class: 'mb-0'}, attr: {class: 'input-file', accept: 'image/jpeg,image/png,image/webp', 'data-file-preview': ''}}) }}
+</div>

@@ -1,0 +1,14 @@
+{# Free / booked / occupied badge. Vars: status (AvailabilityStatus|null), label? (override text), size? ('sm' | 'lg') #}
+{% set classes = {
+    free: 'bg-success-soft border-success-subtle text-fg-success-strong',
+    booked: 'bg-warning-soft border-warning-subtle text-fg-warning',
+    occupied: 'bg-danger-soft border-danger-subtle text-fg-danger-strong',
+} %}
+{% set dots = {free: 'bg-success', booked: 'bg-warning', occupied: 'bg-danger'} %}
+{% if status %}
+    <span class="inline-flex items-center gap-1.5 whitespace-nowrap font-medium rounded-sm border {{ classes[status.value] }} {{ (size|default('sm')) == 'lg' ? 'text-sm px-2.5 py-1' : 'text-xs px-1.5 py-0.5' }}">
+        <span class="w-1.5 h-1.5 rounded-full {{ dots[status.value] }}"></span>{{ label|default(status.label) }}
+    </span>
+{% else %}
+    <span class="text-xs text-body">—</span>
+{% endif %}

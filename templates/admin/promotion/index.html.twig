@@ -1,0 +1,140 @@
+{% extends 'admin/layout.html.twig' %}
+{% import 'admin/_icons.html.twig' as ui %}
+
+{% block title %}Акции — {{ parent() }}{% endblock %}
+
+{% block content %}
+    <div class="page-header">
+        <div>
+            <h1 class="page-title">Акции</h1>
+            <p class="page-subtitle">Скидки на конструкции. В медиаплане применяется лучшая подходящая акция — они не суммируются</p>
+        </div>
+        <a href="{{ path('admin_promotion_new') }}" class="btn btn-primary">{{ ui.icon('plus', 'size-4') }} Новая акция</a>
+    </div>
+
+    <form method="get" action="{{ path('admin_promotion_index') }}" data-live-filter="promotion-results" class="mb-4 max-w-md">
+        <label class="search-field">
+            <span class="sr-only">Поиск</span>
+            {{ ui.icon('search') }}
+            <input type="search" name="q" value="{{ q }}" class="input" autocomplete="off" placeholder="Название или промокод…">
+        </label>
+        <input type="hidden" name="state" value="{{ state }}">
+    </form>
+
+    <div id="promotion-results">
+        {% block results %}
+            {# Imported here too: renderBlock() (live filter) renders this block without the template top level #}
+            {% import 'admin/_icons.html.twig' as ui %}
+            {% set base = q ? {q: q} : {} %}
+            {% set state_styles = {
+                active: 'bg-success-soft text-fg-success-strong ring-success-subtle',
+                scheduled: 'bg-warning-soft text-fg-warning ring-warning-subtle',
+                finished: 'bg-zinc-100 text-body ring-zinc-200',
+                disabled: 'bg-zinc-100 text-body-subtle ring-zinc-200',
+            } %}
+            {% set state_labels = {active: 'Действует', scheduled: 'Запланирована', finished: 'Завершена', disabled: 'Выключена'} %}
+
+            <div class="mb-4 flex flex-wrap gap-2">
+                {% set chip = 'inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-sm font-medium transition-colors' %}
+                <a href="{{ path('admin_promotion_index', base) }}" data-live-link
+                   class="{{ chip }} {{ state is null ? 'border-zinc-900 bg-zinc-900 text-white' : 'border-default bg-white text-body hover:text-heading' }}">Все</a>
+                {% for key, label in states %}
+                    <a href="{{ path('admin_promotion_index', base|merge({state: key})) }}" data-live-link
+                       class="{{ chip }} {{ key == state ? 'border-zinc-900 bg-zinc-900 text-white' : 'border-default bg-white text-body hover:text-heading' }}">
+                        {{ label }} <span class="tabular-nums opacity-60">{{ stateCounts[key] }}</span>
+                    </a>
+                {% endfor %}
+            </div>
+
+            <div class="table-card">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th scope="col" class="px-4 py-2.5">Акция</th>
+                            <th scope="col" class="px-4 py-2.5">На что</th>
+                            <th scope="col" class="px-4 py-2.5">Условия</th>
+                            <th scope="col" class="px-4 py-2.5">Период</th>
+                            <th scope="col" class="px-4 py-2.5 text-right whitespace-nowrap" title="Позиций медиапланов с этой акцией">В планах</th>
+                            <th scope="col" class="px-4 py-2.5"><span class="sr-only">Действия</span></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for promotion in promotions %}
+                            {% set promo_state = promotion.stateOn(now) %}
+                            <tr class="{{ promo_state in ['finished', 'disabled'] ? 'opacity-70' }}">
+                                <th scope="row" class="px-4 py-3 font-normal">
+                                    <a href="{{ path('admin_promotion_edit', {id: promotion.id}) }}" class="group flex items-center gap-3">
+                                        <span class="grid h-9 min-w-14 shrink-0 place-items-center rounded-lg bg-violet-50 px-2 text-xs font-bold text-violet-700 ring-1 ring-violet-600/20 ring-inset tabular-nums">{{ promotion.discountLabel }}</span>
+                                        <span class="min-w-0">
+                                            <span class="line-clamp-2 min-w-44 font-medium text-heading group-hover:underline">{{ promotion.title|highlight(q) }}</span>
+                                            <span class="mt-0.5 inline-flex h-5 items-center rounded-md px-1.5 text-[11px] font-medium ring-1 ring-inset {{ state_styles[promo_state] }}">{{ state_labels[promo_state] }}</span>
+                                        </span>
+                                    </a>
+                                </th>
+                                <td class="min-w-40 max-w-64 px-4 py-3">
+                                    {% if promotion.appliesToAll %}
+                                        <span class="font-medium text-heading">Все конструкции</span>
+                                    {% else %}
+                                        {% set targets = promotion.categories|map(c => c.name)|merge(promotion.products|map(p => p.name)) %}
+                                        <span class="line-clamp-2 text-heading" title="{{ targets|join(', ') }}">{{ targets|slice(0, 3)|join(', ') }}{% if targets|length > 3 %} и ещё {{ targets|length - 3 }}{% endif %}</span>
+                                        <span class="text-xs text-body-subtle">
+                                            {%- if promotion.categories is not empty %}категорий: {{ promotion.categories|length }}{% endif -%}
+                                            {%- if promotion.categories is not empty and promotion.products is not empty %} · {% endif -%}
+                                            {%- if promotion.products is not empty %}конструкций: {{ promotion.products|length }}{% endif -%}
+                                        </span>
+                                    {% endif %}
+                                </td>
+                                <td class="px-4 py-3">
+                                    <div class="flex flex-wrap gap-1">
+                                        {% if promotion.code %}<span class="promo-badge font-mono">{{ ui.icon('tag', 'size-3') }} {{ promotion.code|highlight(q) }}</span>{% endif %}
+                                        {% if promotion.firstOrderOnly %}<span class="promo-badge">Первый заказ</span>{% endif %}
+                                        {% if promotion.minMonths %}<span class="promo-badge">от {{ promotion.minMonths }} мес.</span>{% endif %}
+                                        {% if promotion.public and not promotion.minMonths %}<span class="text-xs text-body-subtle">Для всех</span>{% endif %}
+                                    </div>
+                                </td>
+                                <td class="px-4 py-3 text-heading tabular-nums">
+                                    <span class="whitespace-nowrap">{{ promotion.startsAt|date('d.m.Y') }} —</span>
+                                    <span class="whitespace-nowrap {{ promotion.endsAt ? '' : 'text-body-subtle' }}">{{ promotion.endsAt ? promotion.endsAt|date('d.m.Y') : 'бессрочно' }}</span>
+                                </td>
+                                <td class="px-4 py-3 text-right tabular-nums">{{ usage[promotion.id] ?? 0 }}</td>
+                                <td class="px-4 py-3">
+                                    <div class="flex justify-end gap-1">
+                                        <form method="post" action="{{ path('admin_promotion_toggle', {id: promotion.id}) }}">
+                                            <input type="hidden" name="_token" value="{{ csrf_token('promotion-' ~ promotion.id) }}">
+                                            <button type="submit" role="switch" aria-checked="{{ promotion.active ? 'true' : 'false' }}" title="{{ promotion.active ? 'Выключить' : 'Включить' }}"
+                                                    class="me-1 mt-1.5 inline-flex h-5 w-9 shrink-0 items-center rounded-full p-0.5 transition-colors {{ promotion.active ? 'bg-zinc-900' : 'bg-zinc-300 hover:bg-zinc-400' }}">
+                                                <span class="sr-only">{{ promotion.active ? 'Выключить' : 'Включить' }}</span>
+                                                <span class="size-4 rounded-full bg-white shadow-sm transition-transform {{ promotion.active ? 'translate-x-4' : '' }}"></span>
+                                            </button>
+                                        </form>
+                                        <a href="{{ path('admin_promotion_edit', {id: promotion.id}) }}" class="btn btn-secondary btn-sm">Изменить</a>
+                                        {{ include('admin/_delete_form.html.twig', {
+                                            action: path('admin_promotion_delete', {id: promotion.id}),
+                                            token_id: 'delete-promotion-' ~ promotion.id,
+                                            title: 'Удалить акцию?',
+                                            confirm: 'Акция «' ~ promotion.title ~ '» будет удалена. Цены в уже составленных медиапланах не изменятся.',
+                                            button_class: 'btn-ghost btn-sm text-fg-danger hover:bg-danger-soft',
+                                        }) }}
+                                    </div>
+                                </td>
+                            </tr>
+                        {% else %}
+                            <tr>
+                                <td colspan="6" class="px-4 py-16 text-center">
+                                    <span class="mx-auto mb-3 grid size-12 place-items-center rounded-full bg-violet-50 text-violet-500">{{ ui.icon('percent') }}</span>
+                                    {% if q or state %}
+                                        <p class="font-medium text-heading">Ничего не найдено</p>
+                                        <p class="mt-1 text-sm text-body">Попробуйте изменить запрос или фильтр.</p>
+                                    {% else %}
+                                        <p class="font-medium text-heading">Акций пока нет</p>
+                                        <p class="mt-1 text-sm text-body">Скидка на категорию, конкретные конструкции, по промокоду или на первый заказ. <a href="{{ path('admin_promotion_new') }}" class="font-medium text-heading underline">Создать акцию</a></p>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% endblock %}
+    </div>
+{% endblock %}

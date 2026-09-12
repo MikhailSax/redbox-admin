@@ -1,0 +1,8 @@
+{% extends 'admin/layout.html.twig' %}
+
+{% block title %}{{ product.name }} — {{ parent() }}{% endblock %}
+
+{% block content %}
+    {{ include('admin/product/_card_header.html.twig', {active_tab: initialTab, in_form: true}) }}
+    {{ include('admin/product/_form.html.twig', {button_label: 'Сохранить'}) }}
+{% endblock %}

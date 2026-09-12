@@ -1,0 +1,39 @@
+{# Uploaded photos of all sides: large preview plus thumbnails (switched by assets/admin/gallery.js) #}
+{% set items = [] %}
+{% for side in product.sides %}
+    {% for photo in side.photos|filter(p => p.id) %}
+        {% set items = items|merge([{url: asset(photo.webPath), caption: 'Сторона ' ~ side.name, name: photo.originalName ?? photo.filename}]) %}
+    {% endfor %}
+{% endfor %}
+
+<div class="card" data-gallery>
+    <h2 class="text-lg font-semibold text-heading mb-4">
+        Фото
+        {% if items is not empty %}<span class="text-sm font-normal text-body">· {{ items|length }}</span>{% endif %}
+    </h2>
+
+    {% if items is empty %}
+        <div class="w-full aspect-video rounded-base bg-neutral-tertiary-medium flex flex-col items-center justify-center gap-1 text-sm text-body text-center px-4">
+            <span>Фото ещё не загружены</span>
+            <span class="text-xs">Добавьте их в блоке «Стороны и фотографии» ниже</span>
+        </div>
+    {% else %}
+        {% set first = items|first %}
+        <a href="{{ first.url }}" target="_blank" rel="noopener" class="relative block mb-3" data-gallery-link>
+            <img src="{{ first.url }}" alt="{{ first.name }}" class="w-full aspect-video object-cover rounded-base border border-default" data-gallery-main>
+            <span class="absolute bottom-2 left-2 bg-dark/75 text-white text-xs font-medium px-2 py-1 rounded-sm" data-gallery-caption>{{ first.caption }}</span>
+        </a>
+
+        {% if items|length > 1 %}
+            <div class="grid grid-cols-4 gap-2">
+                {% for item in items %}
+                    <button type="button" title="{{ item.caption }} — {{ item.name }}"
+                            class="rounded-base overflow-hidden border-2 cursor-pointer {{ loop.first ? 'border-brand' : 'border-transparent hover:border-default-strong' }}"
+                            data-gallery-thumb data-src="{{ item.url }}" data-caption="{{ item.caption }}" data-name="{{ item.name }}">
+                        <img src="{{ item.url }}" alt="" class="w-full aspect-square object-cover">
+                    </button>
+                {% endfor %}
+            </div>
+        {% endif %}
+    {% endif %}
+</div>

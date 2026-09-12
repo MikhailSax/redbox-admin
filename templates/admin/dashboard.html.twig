@@ -1,0 +1,117 @@
+{% extends 'admin/layout.html.twig' %}
+{% import 'admin/_icons.html.twig' as ui %}
+
+{% block title %}Обзор — {{ parent() }}{% endblock %}
+
+{% block content %}
+    <div class="page-header">
+        <div>
+            <p class="text-sm font-medium text-body-subtle">{{ now|date('d.m.Y') }}</p>
+            {% set hour = now|date('G') %}
+            <h1 class="page-title">{{ hour < 5 ? 'Доброй ночи' : (hour < 12 ? 'Доброе утро' : (hour < 18 ? 'Добрый день' : 'Добрый вечер')) }}{{ app.user ? ', ' ~ app.user.name|split(' ')|first : '' }}</h1>
+            <p class="page-subtitle">Что происходит с конструкциями в {{ month|month_label|lower }}</p>
+        </div>
+        <div class="flex flex-wrap gap-2">
+            <a href="{{ path('admin_booking_index', {status: 'hold'}) }}" class="btn btn-secondary">Брони на оплату</a>
+            <a href="{{ path('admin_product_index', {status: 'free'}) }}" class="btn btn-primary">Свободные конструкции {{ ui.icon('arrow_right', 'size-4') }}</a>
+        </div>
+    </div>
+
+    {# KPI cards #}
+    {% set total = structures.total %}
+    {% set kpis = [
+
+        {label: 'Свободны', value: structures.free, hint: 'можно продавать', href: path('admin_product_index', {status: 'free'}), dot: 'bg-success', share: structures.free},
+        {label: 'Забронированы', value: structures.booked, hint: 'ждут оплаты', href: path('admin_product_index', {status: 'booked'}), dot: 'bg-warning', share: structures.booked},
+        {label: 'Заняты', value: structures.occupied, hint: 'оплачены', href: path('admin_product_index', {status: 'occupied'}), dot: 'bg-danger', share: structures.occupied},
+    ] %}
+    <div class="mb-6 grid gap-4 sm:grid-cols-3">
+        {% for kpi in kpis %}
+            <a href="{{ kpi.href }}" class="card group !p-5 transition hover:-translate-y-0.5 hover:shadow-md">
+                <div class="flex items-center gap-2 text-sm font-medium text-body">
+                    <span class="size-2 rounded-full {{ kpi.dot }}"></span>{{ kpi.label }}
+                    {{ ui.icon('arrow_right', 'ms-auto size-4 text-zinc-300 transition group-hover:translate-x-0.5 group-hover:text-zinc-500') }}
+                </div>
+                <div class="mt-3 flex items-baseline gap-2">
+                    <span class="text-3xl font-semibold tracking-tight text-heading tabular-nums">{{ kpi.value }}</span>
+                    {% if kpi.share is not null and total > 0 %}
+                        <span class="text-sm font-medium text-body-subtle">{{ (kpi.share / total * 100)|round }}%</span>
+                    {% endif %}
+                </div>
+                <p class="mt-1 text-xs text-body-subtle">{{ kpi.hint }}</p>
+            </a>
+        {% endfor %}
+    </div>
+
+    <div class="grid gap-6 xl:grid-cols-5">
+        {# Occupancy forecast: share of sides sold per month #}
+        <div class="card min-w-0 xl:col-span-3">
+            <div class="mb-6 flex flex-wrap items-start justify-between gap-3">
+                <div>
+                    <h2 class="text-base font-semibold text-heading">Загрузка сторон</h2>
+                    <p class="text-sm text-body">Сколько уже продано на ближайшие {{ forecast|length }} месяцев</p>
+                </div>
+                <div class="flex flex-wrap gap-3 text-xs text-body">
+                    <span class="flex items-center gap-1.5"><span class="size-2 rounded-full bg-danger"></span>Занято</span>
+                    <span class="flex items-center gap-1.5"><span class="size-2 rounded-full bg-warning"></span>Бронь</span>
+                    <span class="flex items-center gap-1.5"><span class="size-2 rounded-full bg-zinc-200"></span>Свободно</span>
+                </div>
+            </div>
+
+            <div class="flex h-56 items-end gap-2 sm:gap-5">
+                {% for row in forecast %}
+                    {% set sold = row.sides > 0 ? ((row.occupied + row.booked) / row.sides * 100)|round : 0 %}
+                    {% set occupied_pct = row.sides > 0 ? row.occupied / row.sides * 100 : 0 %}
+                    {% set booked_pct = row.sides > 0 ? row.booked / row.sides * 100 : 0 %}
+                    <a href="{{ path('admin_product_index', {month: row.month|date('Y-m')}) }}" class="group flex h-full min-w-0 flex-1 flex-col items-center gap-2"
+                       title="{{ row.month|month_label }}: занято {{ row.occupied }}, бронь {{ row.booked }}, свободно {{ row.free }} из {{ row.sides }} сторон">
+                        <span class="text-xs font-semibold text-heading tabular-nums">{{ sold }}%</span>
+                        <div class="relative flex w-full max-w-14 flex-1 flex-col-reverse overflow-hidden rounded-lg bg-zinc-100 transition group-hover:ring-2 group-hover:ring-zinc-300">
+                            <div class="w-full bg-danger" style="height: {{ occupied_pct }}%"></div>
+                            <div class="w-full bg-warning" style="height: {{ booked_pct }}%"></div>
+                        </div>
+                        <span class="truncate text-[11px] sm:text-xs {{ loop.first ? 'font-semibold text-heading' : 'text-body' }}">{{ row.month|month_label(true) }}</span>
+                    </a>
+                {% endfor %}
+            </div>
+        </div>
+
+        {# Holds waiting for payment #}
+        <div class="card min-w-0 !p-0 xl:col-span-2">
+            <div class="flex items-center justify-between gap-3 px-5 pb-3 pt-5">
+                <div>
+                    <h2 class="text-base font-semibold text-heading">Ждут оплаты</h2>
+                    <p class="text-sm text-body">Снимутся автоматически через 24 часа</p>
+                </div>
+                {% if holdCount > 0 %}
+                    <span class="rounded-md bg-warning-soft px-2 py-1 text-xs font-semibold text-fg-warning">{{ holdCount }}</span>
+                {% endif %}
+            </div>
+
+            <ul class="divide-y divide-default">
+                {% for booking in holds %}
+                    {% set minutes_left = ((booking.expiresAt.timestamp - now.timestamp) / 60)|round(0, 'floor') %}
+                    <li class="flex items-center gap-3 px-5 py-3">
+                        <span class="grid size-9 shrink-0 place-items-center rounded-full text-xs font-semibold {{ minutes_left < 180 ? 'bg-danger-soft text-fg-danger-strong' : 'bg-warning-soft text-fg-warning' }}"
+                              title="Осталось до снятия брони">
+                            {{ minutes_left >= 60 ? (minutes_left / 60)|round(0, 'floor') ~ 'ч' : minutes_left ~ 'м' }}
+                        </span>
+                        <div class="min-w-0 flex-1">
+                            <a href="{{ path('admin_booking_product', {id: booking.product.id}) }}" class="block truncate text-sm font-medium text-heading hover:underline">{{ booking.clientName }}</a>
+                            <p class="truncate text-xs text-body">{{ booking.product.name }} · {{ booking.side.name }} · {{ period_label(booking.startDate, booking.endDate) }}</p>
+                        </div>
+                        {{ include('admin/booking/_actions.html.twig', {return: 'dashboard'}) }}
+                    </li>
+                {% else %}
+                    <li class="px-5 pb-8 pt-4 text-center">
+                        <span class="mx-auto mb-2 grid size-10 place-items-center rounded-full bg-success-soft text-fg-success-strong">{{ ui.icon('check') }}</span>
+                        <p class="text-sm text-body">Неоплаченных броней нет</p>
+                    </li>
+                {% endfor %}
+            </ul>
+            {% if holdCount > holds|length %}
+                <a href="{{ path('admin_booking_index', {status: 'hold'}) }}" class="block border-t border-default px-5 py-3 text-center text-sm font-medium text-heading hover:bg-zinc-50">Все {{ holdCount }} →</a>
+            {% endif %}
+        </div>
+    </div>
+{% endblock %}

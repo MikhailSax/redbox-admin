@@ -1,0 +1,6 @@
+{# Booked period of `booking`: months for whole sides ("Сентябрь 2026 — Ноябрь 2026"), days for airtime ("11–20 сентября 2026") #}
+{{ period_label(booking.startDate, booking.endDate) }}
+<div class="text-xs text-body">
+    {{- booking.wholeMonths ? booking.monthCount ~ ' мес.' : booking.days ~ ' дн.' -}}
+    {%- if booking.clipDuration %} · ролик {{ booking.clipDuration }} сек{% endif -%}
+</div>

@@ -1,0 +1,90 @@
+{% extends 'admin/layout.html.twig' %}
+{% import 'admin/_icons.html.twig' as ui %}
+
+{% block title %}Карта — {{ parent() }}{% endblock %}
+
+{% block content %}
+    <div class="page-header !mb-4">
+        <div>
+            <h1 class="page-title">Карта конструкций</h1>
+            <p class="page-subtitle">Цвет метки — статус на выбранный месяц. Клик по метке или строке списка открывает карточку.</p>
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+            {# Popups get "+ Сторона" buttons that add sides to this plan (assets/admin/map.js) #}
+            <label class="flex items-center gap-2 text-sm text-body">
+                {{ ui.icon('document', 'size-4 text-zinc-400') }}
+                <select data-map-plan class="input h-9 !w-60 !py-0" aria-label="Добавлять в медиаплан">
+                    <option value="">Добавлять в медиаплан…</option>
+                    {% for plan in plans %}
+                        <option value="{{ plan.id }}" {{ plan.id == selectedPlan ? 'selected' }}
+                                data-url="{{ path('admin_media_plan_add_items', {id: plan.id}) }}"
+                                data-token="{{ csrf_token('media-plan-' ~ plan.id) }}"
+                                data-show-url="{{ path('admin_media_plan_show', {id: plan.id}) }}">{{ plan.title }} · {{ plan.clientName }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <a href="{{ path('admin_product_index') }}" class="btn btn-secondary">{{ ui.icon('billboard', 'size-4') }} Списком</a>
+        </div>
+    </div>
+
+    {# Same filters as the list; assets/admin/map.js reloads the points on change #}
+    <form method="get" action="{{ path('admin_map') }}" data-map-filter class="mb-4 grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(12rem,1fr)_10rem_10rem_11rem_13rem]">
+        <label class="search-field md:col-span-2 xl:col-span-1">
+            <span class="sr-only">Поиск</span>
+            {{ ui.icon('search') }}
+            <input type="search" name="q" value="{{ query.q }}" class="input" autocomplete="off" placeholder="Название, район, категория…">
+        </label>
+        <select name="category" class="input" aria-label="Категория">
+            <option value="">Все категории</option>
+            {% for category in categories %}
+                <option value="{{ category.id }}" {{ query.category == category.id ? 'selected' }}>{{ category.name }}</option>
+            {% endfor %}
+        </select>
+        <select name="type" class="input" aria-label="Тип">
+            <option value="">Все типы</option>
+            {% for type in types %}
+                <option value="{{ type.id }}" {{ query.type == type.id ? 'selected' }}>{{ type.name }}</option>
+            {% endfor %}
+        </select>
+        <select name="owner" class="input" aria-label="Владелец">
+            <option value="">Все владельцы</option>
+            <option value="own" {{ query.owner == 'own' ? 'selected' }}>Свои конструкции</option>
+            {% for partner in partners %}
+                <option value="{{ partner.id }}" {{ query.owner == partner.id ~ '' ? 'selected' }}>{{ partner.name }}</option>
+            {% endfor %}
+        </select>
+        <select name="month" class="input" aria-label="Статус на месяц">
+            {% for m in months %}
+                <option value="{{ loop.first ? '' : m|date('Y-m') }}" {{ m|date('Y-m') == (query.month ?: months|first|date('Y-m')) ? 'selected' }}>{{ loop.first ? 'Сейчас · ' : '' }}{{ m|month_label }}</option>
+            {% endfor %}
+        </select>
+        <input type="hidden" name="status" value="{{ query.status }}">
+    </form>
+
+    <div class="grid gap-4 lg:grid-cols-[22rem_minmax(0,1fr)]">
+        <aside class="card order-2 flex h-[32rem] min-w-0 flex-col !p-0 lg:order-1 lg:h-[calc(100vh-16rem)] lg:min-h-[32rem]">
+            <div class="flex flex-wrap gap-1.5 border-b border-default p-3" data-map-status-chips>
+                {% for status in [{value: '', label: 'Все'}, {value: 'free', label: 'Свободны'}, {value: 'booked', label: 'Бронь'}, {value: 'occupied', label: 'Заняты'}] %}
+                    <button type="button" data-map-status="{{ status.value }}"
+                            class="inline-flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-xs font-medium transition-colors">
+                        {% if status.value %}<span class="map-dot" data-status="{{ status.value }}"></span>{% endif %}
+                        {{ status.label }} <span data-map-count="{{ status.value ?: 'all' }}" class="tabular-nums opacity-60"></span>
+                    </button>
+                {% endfor %}
+            </div>
+            <ul data-map-list class="flex-1 divide-y divide-default overflow-y-auto" aria-live="polite"></ul>
+            <p data-map-footnote class="hidden border-t border-default px-4 py-2.5 text-xs text-body-subtle"></p>
+        </aside>
+
+        <div class="relative order-1 min-w-0 lg:order-2">
+            <div id="construction-map" data-map
+                 data-url="{{ path('admin_map_data') }}"
+                 data-api-key="{{ map_config.api_key }}"
+                 data-view="{{ map_config.view }}"
+                 class="z-0 h-[26rem] overflow-hidden rounded-xl border border-default bg-zinc-100 shadow-xs lg:h-[calc(100vh-16rem)] lg:min-h-[32rem]"></div>
+            <div data-map-loading class="pointer-events-none absolute left-1/2 top-4 z-[500] hidden -translate-x-1/2 rounded-full bg-white px-3 py-1.5 text-xs font-medium text-heading shadow-lg ring-1 ring-black/5">
+                Загружаем конструкции…
+            </div>
+        </div>
+    </div>
+{% endblock %}

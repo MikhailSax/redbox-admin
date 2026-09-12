@@ -1,0 +1,152 @@
+{% extends 'admin/layout.html.twig' %}
+
+{% block title %}Бронирование: {{ product.name }} — {{ parent() }}{% endblock %}
+
+{% block content %}
+    {{ include('admin/product/_card_header.html.twig', {active_tab: 'booking', in_form: false}) }}
+
+    <p class="text-sm text-body mb-4">
+        {{ airtime ? 'Продаётся эфиром по дням: ролики 5, 10 или 15 сек в петле ' ~ loopSeconds ~ ' сек.' : 'Сторона бронируется целиком на календарный месяц.' }}
+    </p>
+
+    {# Occupancy grid: sides × months #}
+    <div class="card !p-0 mb-6 overflow-hidden">
+        <div class="flex flex-wrap items-center justify-between gap-3 px-6 pt-5 pb-4">
+            <h2 class="text-lg font-semibold text-heading">{{ airtime ? 'Занятость эфира на ' ~ columns|length ~ ' дней' : 'Занятость на 12 месяцев' }}</h2>
+            <div class="flex flex-wrap gap-3 text-xs text-body">
+                <span class="inline-flex items-center gap-1.5"><span class="w-3 h-3 rounded-xs bg-success-soft border border-success-subtle"></span>Свободно</span>
+                <span class="inline-flex items-center gap-1.5"><span class="w-3 h-3 rounded-xs bg-warning-soft border border-warning-subtle"></span>{{ airtime ? 'Частично занято' : 'Ждёт оплаты' }}</span>
+                <span class="inline-flex items-center gap-1.5"><span class="w-3 h-3 rounded-xs bg-danger-soft border border-danger-subtle"></span>{{ airtime ? 'Петля заполнена' : 'Оплачено' }}</span>
+            </div>
+        </div>
+        <div class="overflow-x-auto border-t border-default">
+            <table class="w-full text-sm text-body">
+                <thead class="bg-neutral-secondary-soft border-b border-default">
+                    <tr>
+                        <th scope="col" class="sticky left-0 bg-neutral-secondary-soft px-4 py-2 text-left font-medium">Сторона</th>
+                        {% for column in columns %}
+                            <th scope="col" class="px-1 py-2 font-medium text-center whitespace-nowrap {{ column.weekend ? 'text-fg-danger-strong' : '' }}">
+                                {% if column.sub %}<div class="text-[10px] font-normal leading-none text-body-subtle">{{ column.sub }}</div>{% endif %}
+                                {{ column.label }}
+                            </th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for side in product.sides %}
+                        <tr class="border-b border-default last:border-0">
+                            <th scope="row" class="sticky left-0 bg-neutral-primary-soft px-4 py-2 text-left font-medium text-heading whitespace-nowrap">{{ side.name }}</th>
+                            {% for key, column in columns %}
+                                {% set cell = grid[side.id][key] %}
+                                {% set clients = cell.bookings|map(b => b.clientName ~ (b.clipDuration ? ' (' ~ b.clipDuration ~ ' сек)' : '') ~ ' — ' ~ b.statusAt(now).label)|join("\n") %}
+                                <td class="p-1">
+                                    {% if airtime %}
+                                        {% set percent = min(100, (cell.used / loopSeconds * 100)|round) %}
+                                        <div class="rounded-sm border px-1.5 py-1 text-center {{ cell.used >= loopSeconds ? 'bg-danger-soft border-danger-subtle text-fg-danger-strong' : (cell.used > 0 ? 'bg-warning-soft border-warning-subtle text-fg-warning' : 'bg-success-soft border-success-subtle text-fg-success-strong') }}"
+                                             title="{{ clients ?: 'Эфир свободен' }}">
+                                            <div class="text-xs font-medium whitespace-nowrap">{{ cell.used }}</div>
+                                            <div class="mt-1 h-1 rounded-full bg-neutral-tertiary-medium overflow-hidden"><div class="h-full bg-current" style="width: {{ percent }}%"></div></div>
+                                        </div>
+                                    {% else %}
+                                        {% set booking = cell.bookings|first %}
+                                        {% if booking %}
+                                            {% set paid = booking.status.value == 'paid' %}
+                                            <div class="rounded-sm border px-1.5 py-1 text-center text-xs font-medium truncate max-w-28 {{ paid ? 'bg-danger-soft border-danger-subtle text-fg-danger-strong' : 'bg-warning-soft border-warning-subtle text-fg-warning' }}" title="{{ clients }}">
+                                                {{ booking.clientName }}
+                                            </div>
+                                        {% else %}
+                                            <div class="rounded-sm border px-1.5 py-1 text-center text-xs bg-success-soft border-success-subtle text-fg-success-strong">свободно</div>
+                                        {% endif %}
+                                    {% endif %}
+                                </td>
+                            {% endfor %}
+                        </tr>
+                    {% else %}
+                        <tr><td colspan="{{ columns|length + 1 }}" class="px-4 py-6 text-center">У конструкции нет сторон — добавьте их в карточке.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="grid gap-6 lg:grid-cols-3 mb-6">
+        {# New booking #}
+        <div class="card lg:col-span-2">
+            <h2 class="text-lg font-semibold text-heading mb-4">Новая бронь</h2>
+            {% form_theme form 'admin/form/theme.html.twig' %}
+            {{ form_start(form, {attr: {novalidate: 'novalidate'}}) }}
+                {% if form.vars.errors|length %}
+                    <div class="flex items-start gap-3 p-4 mb-5 text-sm rounded-base border text-fg-danger-strong bg-danger-soft border-danger-subtle" role="alert">
+                        {{ form_errors(form) }}
+                    </div>
+                {% endif %}
+                <div class="grid gap-x-6 md:grid-cols-3">
+                    {{ form_row(form.side) }}
+                    {% if airtime %}
+                        {{ form_row(form.startDate) }}
+                        {{ form_row(form.endDate) }}
+                    {% else %}
+                        {{ form_row(form.startMonth) }}
+                        {{ form_row(form.months) }}
+                    {% endif %}
+                </div>
+                {% if form.clipDuration is defined %}
+                    {{ form_row(form.clipDuration) }}
+                {% endif %}
+                <div class="grid gap-x-6 md:grid-cols-2">
+                    {{ form_row(form.clientName) }}
+                    {{ form_row(form.clientPhone) }}
+                </div>
+                {{ form_row(form.comment) }}
+                <button type="submit" class="btn btn-primary">Забронировать на 24 часа</button>
+            {{ form_end(form) }}
+        </div>
+
+        <div class="card">
+            <h2 class="text-lg font-semibold text-heading mb-3">Как работает бронь</h2>
+            <ul class="space-y-3 text-sm text-body list-disc ps-5">
+                <li>Новая бронь держит место <b class="text-heading">24 часа</b>. Если за это время не отметить оплату, бронь снимается автоматически и место освобождается.</li>
+                {% if airtime %}
+                    <li>Эфир продаётся <b class="text-heading">по дням</b>: с любого дня по любой, включительно.</li>
+                    <li>Экран крутит ролики в петле <b class="text-heading">{{ loopSeconds }} секунд</b>. Клиенты покупают ролик 5, 10 или 15 сек, пока петля не заполнится. В сетке — сколько секунд петли занято в этот день.</li>
+                {% else %}
+                    <li>Сторона бронируется целиком на календарный месяц — одному клиенту.</li>
+                {% endif %}
+                <li>После оплаты нажмите «Оплачено» — бронь закрепится.</li>
+            </ul>
+        </div>
+    </div>
+
+    {# All bookings of the product #}
+    <h2 class="text-xl font-semibold text-heading mb-4">Брони конструкции</h2>
+    <div class="table-card">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th scope="col" class="px-4 py-3 font-medium">Сторона</th>
+                    <th scope="col" class="px-4 py-3 font-medium">Период</th>
+                    <th scope="col" class="px-4 py-3 font-medium">Клиент</th>
+                    <th scope="col" class="px-4 py-3 font-medium">Статус</th>
+                    <th scope="col" class="px-4 py-3 font-medium"><span class="sr-only">Действия</span></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for booking in bookings %}
+                    <tr>
+                        <td class="px-4 py-3 font-medium text-heading">{{ booking.side.name }}</td>
+                        <td class="px-4 py-3 whitespace-nowrap">{{ include('admin/booking/_period.html.twig') }}</td>
+                        <td class="px-4 py-3">
+                            <div class="text-heading">{{ booking.clientName }}</div>
+                            <div class="text-xs">{{ booking.clientPhone }}{% if booking.createdBy %} · оформил(а) {{ booking.createdBy.name }}{% endif %}</div>
+                            {% if booking.comment %}<div class="text-xs mt-1">{{ booking.comment }}</div>{% endif %}
+                        </td>
+                        <td class="px-4 py-3">{{ include('admin/booking/_status.html.twig') }}</td>
+                        <td class="px-4 py-3">{{ include('admin/booking/_actions.html.twig', {return: 'product'}) }}</td>
+                    </tr>
+                {% else %}
+                    <tr><td colspan="5" class="px-4 py-8 text-center">Броней пока нет.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+{% endblock %}

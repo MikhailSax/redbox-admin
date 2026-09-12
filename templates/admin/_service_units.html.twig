@@ -1,0 +1,4 @@
+{# Suggestions for service unit fields (input[list="service-units"]); any unit can still be typed #}
+<datalist id="service-units">
+    {% for unit in constant('App\\Entity\\AdditionalService::UNITS') %}<option value="{{ unit }}"></option>{% endfor %}
+</datalist>

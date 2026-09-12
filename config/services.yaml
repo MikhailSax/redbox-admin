@@ -1,0 +1,38 @@
+# yaml-language-server: $schema=../vendor/symfony/dependency-injection/Loader/schema/services.schema.json
+
+# This file is the entry point to configure your own services.
+# Files in the packages/ subdirectory configure your dependencies.
+# See also https://symfony.com/doc/current/service_container/import.html
+
+# Put parameters here that don't need to change on each machine where the app is deployed
+# https://symfony.com/doc/current/best_practices.html#use-parameters-for-application-configuration
+parameters:
+    # Root of user uploads (side photos, category images); served from /uploads
+    app.uploads_dir: '%kernel.project_dir%/public/uploads'
+    # Files not reachable by URL (client contracts, photo reports); keep it in backups
+    app.private_storage_dir: '%kernel.project_dir%/var/storage'
+
+    # Yandex Maps JavaScript API 2.1 (assets/admin/map.js); the key is used in the browser,
+    # so restrict it to your domains (HTTP Referer) in the Yandex developer cabinet
+    app.map.api_key: '%env(YANDEX_MAPS_API_KEY)%'
+    # Where an empty map opens: "lat,lng,zoom" (Ulan-Ude)
+    app.map.default_view: '51.8335,107.5841,12'
+
+when@test:
+    parameters:
+        app.uploads_dir: '%kernel.project_dir%/var/test/uploads'
+        app.private_storage_dir: '%kernel.project_dir%/var/test/storage'
+
+services:
+    # default configuration for services in *this* file
+    _defaults:
+        autowire: true      # Automatically injects dependencies in your services.
+        autoconfigure: true # Automatically registers your services as commands, event subscribers, etc.
+
+    # makes classes in src/ available to be used as services
+    # this creates a service per class whose id is the fully-qualified class name
+    App\:
+        resource: '../src/'
+
+    # add more service definitions when explicit configuration is needed
+    # please note that last definitions always *replace* previous ones

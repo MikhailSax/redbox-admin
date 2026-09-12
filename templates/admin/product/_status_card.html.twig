@@ -1,0 +1,51 @@
+{# Availability of each side for the current month. Vars: product, availability (ProductAvailability) #}
+<div class="card" id="product-status">
+    <div class="flex items-center justify-between gap-2 mb-4">
+        <h2 class="text-lg font-semibold text-heading">Статус</h2>
+        <span class="text-sm text-body">{{ availability.month|month_label }}</span>
+    </div>
+
+    {% for side in availability.sides %}
+        <div class="flex items-center justify-between gap-3 py-2.5 border-b border-default last:border-0">
+            <div class="min-w-0">
+                <div class="text-sm font-medium text-heading">Сторона {{ side.sideName }}</div>
+                {% if side.airtime %}
+                    <div class="text-xs text-body">эфир {{ side.usedSeconds }}/{{ constant('App\\Enum\\BookingMode::LOOP_SECONDS') }} сек</div>
+                {% endif %}
+            </div>
+            {{ include('admin/_availability_badge.html.twig', {status: side.status}) }}
+        </div>
+    {% else %}
+        <p class="text-sm text-body">Нет сторон — добавьте их на вкладке «Стороны и фото».</p>
+    {% endfor %}
+
+    <a href="{{ path('admin_booking_product', {id: product.id}) }}" class="btn btn-secondary w-full mt-4">Занятость на 12 месяцев →</a>
+
+    {# Economics: owner, selling price, partner price, margin #}
+    <dl class="mt-5 space-y-2 border-t border-default pt-4 text-sm">
+        <div class="flex justify-between gap-3">
+            <dt class="text-body">Владелец</dt>
+            <dd class="text-right font-medium text-heading">
+                {% if product.own %}Своя конструкция{% else %}<a href="{{ path('admin_partner_edit', {id: product.owner.id}) }}" class="hover:underline">{{ product.owner.name }}</a>{% endif %}
+            </dd>
+        </div>
+        {% if product.price is not null %}
+            <div class="flex justify-between gap-3">
+                <dt class="text-body">Цена продажи</dt>
+                <dd class="font-medium text-heading tabular-nums">{{ product.price|number_format(0, ',', ' ') }} ₽</dd>
+            </div>
+        {% endif %}
+        {% if not product.own and product.purchasePrice is not null %}
+            <div class="flex justify-between gap-3">
+                <dt class="text-body">Цена партнёра</dt>
+                <dd class="tabular-nums text-heading">{{ product.purchasePrice|number_format(0, ',', ' ') }} ₽</dd>
+            </div>
+            <div class="flex justify-between gap-3">
+                <dt class="text-body">Маржа</dt>
+                <dd class="font-semibold tabular-nums {{ product.margin >= 0 ? 'text-fg-success-strong' : 'text-fg-danger-strong' }}">
+                    {{ product.margin|number_format(0, ',', ' ') }} ₽ · {{ product.marginPercent|round }}%
+                </dd>
+            </div>
+        {% endif %}
+    </dl>
+</div>

@@ -1,0 +1,131 @@
+{#
+    Product card form split into tab panels (one <form>, so saving keeps every tab's changes).
+    Vars: form, product, initialTab, button_label, availability?
+#}
+{% form_theme form 'admin/form/theme.html.twig' %}
+
+{% macro panel_attrs(id, initialTab) %}id="tab-{{ id }}" data-tab-panel="{{ id }}" role="tabpanel"{% if id != initialTab %} class="hidden"{% endif %}{% endmacro %}
+
+{{ form_start(form, {attr: {id: 'product-form', novalidate: 'novalidate'}}) }}
+    <input type="hidden" name="_tab" value="{{ initialTab }}" data-tab-input>
+    {{ form_errors(form) }}
+
+    <div class="grid gap-6 {{ product.id ? 'lg:grid-cols-3' : '' }} mb-6">
+        <div class="{{ product.id ? 'lg:col-span-2' : 'max-w-4xl' }} min-w-0">
+
+            <div {{ _self.panel_attrs('main', initialTab) }}>
+                <div class="card">
+                    <div class="grid gap-x-6 md:grid-cols-[1fr_10rem]">
+                        {{ form_row(form.name) }}
+                        {{ form_row(form.schemeNumber) }}
+                    </div>
+                    <div class="grid gap-x-6 md:grid-cols-3">
+                        {{ form_row(form.category) }}
+                        {{ form_row(form.productType) }}
+                        {{ form_row(form.size) }}
+                    </div>
+                    <fieldset class="mb-5 rounded-lg border border-default bg-zinc-50/60 p-4">
+                        <legend class="px-1 text-sm font-medium text-heading">Владелец и цены</legend>
+                        <div class="grid gap-x-6 md:grid-cols-2">
+                            {{ form_row(form.owner) }}
+                            {{ form_row(form.price) }}
+                        </div>
+                        {{ form_row(form.purchasePrice, {row_attr: {class: 'mb-0 md:w-1/2 md:pe-3', 'data-visible-when': 'product_form_owner'}}) }}
+                        {% if product.margin is not null %}
+                            <p class="mt-3 text-sm text-body">
+                                Маржа: <b class="text-heading tabular-nums">{{ product.margin|number_format(0, ',', ' ') }} ₽</b> в месяц
+                                ({{ product.marginPercent|round }}% от цены продажи)
+                            </p>
+                        {% endif %}
+                    </fieldset>
+                    {{ form_row(form.shortDescription) }}
+                    {{ form_row(form.description, {row_attr: {class: 'mb-0'}}) }}
+                </div>
+            </div>
+
+            <div {{ _self.panel_attrs('location', initialTab) }}>
+                <div class="card">
+                    {{ form_row(form.district) }}
+                    <div class="grid gap-x-6 md:grid-cols-2">
+                        {{ form_row(form.latitude) }}
+                        {{ form_row(form.longitude) }}
+                    </div>
+                    <p class="text-sm text-body">
+                        Кликните по карте, перетащите метку или найдите адрес в поиске на карте — координаты заполнятся сами.
+                        {% if product.name %}
+                            <button type="button" class="font-medium text-heading underline decoration-dotted underline-offset-2 hover:decoration-solid"
+                                    data-geocode="{{ product.district ? product.district.name ~ ', ' }}{{ product.name }}">Найти «{{ product.name }}» на карте</button>
+                        {% endif %}
+                    </p>
+                    {# Yandex Maps picker, assets/admin/map.js #}
+                    <div data-coordinate-picker
+                         data-lat-input="{{ form.latitude.vars.id }}" data-lng-input="{{ form.longitude.vars.id }}"
+                         data-api-key="{{ map_config.api_key }}" data-view="{{ map_config.view }}"
+                         class="z-0 mt-4 h-80 overflow-hidden rounded-lg border border-default bg-zinc-100"></div>
+                    {% if product.id and product.latitude and product.longitude %}
+                        <div class="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm font-medium">
+                            <a href="{{ path('admin_map', {focus: product.id}) }}" class="text-heading hover:underline">Показать на общей карте →</a>
+                            <a href="https://yandex.ru/maps/?pt={{ product.longitude }},{{ product.latitude }}&z=17&l=map" target="_blank" rel="noopener noreferrer"
+                               class="text-body hover:text-heading hover:underline">Открыть в Яндекс.Картах ↗</a>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div {{ _self.panel_attrs('sides', initialTab) }}>
+                <div class="flex items-center justify-between mb-4">
+                    <p class="text-sm text-body">Бронируется каждая сторона отдельно. Фото загружаются после сохранения формы.</p>
+                    <button type="button" class="btn btn-secondary shrink-0" data-collection-add="product-sides">+ Добавить сторону</button>
+                </div>
+
+                {% if form.sides.vars.errors|length %}
+                    <div class="p-4 mb-4 text-sm rounded-base border text-fg-danger-strong bg-danger-soft border-danger-subtle" role="alert">
+                        {{ form_errors(form.sides) }}
+                    </div>
+                {% endif %}
+
+                <div id="product-sides" class="grid gap-6"
+                     data-index="{{ form.sides|length > 0 ? form.sides|last.vars.name + 1 : 0 }}"
+                     data-prototype="{{ include('admin/product/_side.html.twig', {side_form: form.sides.vars.prototype})|e('html_attr') }}">
+                    {% for side_form in form.sides %}
+                        {{ include('admin/product/_side.html.twig', {side_form: side_form}) }}
+                    {% endfor %}
+                </div>
+                {% do form.sides.setRendered() %}
+            </div>
+
+            <div {{ _self.panel_attrs('seo', initialTab) }}>
+                <div class="card">
+                    {{ form_row(form.seoTitle) }}
+                    {{ form_row(form.seoDescription) }}
+                    {{ form_row(form.seoKeywords, {row_attr: {class: 'mb-0'}}) }}
+                </div>
+            </div>
+
+            {# Sticky save bar: always visible, whichever tab is open #}
+            <div class="sticky bottom-0 z-10 mt-6 py-3 bg-neutral-secondary-soft/95 backdrop-blur border-t border-default flex flex-wrap items-center gap-3">
+                <button type="submit" class="btn btn-primary">{{ button_label }}</button>
+                <a href="{{ path('admin_product_index') }}" class="btn btn-secondary">К списку</a>
+            </div>
+        </div>
+
+        {% if product.id %}
+            <aside class="grid gap-6 content-start">
+                {{ include('admin/product/_status_card.html.twig') }}
+                {{ include('admin/product/_gallery.html.twig') }}
+            </aside>
+        {% endif %}
+    </div>
+{{ form_end(form) }}
+
+{# Standalone forms for photo deletion, targeted by the buttons in the photo tables #}
+{% if product.id %}
+    {% for side in product.sides %}
+        {% for photo in side.photos|filter(p => p.id) %}
+            <form id="delete-photo-{{ photo.id }}" method="post" hidden
+                  action="{{ path('admin_product_photo_delete', {id: product.id, photo: photo.id}) }}">
+                <input type="hidden" name="_token" value="{{ csrf_token('delete-photo-' ~ photo.id) }}">
+            </form>
+        {% endfor %}
+    {% endfor %}
+{% endif %}
