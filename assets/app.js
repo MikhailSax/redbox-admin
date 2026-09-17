@@ -19,6 +19,7 @@ import './admin/command-palette.js';
 import './admin/live-filter.js';
 import './admin/toasts.js';
 import './admin/dependent-fields.js';
+import './admin/booking-mode.js';
 import './admin/sidebar.js';
 import './admin/checklist-filter.js';
 

@@ -6,9 +6,11 @@ use App\Entity\Category;
 use App\Entity\District;
 use App\Entity\Product;
 use App\Entity\ProductSide;
+use App\Entity\ProductSidePhoto;
 use App\Entity\ProductType;
 use App\Enum\BookingMode;
 use App\Helpers\ProductHelper;
+use App\Service\SidePhotoStorage;
 use Doctrine\ORM\EntityManagerInterface;
 
 /**
@@ -16,7 +18,8 @@ use Doctrine\ORM\EntityManagerInterface;
  *
  * Rows are grouped into one structure by address + format: one address may hold structures of different kinds
  * (a digital side A and a static side B), and a structure has a single type. Running the import again updates
- * numbers, sizes and prices of the structures it created before (matched by name, category and type).
+ * numbers, sizes, prices and coordinates of the structures it created before (matched by name, category and type,
+ * or by name alone when a single structure has it, so a category or type changed by hand does not make a copy).
  */
 class AddressProgramImporter
 {
@@ -41,8 +44,14 @@ class AddressProgramImporter
     /** @var array<string, Category|ProductType|District> class|name => entity */
     private array $dictionary = [];
 
+    /** @var array<int, true> ids of structures already matched in this run */
+    private array $matched = [];
+
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
+        private readonly MapLinkCoordinates $mapLinks,
+        private readonly PhotoDownloader $photos,
+        private readonly SidePhotoStorage $photoStorage,
     ) {
     }
 
@@ -53,8 +62,9 @@ class AddressProgramImporter
     {
         $report = new AddressProgramReport();
         $this->dictionary = [];
+        $this->matched = [];
 
-        /** @var array<string, array{category: string, type: string, rows: non-empty-list<AddressProgramRow>}> $groups */
+        /** @var array<string, array{category: string, type: string, rows: non-empty-list<AddressProgramRow>, coordinates?: array{0: string, 1: string}|null}> $groups */
         $groups = [];
         foreach ($rows as $row) {
             $kind = self::kind($row->format);
@@ -70,18 +80,41 @@ class AddressProgramImporter
             $groups[$key]['rows'][] = $row;
         }
 
-        $import = function () use ($groups, $report): void {
+        // Short map links go over the network: resolved before the transaction is opened
+        foreach ($groups as &$group) {
+            $url = self::mapUrl($group['rows']);
+            $group['coordinates'] = null !== $url ? $this->mapLinks->resolve($url) : null;
+            if (null !== $url && null === $group['coordinates']) {
+                $report->coordinatesFailed[] = \sprintf('%s: %s', $group['rows'][0]->address, $url);
+            }
+        }
+        unset($group);
+
+        // Photos too, into temporary files (a dry run downloads nothing)
+        if (!$dryRun) {
+            foreach ($rows as $row) {
+                if (null !== ($url = self::link($row->photoUrl))) {
+                    $this->photos->download($url);
+                }
+            }
+        }
+
+        $import = function () use ($groups, $report, $dryRun): void {
             foreach ($groups as $group) {
-                $this->importStructure($group['rows'], $group['category'], $group['type'], $report);
+                $this->importStructure($group['rows'], $group['category'], $group['type'], $group['coordinates'], $dryRun, $report);
             }
         };
 
-        if ($dryRun) {
-            // Nothing is flushed; the changes are dropped with the unit of work
-            $import();
-            $this->entityManager->clear();
-        } else {
-            $this->entityManager->wrapInTransaction($import); // flushes and commits, or rolls back on error
+        try {
+            if ($dryRun) {
+                // Nothing is flushed; the changes are dropped with the unit of work
+                $import();
+                $this->entityManager->clear();
+            } else {
+                $this->entityManager->wrapInTransaction($import); // flushes and commits, or rolls back on error
+            }
+        } finally {
+            $this->photos->cleanup();
         }
 
         return $report;
@@ -103,23 +136,29 @@ class AddressProgramImporter
     }
 
     /**
-     * @param non-empty-list<AddressProgramRow> $rows sides of one structure
+     * @param non-empty-list<AddressProgramRow>  $rows        sides of one structure
+     * @param array{0: string, 1: string}|null $coordinates [latitude, longitude] from the map link
      */
-    private function importStructure(array $rows, string $categoryName, string $typeName, AddressProgramReport $report): void
+    private function importStructure(array $rows, string $categoryName, string $typeName, ?array $coordinates, bool $dryRun, AddressProgramReport $report): void
     {
         $first = $rows[0];
         $category = $this->dictionary(Category::class, $categoryName, 'Категория', $report);
         $type = $this->dictionary(ProductType::class, $typeName, 'Тип', $report);
 
-        $product = null !== $category->getId() && null !== $type->getId()
-            ? $this->entityManager->getRepository(Product::class)->findOneBy(['name' => $first->address, 'category' => $category, 'productType' => $type])
-            : null;
+        $product = $this->findProduct($first->address, $category, $type);
         if (null === $product) {
             $product = (new Product())->setName($first->address)->setCategory($category)->setProductType($type);
             $this->entityManager->persist($product);
             ++$report->productsCreated;
         } else {
+            $this->matched[(int) $product->getId()] = true;
             ++$report->productsUpdated;
+        }
+
+        if (null !== $coordinates) {
+            [$latitude, $longitude] = $coordinates;
+            $product->setLatitude($latitude)->setLongitude($longitude);
+            ++$report->coordinatesSet;
         }
 
         $product->setDistrict($this->dictionary(District::class, self::districtName($first), 'Район', $report));
@@ -137,19 +176,59 @@ class AddressProgramImporter
 
         foreach ($rows as $row) {
             $sideName = self::sideName($row->side);
-            $side = $product->getSides()->findFirst(static fn (int|string $i, ProductSide $s) => mb_strtoupper((string) $s->getName()) === $sideName);
-            if (null === $side) {
-                $side = (new ProductSide())->setName($sideName);
-                $product->addSide($side);
+            $sides = $product->getSides()->filter(static fn (ProductSide $s) => self::sideName((string) $s->getName()) === $sideName)->getValues();
+            if ([] !== $sides) {
+                $sides[0]->setName($sideName); // "B3" typed in Latin becomes "В3"
+            } else {
+                // A prismatron split into faces by hand ("А1", "А2", "А3") is still listed as "А" in the price list
+                $sides = $product->getSides()->filter(static fn (ProductSide $s) => 1 === preg_match('/^'.preg_quote($sideName, '/').'\d+$/u', self::sideName((string) $s->getName())))->getValues();
+            }
+            if ([] === $sides) {
+                $sides = [(new ProductSide())->setName($sideName)];
+                $product->addSide($sides[0]);
                 ++$report->sidesCreated;
             } else {
                 ++$report->sidesUpdated;
             }
 
             $price = self::price($row->price);
-            $side->setPrice(null !== $price && $price !== $basePrice ? $price : null);
+            foreach ($sides as $side) {
+                $side->setPrice(null !== $price && $price !== $basePrice ? $price : null);
+            }
             if (null === $price) {
                 $report->withoutPrice[] = \sprintf('%s, сторона %s', $row->address, $sideName);
+            }
+
+            if (null !== ($photoUrl = self::link($row->photoUrl))) {
+                $this->importPhoto($sides, $photoUrl, $dryRun, \sprintf('%s, сторона %s', $row->address, $sideName), $report);
+            }
+        }
+    }
+
+    /**
+     * @param non-empty-list<ProductSide> $sides
+     */
+    private function importPhoto(array $sides, string $url, bool $dryRun, string $label, AddressProgramReport $report): void
+    {
+        $name = PhotoDownloader::originalName($url);
+        if ($dryRun) {
+            foreach ($sides as $side) {
+                if (!$side->getPhotos()->exists(static fn (int|string $i, ProductSidePhoto $p) => $p->getOriginalName() === $name)) {
+                    ++$report->photosAdded;
+                }
+            }
+
+            return;
+        }
+
+        if (null === ($file = $this->photos->download($url))) {
+            $report->photosFailed[] = \sprintf('%s: %s', $label, $url);
+
+            return;
+        }
+        foreach ($sides as $side) {
+            if (null !== $this->photoStorage->attachCopy($side, $file, $name)) {
+                ++$report->photosAdded;
             }
         }
     }
@@ -179,6 +258,45 @@ class AddressProgramImporter
         }
 
         return $this->dictionary[$key] = $entity;
+    }
+
+    /**
+     * By name, category and type; otherwise by name alone when exactly one structure not matched yet has it.
+     */
+    private function findProduct(string $name, Category $category, ProductType $type): ?Product
+    {
+        $repository = $this->entityManager->getRepository(Product::class);
+        if (null !== $category->getId() && null !== $type->getId()
+            && null !== ($product = $repository->findOneBy(['name' => $name, 'category' => $category, 'productType' => $type]))) {
+            return $product;
+        }
+
+        $sameName = array_values(array_filter(
+            $repository->findBy(['name' => $name]),
+            fn (Product $product) => !isset($this->matched[(int) $product->getId()]),
+        ));
+
+        return 1 === \count($sameName) ? $sameName[0] : null;
+    }
+
+    /**
+     * @param list<AddressProgramRow> $rows
+     */
+    private static function mapUrl(array $rows): ?string
+    {
+        foreach ($rows as $row) {
+            if (null !== ($url = self::link($row->mapUrl))) {
+                return $url;
+            }
+        }
+
+        return null;
+    }
+
+    /** The cell when it holds a link; notes like "установка июнь-июль" are ignored */
+    private static function link(?string $cell): ?string
+    {
+        return null !== $cell && preg_match('~^https?://\S+$~i', $cell) ? $cell : null;
     }
 
     private static function districtName(AddressProgramRow $row): string

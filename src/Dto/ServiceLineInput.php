@@ -13,7 +13,7 @@ final class ServiceLineInput
     /** Catalog entry; its name, unit and price prefill the line (null = custom service) */
     public ?AdditionalService $service = null;
 
-    #[Assert\NotBlank(message: 'Выберите услугу или впишите название', normalizer: 'trim')]
+    #[Assert\NotBlank(message:   'Выберите услугу или впишите название', normalizer: 'trim')]
     #[Assert\Length(max: 255)]
     public ?string $name = null;
 

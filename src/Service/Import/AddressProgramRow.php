@@ -20,6 +20,8 @@ final readonly class AddressProgramRow
         public ?string $sizeText,
         public ?string $price,
         public ?string $bookingNote,
+        public ?string $mapUrl = null,
+        public ?string $photoUrl = null,
     ) {
     }
 }

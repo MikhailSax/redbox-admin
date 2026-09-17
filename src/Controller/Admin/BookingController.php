@@ -5,6 +5,7 @@ namespace App\Controller\Admin;
 use App\Dto\BookingRequest;
 use App\Entity\Booking;
 use App\Entity\Product;
+use App\Entity\ProductSide;
 use App\Entity\User;
 use App\Enum\BookingMode;
 use App\Enum\BookingStatus;
@@ -65,7 +66,14 @@ final class BookingController extends AbstractController
     public function product(Request $request, Product $product): Response
     {
         $now = $this->clock->now();
-        $airtime = BookingMode::Airtime === $product->getProductType()?->getBookingMode();
+        // Each side is booked by its own type: airtime sides by days, the others by months
+        $airtime = $product->hasAirtimeSides();
+        $whole = $product->hasWholeSides();
+        if (!$airtime && !$whole) { // no sides yet
+            $airtime = (bool) $product->getProductType()?->getBookingMode()->isAirtime();
+            $whole = !$airtime;
+        }
+
         $bookingRequest = new BookingRequest();
         if (1 === $product->getSides()->count()) {
             $bookingRequest->side = $product->getSides()->first();
@@ -94,17 +102,28 @@ final class BookingController extends AbstractController
             }
         }
 
-        $columns = $airtime ? self::dayColumns($now) : self::monthColumns($now);
+        // One occupancy grid per way of booking: airtime by days, whole sides by months
+        $grids = [];
+        foreach (array_filter([true => $airtime, false => $whole]) as $mode => $present) {
+            $columns = $mode ? self::dayColumns($now) : self::monthColumns($now);
+            $grids[] = [
+                'airtime' => (bool) $mode,
+                'columns' => $columns,
+                'cells' => $this->bookingManager->occupancy($product, array_map(static fn (array $c) => [$c['from'], $c['to']], $columns)),
+                'sides' => $product->getSides()->filter(static fn (ProductSide $side) => $side->isAirtime() === (bool) $mode)->getValues(),
+            ];
+        }
 
         return $this->render('admin/booking/product.html.twig', [
             'product' => $product,
             'form' => $form,
-            'columns' => $columns,
-            'grid' => $this->bookingManager->occupancy($product, array_map(static fn (array $c) => [$c['from'], $c['to']], $columns)),
+            'grids' => $grids,
             'bookings' => $this->bookings->findForProduct($product),
             'availability' => $this->availability->forProduct($product->getId(), $now),
             'activeBookings' => $this->bookings->countActiveForProduct($product, $now),
             'airtime' => $airtime,
+            'whole' => $whole,
+            'mixed' => $airtime && $whole,
             'loopSeconds' => BookingMode::LOOP_SECONDS,
             'now' => $now,
         ]);

@@ -3,6 +3,7 @@
 namespace App\Repository;
 
 use App\Entity\MediaPlan;
+use App\Entity\User;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\Persistence\ManagerRegistry;
 
@@ -34,6 +35,28 @@ class MediaPlanRepository extends ServiceEntityRepository
         }
 
         return array_slice($qb->getQuery()->getResult(), 0, $limit);
+    }
+
+    /**
+     * A client's plans for the personal account, latest period first, with sides, structures and bookings.
+     *
+     * @return list<MediaPlan>
+     */
+    public function findForClient(User $client): array
+    {
+        return $this->createQueryBuilder('m')
+            ->addSelect('i', 's', 'p', 't', 'b')
+            ->leftJoin('m.items', 'i')
+            ->leftJoin('i.side', 's')
+            ->leftJoin('s.product', 'p')
+            ->leftJoin('p.productType', 't')
+            ->leftJoin('i.booking', 'b')
+            ->andWhere('m.client = :client')
+            ->setParameter('client', $client)
+            ->orderBy('m.startMonth', 'DESC')
+            ->addOrderBy('m.id', 'DESC')
+            ->getQuery()
+            ->getResult();
     }
 
     /**

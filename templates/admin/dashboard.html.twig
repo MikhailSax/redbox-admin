@@ -114,4 +114,28 @@
             {% endif %}
         </div>
     </div>
+
+    {# Client payments due: overdue first, then due soon #}
+    <div class="card mt-6 !p-0" id="dashboard-payments">
+        <div class="flex flex-wrap items-center justify-between gap-3 px-5 pb-3 pt-5">
+            <div>
+                <h2 class="text-base font-semibold text-heading">Платежи клиентов</h2>
+                <p class="text-sm text-body">
+                    {% if payments.overdue.count > 0 %}<span class="font-medium text-fg-danger-strong">Просрочено {{ payments.overdue.count }} на {{ payments.overdue.sum|money }}</span> · {% endif %}
+                    скоро срок: {{ payments.soon.count }}{% if payments.soon.count > 0 %} на {{ payments.soon.sum|money }}{% endif %}
+                </p>
+            </div>
+            <a href="{{ path('admin_payment_index') }}" class="btn btn-secondary btn-sm">{{ ui.icon('banknotes', 'size-4') }} Календарь платежей</a>
+        </div>
+        {% if payments.urgent is not empty %}
+            <div class="border-t border-default">
+                {{ include('admin/payment/_table.html.twig', {payments: payments.urgent, return: 'dashboard'}) }}
+            </div>
+        {% else %}
+            <div class="px-5 pb-8 pt-2 text-center">
+                <span class="mx-auto mb-2 grid size-10 place-items-center rounded-full bg-success-soft text-fg-success-strong">{{ ui.icon('check') }}</span>
+                <p class="text-sm text-body">Просроченных и срочных платежей нет</p>
+            </div>
+        {% endif %}
+    </div>
 {% endblock %}

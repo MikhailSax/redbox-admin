@@ -22,6 +22,11 @@ final readonly class ProductListQuery
         /** free | booked | occupied, see AvailabilityStatus */
         #[Assert\Choice(choices: ['free', 'booked', 'occupied'])]
         public ?string $status = null,
+        #[Assert\Positive]
+        public ?int $district = null,
+        /** Key of ProductHelper::SIZES */
+        #[Assert\Length(max: 20)]
+        public ?string $size = null,
         /** "own" for Redbox's structures or a partner id */
         #[Assert\Regex('/^(own|\d+)$/')]
         public ?string $owner = null,

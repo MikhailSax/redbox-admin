@@ -122,6 +122,7 @@ final class AvailabilityResolverTest extends KernelTestCase
 
         $side = $this->resolve($this->screen)->sides[0];
         self::assertSame(115, $side->usedSeconds());
+        self::assertSame(95, $side->loadPercent()); // 115 of 120 s, rounded down: 100% only when the loop is full
         self::assertSame(AvailabilityStatus::Free, $side->status());
 
         $this->book($this->screen, 'A', clip: 5); // loop full, part of it on hold
@@ -140,11 +141,32 @@ final class AvailabilityResolverTest extends KernelTestCase
         }
         self::assertSame(AvailabilityStatus::Occupied, $this->resolve($this->screen)->status());
         self::assertSame(120, $this->resolve($this->screen)->sides[0]->usedSeconds());
+        self::assertSame(100, $this->resolve($this->screen)->sides[0]->loadPercent());
 
         // after the 25th the rest of September is free again
         $this->clock->modify('2026-09-26 09:00');
         self::assertSame(AvailabilityStatus::Free, $this->resolve($this->screen)->status());
         self::assertSame(0, $this->resolve($this->screen)->sides[0]->usedSeconds());
+    }
+
+    public function testEachSideUsesItsOwnType(): void
+    {
+        // a static structure with a video screen on side B
+        $em = static::getContainer()->get(EntityManagerInterface::class);
+        $this->billboard->getSides()->last()->setProductType($em->getRepository(ProductType::class)->findOneBy(['name' => 'Видеоэкран']));
+        $em->flush();
+
+        $this->pay($this->book($this->billboard, 'A'));
+        $this->pay($this->book($this->billboard, 'B', clip: 15));
+
+        [$sideA, $sideB] = $this->resolve($this->billboard)->sides;
+        self::assertFalse($sideA->airtime);
+        self::assertSame(AvailabilityStatus::Occupied, $sideA->status());
+        self::assertTrue($sideB->airtime);
+        self::assertSame(15, $sideB->usedSeconds());
+        self::assertSame(12, $sideB->loadPercent());
+        self::assertSame(AvailabilityStatus::Free, $sideB->status()); // the rest of the loop is still for sale
+        self::assertSame(AvailabilityStatus::Free, $this->resolve($this->billboard)->status());
     }
 
     public function testDaysBeforeTodayDoNotCount(): void

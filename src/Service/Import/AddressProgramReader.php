@@ -11,7 +11,7 @@ use OpenSpout\Reader\XLSX\Sheet;
  * A sheet holds several tables (digital billboards, billboards and city formats, regional billboards), each with its
  * own header row starting with "Номер в схеме" / "Номер"; columns are found by header text, so their order may differ.
  * Title rows above the tables ("Улан-Удэ", "Районы Республики ...") tell the city from the regional districts.
- * Photo and map links are not read.
+ * The photo ("Фото") and map ("Карта") links are kept for side photos and coordinates.
  */
 class AddressProgramReader
 {
@@ -28,6 +28,8 @@ class AddressProgramReader
         'месяц' => 'price',
         'стоимость размещения' => 'price',
         'бронь' => 'booking',
+        'карта' => 'map',
+        'фото' => 'photo',
     ];
 
     /**
@@ -101,6 +103,8 @@ class AddressProgramReader
                     sizeText: $get('size'),
                     price: $get('price'),
                     bookingNote: $get('booking'),
+                    mapUrl: $get('map'),
+                    photoUrl: $get('photo'),
                 );
             }
 

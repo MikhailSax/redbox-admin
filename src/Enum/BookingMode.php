@@ -19,6 +19,19 @@ enum BookingMode: string
     /** Allowed clip lengths, seconds */
     public const CLIP_DURATIONS = [5, 10, 15];
 
+    /**
+     * Share of the loop taken by $usedSeconds, 0..100. Rounded down, so 100% means "not a second left".
+     */
+    public static function loadPercent(int $usedSeconds): int
+    {
+        return (int) floor(min(self::LOOP_SECONDS, max(0, $usedSeconds)) * 100 / self::LOOP_SECONDS);
+    }
+
+    public function isAirtime(): bool
+    {
+        return self::Airtime === $this;
+    }
+
     public function label(): string
     {
         return match ($this) {

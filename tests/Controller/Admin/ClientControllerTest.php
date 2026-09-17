@@ -6,6 +6,7 @@ use App\Entity\ClientDocument;
 use App\Entity\PhotoReport;
 use App\Entity\User;
 use App\Enum\ClientDocumentType;
+use App\Enum\ClientType;
 use App\Security\ClientFileVoter;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
@@ -27,8 +28,15 @@ final class ClientControllerTest extends AdminWebTestCase
         $crawler = $this->client->request('GET', '/admin/clients/new');
         self::assertResponseIsSuccessful();
 
+        self::assertSame('individual', $crawler->filter('input[name="client_form[clientType]"]:checked')->attr('value')); // a private person by default
+
         [$values, $uri] = $this->formValues($crawler, 'Добавить клиента');
+        $values['client_form']['clientType'] = 'legal';
         $values['client_form']['company'] = 'ООО «Ромашка»';
+        $values['client_form']['inn'] = '7701 234 567';
+        $values['client_form']['kpp'] = '770101001';
+        $values['client_form']['ogrn'] = '1027700000001';
+        $values['client_form']['legalAddress'] = 'г. Улан-Удэ, ул. Ленина, 1';
         $values['client_form']['name'] = 'Иван Петров';
         $values['client_form']['email'] = 'Ivan@Romashka.ru';
         $values['client_form']['phone'] = '+7 900 111-22-33';
@@ -40,6 +48,8 @@ final class ClientControllerTest extends AdminWebTestCase
         self::assertTrue($client->isClient());
         self::assertSame(['ROLE_CLIENT', 'ROLE_USER'], $client->getRoles());
         self::assertSame('ООО «Ромашка» (Иван Петров)', $client->getDisplayName());
+        self::assertSame(ClientType::Legal, $client->getClientType());
+        self::assertSame(['7701234567', '770101001', '1027700000001', 'г. Улан-Удэ, ул. Ленина, 1'], [$client->getInn(), $client->getKpp(), $client->getOgrn(), $client->getLegalAddress()]);
         self::assertTrue(static::getContainer()->get(UserPasswordHasherInterface::class)->isPasswordValid($client, 'client-password'));
 
         // listed with clients, not with staff
@@ -49,6 +59,67 @@ final class ClientControllerTest extends AdminWebTestCase
         self::assertSelectorTextNotContains('main', 'ivan@romashka.ru');
         $this->client->request('GET', '/admin/users/'.$client->getId().'/edit');
         self::assertResponseStatusCodeSame(404);
+    }
+
+    public function testRequisitesDependOnTheClientType(): void
+    {
+        $crawler = $this->client->request('GET', '/admin/clients/new');
+        // the requisites and the КПП show only for their types (assets/admin/dependent-fields.js)
+        self::assertSame('entrepreneur legal', $crawler->filter('fieldset[data-visible-when="client_form_clientType"]')->attr('data-visible-values'));
+        self::assertCount(1, $crawler->filter('[data-visible-values="legal"] input[name="client_form[kpp]"]'));
+
+        [$values, $uri] = $this->formValues($crawler, 'Добавить клиента');
+        $values['client_form']['name'] = 'Пётр Иванов';
+        $values['client_form']['email'] = 'ip@example.com';
+
+        // a company needs its name and a 10-digit ИНН
+        $values['client_form']['clientType'] = 'legal';
+        $this->submit($uri, $values);
+        self::assertResponseStatusCodeSame(422);
+        self::assertSelectorTextContains('main', 'Укажите название организации');
+        self::assertSelectorTextContains('main', 'Укажите ИНН');
+
+        // an entrepreneur: 12 digits of ИНН, 15 of ОГРНИП
+        $values['client_form']['clientType'] = 'entrepreneur';
+        $values['client_form']['company'] = 'ИП Иванов П. С.';
+        $values['client_form']['inn'] = '7701234567';
+        $values['client_form']['ogrn'] = '1027700000001';
+        $values['client_form']['kpp'] = '770101001';
+        $this->submit($uri, $values);
+        self::assertResponseStatusCodeSame(422);
+        self::assertSelectorTextContains('main', 'ИНН ИП — 12 цифр');
+        self::assertSelectorTextContains('main', 'ОГРНИП — 15 цифр');
+
+        $values['client_form']['inn'] = '380102345678';
+        $values['client_form']['ogrn'] = '304380100000012';
+        $this->submit($uri, $values);
+        self::assertResponseRedirects();
+        $client = $this->em->getRepository(User::class)->findOneBy(['email' => 'ip@example.com']);
+        self::assertSame(ClientType::Entrepreneur, $client->getClientType());
+        self::assertSame('ИП Иванов П. С.', $client->getClientTitle());
+        self::assertNull($client->getKpp()); // an entrepreneur has no КПП: the hidden field is dropped
+
+        // switched to a private person: the requisites go
+        $crawler = $this->client->request('GET', '/admin/clients/'.$client->getId());
+        [$values, $uri] = $this->formValues($crawler, 'Сохранить');
+        $values['client_form']['clientType'] = 'individual';
+        $this->submit($uri, $values);
+        self::assertResponseRedirects();
+        $this->em->clear();
+        $client = $this->em->find(User::class, $client->getId());
+        self::assertSame([ClientType::Individual, null, null, null], [$client->getClientType(), $client->getCompany(), $client->getInn(), $client->getOgrn()]);
+        self::assertSame('Пётр Иванов', $client->getClientTitle());
+
+        // the list filters by type and finds by ИНН
+        $this->createUser('company@example.com', User::ROLE_CLIENT)->setClientType(ClientType::Legal)->setCompany('ООО «Вектор»')->setInn('0323123456');
+        $this->em->flush();
+        $crawler = $this->client->request('GET', '/admin/clients?type=legal');
+        self::assertCount(1, $crawler->filter('tbody tr'));
+        self::assertSelectorTextContains('tbody', 'ООО «Вектор»');
+        self::assertSelectorTextContains('tbody', 'Юр. лицо · ИНН 0323123456');
+        self::assertSelectorTextContains('main', 'Физ. лицо 1');
+        $this->client->request('GET', '/admin/clients?q=0323123');
+        self::assertSelectorTextContains('tbody', 'ООО «Вектор»');
     }
 
     public function testClientWithoutPasswordGetsARandomOne(): void
@@ -219,7 +290,7 @@ final class ClientControllerTest extends AdminWebTestCase
 
     private function createClientAccount(string $email, string $password = 'client-password'): User
     {
-        $client = (new User())->setEmail($email)->setName('Клиент')->setRole(User::ROLE_CLIENT);
+        $client = (new User())->setEmail($email)->setName('Клиент')->setRole(User::ROLE_CLIENT)->setEmailVerifiedAt(new \DateTimeImmutable());
         $client->setPassword(static::getContainer()->get(UserPasswordHasherInterface::class)->hashPassword($client, $password));
         $this->em->persist($client);
         $this->em->flush();

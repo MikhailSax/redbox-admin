@@ -3,8 +3,10 @@
 namespace App\Form;
 
 use App\Entity\User;
+use App\Enum\ClientType;
 use Symfony\Component\Form\AbstractType;
 use Symfony\Component\Form\Extension\Core\Type\EmailType;
+use Symfony\Component\Form\Extension\Core\Type\EnumType;
 use Symfony\Component\Form\Extension\Core\Type\PasswordType;
 use Symfony\Component\Form\Extension\Core\Type\RepeatedType;
 use Symfony\Component\Form\Extension\Core\Type\TelType;
@@ -21,13 +23,41 @@ class ClientFormType extends AbstractType
     public function buildForm(FormBuilderInterface $builder, array $options): void
     {
         $builder
+            // The template shows the requisites of the chosen type (data-visible-values, assets/admin/dependent-fields.js);
+            // the controller drops those of other types before saving
+            ->add('clientType', EnumType::class, [
+                'label' => 'Клиент',
+                'class' => ClientType::class,
+                'choice_label' => static fn (ClientType $type): string => $type->label(),
+                'expanded' => true,
+                'placeholder' => false,
+            ])
             ->add('company', TextType::class, [
-                'label' => 'Организация',
+                'label' => 'Название',
                 'required' => false,
-                'attr' => ['placeholder' => 'ООО «Ромашка»'],
+                'attr' => ['placeholder' => 'ООО «Ромашка» или ИП Иванов И. И.'],
+            ])
+            ->add('inn', TextType::class, [
+                'label' => 'ИНН',
+                'required' => false,
+                'attr' => ['inputmode' => 'numeric', 'maxlength' => 14, 'placeholder' => '10 цифр у организации, 12 у ИП'],
+            ])
+            ->add('kpp', TextType::class, [
+                'label' => 'КПП',
+                'required' => false,
+                'attr' => ['inputmode' => 'numeric', 'maxlength' => 11],
+            ])
+            ->add('ogrn', TextType::class, [
+                'label' => 'ОГРН / ОГРНИП',
+                'required' => false,
+                'attr' => ['inputmode' => 'numeric', 'maxlength' => 17],
+            ])
+            ->add('legalAddress', TextType::class, [
+                'label' => 'Юридический адрес',
+                'required' => false,
             ])
             ->add('name', TextType::class, [
-                'label' => 'Контактное лицо',
+                'label' => 'Контактное лицо / ФИО',
                 'attr' => ['placeholder' => 'Иван Петров'],
             ])
             ->add('email', EmailType::class, [

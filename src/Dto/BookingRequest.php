@@ -13,6 +13,8 @@ use Symfony\Component\Validator\Context\ExecutionContextInterface;
  *
  * Whole sides are booked by month ($startMonth + $months), airtime by days ($startDate … $endDate).
  * Airtime may also be booked by month (media plans): then $startDate stays empty.
+ * The mode is the chosen side's: a structure may have a screen on one side and a static poster on another,
+ * so the form sends both sets of fields and only the side's set counts.
  */
 final class BookingRequest
 {
@@ -48,12 +50,12 @@ final class BookingRequest
 
     public function isAirtime(): bool
     {
-        return BookingMode::Airtime === $this->side?->getProduct()?->getProductType()?->getBookingMode();
+        return $this->side?->isAirtime() ?? false;
     }
 
     public function isByDays(): bool
     {
-        return null !== $this->startDate;
+        return $this->isAirtime() && null !== $this->startDate;
     }
 
     /**
@@ -79,7 +81,7 @@ final class BookingRequest
             $context->buildViolation('Выберите длину ролика')->atPath('clipDuration')->addViolation();
         }
 
-        if ($this->isAirtime() && null === $this->startMonth) {
+        if ($this->isAirtime() && ($this->isByDays() || null === $this->startMonth)) {
             if (null === $this->startDate) {
                 $context->buildViolation('Укажите первый день')->atPath('startDate')->addViolation();
             } elseif (null === $this->endDate) {

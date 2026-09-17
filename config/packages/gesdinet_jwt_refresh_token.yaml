@@ -1,0 +1,13 @@
+gesdinet_jwt_refresh_token:
+    refresh_token_class: App\Entity\RefreshToken
+    # 30 days, prolonged on every refresh: a client who visits at least once a month stays signed in
+    ttl: 2592000
+    ttl_update: true
+    # Not single use: the website may refresh from several requests at once, and a spent token would sign the client out
+    single_use: false
+    # One token per device; the oldest session is revoked beyond this
+    max_tokens_per_user: 10
+    # A copy of the database can't be used to sign in
+    hash_tokens:
+        enabled: true
+        accept_stored_in_the_clear: false

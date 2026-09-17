@@ -10,6 +10,7 @@ use Doctrine\Common\Collections\Collection;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 use Symfony\Component\Validator\Constraints as Assert;
+use Symfony\Component\Validator\Context\ExecutionContextInterface;
 
 /**
  * Commercial proposal for a client: a selection of structure sides for one period, with prices.
@@ -31,8 +32,8 @@ class MediaPlan
     #[Assert\Length(max: 255)]
     private ?string $title = null;
 
+    /** The client as printed in the PDF; taken from $client when left empty (see validateClient()) */
     #[ORM\Column(length: 255)]
-    #[Assert\NotBlank(message: 'Укажите клиента', normalizer: 'trim')]
     #[Assert\Length(max: 255)]
     private ?string $clientName = null;
 
@@ -87,10 +88,51 @@ class MediaPlan
     #[ORM\OrderBy(['position' => 'ASC', 'id' => 'ASC'])]
     private Collection $serviceLines;
 
+    /** The client account the plan is for: needed to schedule its payments. $clientName stays the name printed in the PDF */
+    #[ORM\ManyToOne]
+    #[ORM\JoinColumn(onDelete: 'SET NULL')]
+    private ?User $client = null;
+
+    /**
+     * Payment schedule of the plan (PaymentScheduler); payments stay with the client when the plan is deleted.
+     *
+     * @var Collection<int, Payment>
+     */
+    #[ORM\OneToMany(targetEntity: Payment::class, mappedBy: 'mediaPlan')]
+    #[ORM\OrderBy(['dueDate' => 'ASC', 'id' => 'ASC'])]
+    private Collection $payments;
+
     public function __construct()
     {
         $this->items = new ArrayCollection();
         $this->serviceLines = new ArrayCollection();
+        $this->payments = new ArrayCollection();
+    }
+
+    public function getClient(): ?User
+    {
+        return $this->client;
+    }
+
+    public function setClient(?User $client): static
+    {
+        $this->client = $client;
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, Payment>
+     */
+    public function getPayments(): Collection
+    {
+        return $this->payments;
+    }
+
+    /** Sum of the scheduled payments */
+    public function getScheduledTotal(): float
+    {
+        return array_sum($this->payments->map(static fn (Payment $payment) => (float) $payment->getAmount())->toArray());
     }
 
     public function getId(): ?int
@@ -117,9 +159,27 @@ class MediaPlan
 
     public function setClientName(?string $clientName): static
     {
-        $this->clientName = $clientName;
+        $this->clientName = null !== $clientName && '' !== trim($clientName) ? trim($clientName) : null;
 
         return $this;
+    }
+
+    #[Assert\Callback]
+    public function validateClient(ExecutionContextInterface $context): void
+    {
+        if (null === $this->clientName && null === $this->client) {
+            $context->buildViolation('Укажите клиента: выберите из списка или впишите название')->atPath('clientName')->addViolation();
+        }
+        if (null !== $this->client && !$this->client->isEmailVerified()) {
+            $context->buildViolation(User::UNVERIFIED_MESSAGE)->atPath('client')->addViolation();
+        }
+    }
+
+    /** An empty "client in the PDF" takes the chosen client's name */
+    #[ORM\PreFlush]
+    public function fillClientName(): void
+    {
+        $this->clientName ??= $this->client?->getClientTitle();
     }
 
     public function getClientContact(): ?string

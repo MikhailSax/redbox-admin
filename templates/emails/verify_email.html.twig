@@ -1,0 +1,13 @@
+{% extends 'emails/_layout.html.twig' %}
+
+{% set button = 'Подтвердить почту' %}
+
+{% block title %}Подтвердите почту{% endblock %}
+
+{% block body %}
+    <p style="margin:0 0 14px;font-size:15px;line-height:1.55">Спасибо за регистрацию в личном кабинете REDBOX. Подтвердите, что это ваша почта: после этого менеджер сможет выложить в кабинет медиаплан, счета, договор и фотоотчёты.</p>
+{% endblock %}
+
+{% block note %}
+    <p style="margin:24px 0 0;font-size:13px;line-height:1.55;color:#6b6866">Ссылка действует {{ hours }} ч. Если вы не регистрировались на сайте REDBOX, просто удалите письмо — без подтверждения аккаунт ничего не получит.</p>
+{% endblock %}

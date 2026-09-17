@@ -4,6 +4,7 @@ namespace App\Repository;
 
 use App\Dto\ProductListQuery;
 use App\Entity\Product;
+use App\Entity\ProductSide;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\ORM\QueryBuilder;
 use Doctrine\Persistence\ManagerRegistry;
@@ -40,7 +41,17 @@ class ProductRepository extends ServiceEntityRepository
         }
 
         if (null !== $query->type) {
-            $qb->andWhere('IDENTITY(p.productType) = :type')->setParameter('type', $query->type);
+            // the structure's type or the own type of one of its sides (a screen on one side of a static structure)
+            $qb->andWhere(\sprintf('IDENTITY(p.productType) = :type OR EXISTS (SELECT 1 FROM %s ts WHERE ts.product = p AND IDENTITY(ts.productType) = :type)', ProductSide::class))
+                ->setParameter('type', $query->type);
+        }
+
+        if (null !== $query->district) {
+            $qb->andWhere('IDENTITY(p.district) = :district')->setParameter('district', $query->district);
+        }
+
+        if (null !== $query->size && '' !== $query->size) {
+            $qb->andWhere('p.size = :size')->setParameter('size', $query->size);
         }
 
         // "own" = Redbox's structures, a number = structures of that partner

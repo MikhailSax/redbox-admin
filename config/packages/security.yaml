@@ -16,6 +16,32 @@ security:
             # Ensure dev tools and static assets are always allowed
             pattern: ^/(_profiler|_wdt|assets|build)/
             security: false
+        # JSON API of the website: public catalogue plus the client's personal account.
+        # No session: a short-lived JWT in "Authorization: Bearer", renewed with a refresh token.
+        api:
+            pattern: ^/api/
+            stateless: true
+            provider: app_user_provider
+            # staff work in the CRM, the website's account is for clients
+            user_checker: App\Security\ClientOnlyUserChecker
+            entry_point: jwt
+            json_login:
+                check_path: api_auth_login
+                username_path: email
+                password_path: password
+                success_handler: lexik_jwt_authentication.handler.authentication_success
+                failure_handler: lexik_jwt_authentication.handler.authentication_failure
+            jwt: ~
+            refresh_jwt:
+                check_path: api_auth_refresh
+                # POST /api/v1/auth/logout {"refresh_token": …} deletes the refresh token
+                invalidate_token_on_logout: true
+            logout:
+                path: api_auth_logout
+            login_throttling:
+                max_attempts: 5
+                interval: '15 minutes'
+
         main:
             lazy: true
             provider: app_user_provider
@@ -52,6 +78,8 @@ security:
     # Note: Only the *first* matching rule is applied
     access_control:
         - { path: ^/login, roles: PUBLIC_ACCESS }
+        - { path: ^/api/v1/me, roles: ROLE_CLIENT }
+        - { path: ^/api/, roles: PUBLIC_ACCESS }
         - { path: ^/admin/users, roles: ROLE_ADMIN }
         - { path: ^/admin, roles: ROLE_SUPER_MANAGER }
 

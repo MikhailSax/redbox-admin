@@ -1,0 +1,147 @@
+{% extends 'admin/layout.html.twig' %}
+{% import 'admin/_icons.html.twig' as ui %}
+
+{% block title %}Заявка №{{ lead.id }} — {{ parent() }}{% endblock %}
+
+{% block content %}
+    {% set token = csrf_token('lead-' ~ lead.id) %}
+    {% set tones = {
+        accent: 'bg-accent-soft text-accent-strong ring-accent/20',
+        warning: 'bg-warning-soft text-fg-warning ring-warning-subtle',
+        success: 'bg-success-soft text-fg-success-strong ring-success-subtle',
+        danger: 'bg-danger-soft text-fg-danger-strong ring-danger-subtle',
+    } %}
+
+    <nav class="mb-2 text-sm">
+        <a href="{{ path('admin_lead_index') }}" class="text-body hover:text-heading">Заявки</a>
+        <span class="mx-1 text-body-subtle">/</span>
+        <span class="text-heading">№{{ lead.id }}</span>
+    </nav>
+
+    <div class="page-header">
+        <div class="min-w-0">
+            <div class="flex flex-wrap items-center gap-3">
+                <h1 class="page-title">Заявка №{{ lead.id }}</h1>
+                <span class="inline-flex h-7 items-center rounded-md px-2 text-sm font-medium ring-1 ring-inset {{ tones[lead.status.tone] }}">{{ lead.status.label }}</span>
+            </div>
+            <p class="page-subtitle">
+                {{ lead.createdAt|date('d.m.Y H:i') }} · {{ lead.fromSite ? 'с сайта' : 'вручную' }}
+                {%- if lead.client %} · <a href="{{ path('admin_client_show', {id: lead.client.id}) }}" class="font-medium text-heading hover:underline">личный кабинет</a>{% endif %}
+            </p>
+        </div>
+        <div class="flex flex-wrap gap-2">
+            {% if lead.mediaPlan %}
+                <a href="{{ path('admin_media_plan_show', {id: lead.mediaPlan.id}) }}" class="btn btn-primary">{{ ui.icon('document', 'size-4') }} Медиаплан №{{ lead.mediaPlan.id }}</a>
+            {% else %}
+                <form method="post" action="{{ path('admin_lead_media_plan', {id: lead.id}) }}"
+                      data-confirm="Из заявки будет создан медиаплан с её конструкциями. Цены и период потом можно поправить."
+                      data-confirm-title="Создать медиаплан?" data-confirm-button="Создать" data-confirm-variant="primary">
+                    <input type="hidden" name="_token" value="{{ token }}">
+                    <button type="submit" class="btn btn-primary">{{ ui.icon('document', 'size-4') }} Сделать медиаплан</button>
+                </form>
+            {% endif %}
+            {{ include('admin/_delete_form.html.twig', {
+                action: path('admin_lead_delete', {id: lead.id}),
+                token_id: 'delete-lead-' ~ lead.id,
+                title: 'Удалить заявку?',
+                confirm: 'Заявка №' ~ lead.id ~ ' будет удалена. Созданный из неё медиаплан останется.',
+                label: 'Удалить',
+                button_class: 'btn-danger-outline',
+            }) }}
+        </div>
+    </div>
+
+    <div class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
+        {# Requested structures #}
+        <div class="table-card">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th scope="col" class="px-4 py-2.5">Конструкция</th>
+                        <th scope="col" class="px-4 py-2.5">Период</th>
+                        <th scope="col" class="px-4 py-2.5 text-right">Цена сайта</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in lead.items %}
+                        <tr>
+                            <th scope="row" class="px-4 py-3 font-normal">
+                                {% if item.side and item.product %}
+                                    <a href="{{ path('admin_product_edit', {id: item.product.id}) }}" class="font-medium text-heading hover:underline">{{ item.productTitle }}</a>
+                                {% else %}
+                                    <span class="font-medium text-heading">{{ item.productTitle }}</span>
+                                    <span class="ms-1 text-xs text-body-subtle">(конструкции больше нет)</span>
+                                {% endif %}
+                                <div class="text-xs text-body-subtle">
+                                    Сторона {{ item.sideName }}{% if item.clipDuration %} · ролик {{ item.clipDuration }} сек{% endif %}
+                                </div>
+                            </th>
+                            <td class="px-4 py-3">
+                                {{ period_label(item.startDate, item.endDate) }}
+                                <div class="text-xs text-body-subtle">{{ item.days }} дн.</div>
+                            </td>
+                            <td class="px-4 py-3 text-right tabular-nums whitespace-nowrap">
+                                {% if item.monthlyPrice %}
+                                    {{ item.monthlyPrice|number_format(0, ',', ' ') }}&nbsp;₽<span class="text-xs text-body-subtle"> / мес.</span>
+                                    <div class="text-xs text-body-subtle">≈ {{ item.total|number_format(0, ',', ' ') }} ₽ за период</div>
+                                {% else %}—{% endif %}
+                            </td>
+                        </tr>
+                    {% else %}
+                        <tr><td colspan="3" class="px-4 py-10 text-center text-sm text-body">В заявке нет позиций.</td></tr>
+                    {% endfor %}
+                </tbody>
+                {% if lead.estimate > 0 %}
+                    <tfoot>
+                        <tr class="border-t border-default">
+                            <td colspan="2" class="px-4 py-3 text-right font-medium text-heading">Ориентировочно за период</td>
+                            <td class="px-4 py-3 text-right text-lg font-semibold text-heading tabular-nums whitespace-nowrap">{{ lead.estimate|number_format(0, ',', ' ') }}&nbsp;₽</td>
+                        </tr>
+                    </tfoot>
+                {% endif %}
+            </table>
+        </div>
+
+        <div class="grid content-start gap-6">
+            {# Contacts #}
+            <section class="card !p-5">
+                <h2 class="mb-4 text-base font-semibold text-heading">Клиент</h2>
+                <dl class="space-y-3 text-sm">
+                    <div><dt class="text-xs text-body-subtle">Контактное лицо</dt><dd class="font-medium text-heading">{{ lead.contactName }}</dd></div>
+                    <div><dt class="text-xs text-body-subtle">Телефон</dt><dd><a href="tel:{{ lead.phone }}" class="font-medium text-heading hover:underline">{{ lead.phone }}</a></dd></div>
+                    {% if lead.email %}<div><dt class="text-xs text-body-subtle">Email</dt><dd><a href="mailto:{{ lead.email }}" class="font-medium text-heading hover:underline">{{ lead.email }}</a></dd></div>{% endif %}
+                    {% if lead.companyName %}<div><dt class="text-xs text-body-subtle">Организация</dt><dd class="text-heading">{{ lead.companyName }}</dd></div>{% endif %}
+                    {% if lead.inn %}<div><dt class="text-xs text-body-subtle">ИНН / КПП</dt><dd class="text-heading tabular-nums">{{ lead.inn }}{% if lead.kpp %} / {{ lead.kpp }}{% endif %}</dd></div>{% endif %}
+                    {% if lead.paymentLabel %}<div><dt class="text-xs text-body-subtle">Оплата</dt><dd class="text-heading">{{ lead.paymentLabel }}</dd></div>{% endif %}
+                    {% if lead.comment %}<div><dt class="text-xs text-body-subtle">Комментарий клиента</dt><dd class="whitespace-pre-line text-heading">{{ lead.comment }}</dd></div>{% endif %}
+                </dl>
+            </section>
+
+            {# Work on the request #}
+            <form method="post" action="{{ path('admin_lead_update', {id: lead.id}) }}" class="card !p-5">
+                <input type="hidden" name="_token" value="{{ token }}">
+                <h2 class="mb-4 text-base font-semibold text-heading">Работа по заявке</h2>
+
+                <label class="mb-1.5 block text-sm font-medium text-heading" for="lead-status">Статус</label>
+                <select id="lead-status" name="status" class="input mb-4">
+                    {% for status in statuses %}
+                        <option value="{{ status.value }}" {{ status == lead.status ? 'selected' }}>{{ status.label }}</option>
+                    {% endfor %}
+                </select>
+
+                <label class="mb-1.5 block text-sm font-medium text-heading" for="lead-assignee">Ответственный</label>
+                <select id="lead-assignee" name="assignee" class="input mb-4">
+                    <option value="">Не назначен</option>
+                    {% for manager in managers %}
+                        <option value="{{ manager.id }}" {{ lead.assignee and lead.assignee.id == manager.id ? 'selected' }}>{{ manager.name }}</option>
+                    {% endfor %}
+                </select>
+
+                <label class="mb-1.5 block text-sm font-medium text-heading" for="lead-note">Заметка менеджера</label>
+                <textarea id="lead-note" name="note" rows="3" class="input mb-4" placeholder="Договорились созвониться в среду…">{{ lead.managerNote }}</textarea>
+
+                <button type="submit" class="btn btn-primary w-full">Сохранить</button>
+            </form>
+        </div>
+    </div>
+{% endblock %}

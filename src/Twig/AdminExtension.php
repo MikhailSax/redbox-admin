@@ -5,6 +5,8 @@ namespace App\Twig;
 use App\Entity\Product;
 use App\Entity\Promotion;
 use App\Repository\BookingRepository;
+use App\Repository\LeadRepository;
+use App\Repository\PaymentRepository;
 use App\Service\PromotionResolver;
 use Symfony\Component\Clock\ClockInterface;
 use Twig\Attribute\AsTwigFilter;
@@ -17,23 +19,40 @@ class AdminExtension
 {
     public function __construct(
         private readonly BookingRepository $bookings,
+        private readonly LeadRepository $leads,
+        private readonly PaymentRepository $payments,
         private readonly ClockInterface $clock,
         private readonly PromotionResolver $promotions,
     ) {
     }
 
     /**
-     * Badges of the sidebar: holds waiting for payment.
+     * Badges of the sidebar: new requests from the website, holds waiting for payment, overdue client payments.
      *
-     * @return array{holds: int}
+     * @return array{leads: int, holds: int, overduePayments: int}
      */
     #[AsTwigFunction('admin_counters')]
     public function counters(): array
     {
         return [
-
+            'leads' => $this->leads->countNew(),
             'holds' => $this->bookings->countLiveHolds($this->clock->now()),
+            'overduePayments' => $this->payments->countOverdue($this->clock->now()),
         ];
+    }
+
+    /**
+     * "45 000 ₽", "45 000,50 ₽": kopecks only when there are some.
+     */
+    #[AsTwigFilter('money')]
+    public static function money(string|float|int|null $amount): string
+    {
+        if (null === $amount || '' === $amount) {
+            return '—';
+        }
+        $amount = round((float) $amount, 2);
+
+        return number_format($amount, fmod($amount, 1.0) !== 0.0 ? 2 : 0, ',', "\u{00A0}")."\u{00A0}₽";
     }
 
     /**

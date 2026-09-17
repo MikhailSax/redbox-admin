@@ -13,7 +13,8 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 /**
  * Imports structures, sides, sizes and prices from the address programme spreadsheet:
  *   bin/console app:import:address-program "Адресная программа.xlsx" --dry-run
- * Photo and map links from the file are not imported.
+ * Coordinates come from the map links (short Yandex links need access to yandex.ru); photos are downloaded
+ * from the photo links and attached to their sides.
  */
 #[AsCommand(name: 'app:import:address-program', description: 'Импорт конструкций из адресной программы (xlsx)')]
 final class ImportAddressProgramCommand
@@ -53,6 +54,14 @@ final class ImportAddressProgramCommand
             ['Конструкции', $report->productsCreated, $report->productsUpdated],
             ['Стороны', $report->sidesCreated, $report->sidesUpdated],
         ]);
+        $io->text(\sprintf('Координаты из ссылок на карту: %d', $report->coordinatesSet));
+        if ([] !== $report->coordinatesFailed) {
+            $io->warning("Не удалось получить координаты по ссылке:\n".implode("\n", $report->coordinatesFailed));
+        }
+        $io->text(\sprintf('Фото сторон %s: %d', $dryRun ? 'к загрузке' : 'загружено', $report->photosAdded));
+        if ([] !== $report->photosFailed) {
+            $io->warning("Не удалось скачать фото:\n".implode("\n", $report->photosFailed));
+        }
         if ([] !== $report->dictionariesCreated) {
             $io->text('Новые записи справочников: '.implode(', ', $report->dictionariesCreated));
         }

@@ -2,6 +2,7 @@
 
 namespace App\Entity;
 
+use App\Enum\BookingMode;
 use App\Repository\ProductSideRepository;
 use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\Common\Collections\Collection;
@@ -37,6 +38,14 @@ class ProductSide
     #[ORM\Column(type: Types::DECIMAL, precision: 12, scale: 2, nullable: true)]
     #[Assert\PositiveOrZero(message: 'Цена не может быть отрицательной')]
     private ?string $price = null;
+
+    /**
+     * Type of this side when it differs from the structure's (a video screen on one side, a static poster on the other);
+     * null = Product::$productType. The type decides how the side is booked.
+     */
+    #[ORM\ManyToOne]
+    #[ORM\JoinColumn(onDelete: 'SET NULL')]
+    private ?ProductType $productType = null;
 
     #[ORM\ManyToOne(inversedBy: 'sides')]
     #[ORM\JoinColumn(nullable: false, onDelete: 'CASCADE')]
@@ -104,6 +113,35 @@ class ProductSide
     public function getEffectivePrice(): ?string
     {
         return $this->price ?? $this->product?->getPrice();
+    }
+
+    public function getProductType(): ?ProductType
+    {
+        return $this->productType;
+    }
+
+    public function setProductType(?ProductType $productType): static
+    {
+        $this->productType = $productType;
+
+        return $this;
+    }
+
+    /** This side's own type, otherwise the structure's */
+    public function getEffectiveProductType(): ?ProductType
+    {
+        return $this->productType ?? $this->product?->getProductType();
+    }
+
+    public function getBookingMode(): BookingMode
+    {
+        return $this->getEffectiveProductType()?->getBookingMode() ?? BookingMode::Side;
+    }
+
+    /** Sold as airtime (clips in the loop) rather than as a whole side per month */
+    public function isAirtime(): bool
+    {
+        return $this->getBookingMode()->isAirtime();
     }
 
     public function getProduct(): ?Product

@@ -27,3 +27,7 @@ yarn-error.log
 /.osp/
 /.claude/
 ###< local tooling ###
+
+###> lexik/jwt-authentication-bundle ###
+/config/jwt/*.pem
+###< lexik/jwt-authentication-bundle ###

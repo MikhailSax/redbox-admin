@@ -3,7 +3,10 @@
 namespace App\Service;
 
 use App\Entity\Booking;
+use App\Entity\Payment;
+use App\Enum\PaymentStatus;
 use App\Repository\BookingRepository;
+use App\Repository\PaymentRepository;
 use App\Service\Availability\AvailabilityResolver;
 use Symfony\Component\Clock\ClockInterface;
 
@@ -17,6 +20,7 @@ class DashboardStats
     public function __construct(
         private readonly AvailabilityResolver $availability,
         private readonly BookingRepository $bookings,
+        private readonly PaymentRepository $payments,
         private readonly ClockInterface $clock,
     ) {
     }
@@ -28,6 +32,7 @@ class DashboardStats
      *     forecast: list<array{month: \DateTimeImmutable, sides: int, free: int, booked: int, occupied: int}>,
      *     holds: list<Booking>,
      *     holdCount: int,
+     *     payments: array{urgent: list<Payment>, overdue: array{count: int, sum: float}, soon: array{count: int, sum: float}},
      * }
      */
     public function overview(): array
@@ -62,6 +67,12 @@ class DashboardStats
             'forecast' => $forecast,
             'holds' => $this->bookings->findLiveHolds($now, 6),
             'holdCount' => $this->bookings->countLiveHolds($now),
+            // what clients must pay now: overdue first, then due within PaymentStatus::SOON_DAYS
+            'payments' => [
+                'urgent' => array_slice([...$this->payments->findOverdue($now, 6), ...$this->payments->findDueSoon($now, 6)], 0, 6),
+                'overdue' => $this->payments->totals(PaymentStatus::Overdue, $now),
+                'soon' => $this->payments->totals(PaymentStatus::DueSoon, $now),
+            ],
         ];
     }
 }

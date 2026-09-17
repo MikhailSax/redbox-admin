@@ -43,10 +43,12 @@ class AvailabilityResolver
         $to = MonthCalendar::lastDay($month);
 
         $sides = $this->entityManager->createQueryBuilder()
-            ->select('p.id AS productId', 's.id AS sideId', 's.name AS sideName', 't.bookingMode AS mode')
+            // a side's own type wins over the structure's (a screen on one side, a static poster on another)
+            ->select('p.id AS productId', 's.id AS sideId', 's.name AS sideName', 'COALESCE(st.bookingMode, t.bookingMode) AS mode')
             ->from(ProductSide::class, 's')
             ->join('s.product', 'p')
             ->join('p.productType', 't')
+            ->leftJoin('s.productType', 'st')
             ->orderBy('s.name', 'ASC');
         if (null !== $productIds) {
             $sides->andWhere('p.id IN (:ids)')->setParameter('ids', $productIds);

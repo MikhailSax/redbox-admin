@@ -1,0 +1,17 @@
+{# Status badge of `payment` as of `now`, with how late / when it is due #}
+{% set status = payment.statusAt(now) %}
+{% set classes = {
+    upcoming: 'bg-neutral-secondary-medium border-default-medium text-body',
+    soon: 'bg-warning-soft border-warning-subtle text-fg-warning',
+    overdue: 'bg-danger-soft border-danger-subtle text-fg-danger-strong',
+    paid: 'bg-success-soft border-success-subtle text-fg-success-strong',
+} %}
+<span class="inline-flex items-center whitespace-nowrap rounded-sm border px-1.5 py-0.5 text-xs font-medium {{ classes[status.value] }}" data-payment-status="{{ status.value }}">{{ status.label }}</span>
+{% if status.value == 'overdue' %}
+    <div class="mt-1 whitespace-nowrap text-xs text-fg-danger-strong">на {{ payment.daysOverdueAt(now) }} дн.</div>
+{% elseif status.value == 'soon' %}
+    {% set days_left = (payment.dueDate.timestamp - now|date('Y-m-d')|date('U')) // 86400 %}
+    <div class="mt-1 whitespace-nowrap text-xs text-body">{{ days_left <= 0 ? 'сегодня' : (days_left == 1 ? 'завтра' : 'через ' ~ days_left ~ ' дн.') }}</div>
+{% elseif status.value == 'paid' %}
+    <div class="mt-1 whitespace-nowrap text-xs text-body">{{ payment.paidAt|date('d.m.Y') }}</div>
+{% endif %}

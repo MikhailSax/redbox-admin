@@ -3,7 +3,11 @@
 namespace App\Form;
 
 use App\Entity\MediaPlan;
+use App\Entity\User;
 use App\Service\MonthCalendar;
+use Doctrine\ORM\EntityRepository;
+use Doctrine\ORM\QueryBuilder;
+use Symfony\Bridge\Doctrine\Form\Type\EntityType;
 use Symfony\Component\Form\AbstractType;
 use Symfony\Component\Form\Extension\Core\Type\CheckboxType;
 use Symfony\Component\Form\Extension\Core\Type\ChoiceType;
@@ -22,9 +26,26 @@ class MediaPlanFormType extends AbstractType
                 'label' => 'Название',
                 'attr' => ['placeholder' => 'Осенняя кампания, центр города'],
             ])
+            ->add('client', EntityType::class, [
+                'label' => 'Клиент из списка',
+                'class' => User::class,
+                'query_builder' => static fn (EntityRepository $r): QueryBuilder => $r->createQueryBuilder('u')
+                    ->andWhere('u.roles LIKE :client')
+                    // accounts from the website get plans and payments once their e-mail is confirmed
+                    ->andWhere('u.emailVerifiedAt IS NOT NULL')
+                    ->setParameter('client', '%'.User::ROLE_CLIENT.'%')
+                    ->orderBy('u.company', 'ASC')
+                    ->addOrderBy('u.name', 'ASC'),
+                'choice_label' => static fn (User $client): string => $client->getClientTitle().($client->getClientType() ? ' · '.$client->getClientType()->label() : ''),
+                'required' => false,
+                'placeholder' => 'Не выбран',
+                'help' => 'Нужен, чтобы составить график платежей. Клиентов с неподтверждённой почтой в списке нет.',
+            ])
             ->add('clientName', TextType::class, [
-                'label' => 'Клиент',
+                'label' => 'Клиент в PDF',
+                'required' => false,
                 'attr' => ['placeholder' => 'ООО «Ромашка»'],
+                'help' => 'Пусто — название клиента из списка.',
             ])
             ->add('clientContact', TextType::class, [
                 'label' => 'Контакт клиента',

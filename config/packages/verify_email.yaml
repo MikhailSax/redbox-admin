@@ -1,0 +1,3 @@
+symfonycasts_verify_email:
+    # The confirmation link in the e-mail works for a day
+    lifetime: 86400

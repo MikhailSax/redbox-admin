@@ -17,7 +17,7 @@
             {{ ui.icon(icon, 'size-5 shrink-0 ' ~ (active ? 'text-white' : 'text-zinc-500 group-hover:text-zinc-300')) }}
             <span class="flex-1 truncate lg:sidebar-collapsed:hidden">{{ label }}</span>
             {% if badge %}
-                <span class="ms-auto rounded-md px-1.5 py-0.5 text-[11px] font-semibold tabular-nums lg:sidebar-collapsed:absolute lg:sidebar-collapsed:-top-0.5 lg:sidebar-collapsed:right-1.5 lg:sidebar-collapsed:px-1 lg:sidebar-collapsed:py-0 lg:sidebar-collapsed:text-[9px] lg:sidebar-collapsed:leading-4 {{ badge_tone == 'warning' ? 'bg-amber-400/15 text-amber-300 lg:sidebar-collapsed:bg-amber-400 lg:sidebar-collapsed:text-zinc-950' : 'bg-white/10 text-zinc-300 lg:sidebar-collapsed:bg-zinc-700 lg:sidebar-collapsed:text-white' }}">{{ badge }}</span>
+                <span class="ms-auto rounded-md px-1.5 py-0.5 text-[11px] font-semibold tabular-nums lg:sidebar-collapsed:absolute lg:sidebar-collapsed:-top-0.5 lg:sidebar-collapsed:right-1.5 lg:sidebar-collapsed:px-1 lg:sidebar-collapsed:py-0 lg:sidebar-collapsed:text-[9px] lg:sidebar-collapsed:leading-4 {{ badge_tone == 'warning' ? 'bg-amber-400/15 text-amber-300 lg:sidebar-collapsed:bg-amber-400 lg:sidebar-collapsed:text-zinc-950' : (badge_tone == 'danger' ? 'bg-red-500/20 text-red-300 lg:sidebar-collapsed:bg-red-500 lg:sidebar-collapsed:text-white' : 'bg-white/10 text-zinc-300 lg:sidebar-collapsed:bg-zinc-700 lg:sidebar-collapsed:text-white') }}">{{ badge }}</span>
             {% endif %}
         </a>
     </li>
@@ -35,7 +35,7 @@
         <img src="{{ asset('images/brand/logo-28.png') }}" srcset="{{ asset('images/brand/logo-28.png') }} 1x, {{ asset('images/brand/logo-56.png') }} 2x, {{ asset('images/brand/logo-180.png') }} 3x"
              alt="" width="28" height="28" class="size-7 shrink-0 rounded-md shadow-[0_0_20px_-2px] shadow-accent/60">
         <span class="text-[15px] font-semibold tracking-tight text-white lg:sidebar-collapsed:hidden">Redbox</span>
-        <span class="rounded bg-white/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-400 lg:sidebar-collapsed:hidden">CRM</span>
+        <span class="rounded bg-white/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-400 lg:sidebar-collapsed:hidden">OOH</span>
     </a>
 
     {# Scrolls when the window is low, without a visible scrollbar #}
@@ -47,7 +47,9 @@
                 {{ _self.nav_item('Конструкции', path('admin_product_index'), 'billboard', (current_route starts with 'admin_product_' and not (current_route starts with 'admin_product_type_')) or current_route == 'admin_booking_product') }}
                 {{ _self.nav_item('Карта', path('admin_map'), 'map', current_route == 'admin_map') }}
                 {{ _self.nav_item('Брони', path('admin_booking_index'), 'calendar', current_route == 'admin_booking_index', counters.holds ?: null, 'warning') }}
+                {{ _self.nav_item('Платежи', path('admin_payment_index'), 'banknotes', current_route starts with 'admin_payment_', counters.overduePayments ?: null, 'danger') }}
                 {{ _self.nav_item('Медиапланы', path('admin_media_plan_index'), 'document', current_route starts with 'admin_media_plan_') }}
+                {{ _self.nav_item('Заявки', path('admin_lead_index'), 'inbox', current_route starts with 'admin_lead_', counters.leads ?: null, 'warning') }}
                 {{ _self.nav_item('Клиенты', path('admin_client_index'), 'client', current_route starts with 'admin_client_') }}
                 {{ _self.nav_item('Акции', path('admin_promotion_index'), 'percent', current_route starts with 'admin_promotion_') }}
                 {{ _self.nav_item('Партнёры', path('admin_partner_index'), 'briefcase', current_route starts with 'admin_partner_') }}

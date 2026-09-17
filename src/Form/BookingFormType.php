@@ -26,7 +26,15 @@ class BookingFormType extends AbstractType
         /** @var Product $product */
         $product = $options['product'];
 
-        $airtime = BookingMode::Airtime === $product->getProductType()?->getBookingMode();
+        // Sides may be booked differently (a screen on one, a static poster on another): then both sets of
+        // period fields are rendered and the page shows the set of the chosen side (data-booking-mode)
+        $airtime = $product->hasAirtimeSides();
+        $whole = $product->hasWholeSides();
+        if (!$airtime && !$whole) { // no sides yet
+            $airtime = (bool) $product->getProductType()?->getBookingMode()->isAirtime();
+            $whole = !$airtime;
+        }
+        $mixed = $airtime && $whole;
 
         $builder
             ->add('side', EntityType::class, [
@@ -36,7 +44,8 @@ class BookingFormType extends AbstractType
                     ->andWhere('s.product = :product')
                     ->setParameter('product', $product)
                     ->orderBy('s.name', 'ASC'),
-                'choice_label' => static fn (ProductSide $side): string => 'Сторона '.$side->getName(),
+                'choice_label' => static fn (ProductSide $side): string => 'Сторона '.$side->getName().($mixed ? ' · '.($side->isAirtime() ? 'эфир' : 'на месяц') : ''),
+                'choice_attr' => static fn (ProductSide $side): array => ['data-booking-mode' => $side->getBookingMode()->value],
                 'placeholder' => $product->getSides()->count() > 1 ? 'Выберите сторону' : false,
             ])
             ->add('clientName', TextType::class, [
@@ -61,15 +70,19 @@ class BookingFormType extends AbstractType
                     'label' => 'С',
                     'widget' => 'single_text',
                     'input' => 'datetime_immutable',
+                    'required' => !$mixed,
                     'attr' => ['min' => $today],
                 ])
                 ->add('endDate', DateType::class, [
                     'label' => 'По (включительно)',
                     'widget' => 'single_text',
                     'input' => 'datetime_immutable',
+                    'required' => !$mixed,
                     'attr' => ['min' => $today],
                 ]);
-        } else {
+        }
+
+        if ($whole) {
             // Whole sides are sold by calendar months
             $months = [];
             foreach (MonthCalendar::range($options['now'], 12) as $month) {
@@ -97,6 +110,8 @@ class BookingFormType extends AbstractType
                     BookingMode::CLIP_DURATIONS,
                 ),
                 'expanded' => true,
+                'required' => !$mixed,
+                'placeholder' => false,
                 'help' => \sprintf('Ролики крутятся в петле %d секунд.', BookingMode::LOOP_SECONDS),
             ]);
         }

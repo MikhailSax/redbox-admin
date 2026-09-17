@@ -4,6 +4,7 @@ namespace App\Service;
 
 use App\Entity\ProductSide;
 use App\Entity\ProductSidePhoto;
+use Symfony\Component\HttpFoundation\File\File;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 
 /**
@@ -25,6 +26,28 @@ class SidePhotoStorage
         $filename = $this->uploader->upload($file, ProductSidePhoto::UPLOAD_FOLDER);
 
         $photo = new ProductSidePhoto($filename, $file->getClientOriginalName());
+        $side->addPhoto($photo);
+
+        return $photo;
+    }
+
+    /**
+     * Copies a file from outside a form (a downloaded photo) into storage and attaches it to the side,
+     * unless the side already has a photo with that original name or the same content.
+     *
+     * @return ProductSidePhoto|null null when the side already has it
+     */
+    public function attachCopy(ProductSide $side, File $file, string $originalName): ?ProductSidePhoto
+    {
+        $hash = md5_file($file->getPathname());
+        foreach ($side->getPhotos() as $existing) {
+            $path = $this->uploader->path(ProductSidePhoto::UPLOAD_FOLDER, $existing->getFilename());
+            if ($existing->getOriginalName() === $originalName || (is_file($path) && md5_file($path) === $hash)) {
+                return null;
+            }
+        }
+
+        $photo = new ProductSidePhoto($this->uploader->copy($file, ProductSidePhoto::UPLOAD_FOLDER, $originalName), $originalName);
         $side->addPhoto($photo);
 
         return $photo;

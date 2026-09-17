@@ -1,0 +1,20 @@
+# Only used when the document root of the domain points at the project folder instead of public/
+# (the default on reg.ru shared hosting). Everything is served through public/, so .env, src/, var/
+# and the rest never reach the browser. When the document root already points at public/, Apache
+# never reads this file. See docs/deploy-reg-ru.md.
+
+<IfModule mod_rewrite.c>
+    Options +SymLinksIfOwnerMatch
+    RewriteEngine On
+
+    # The request is served from public/; public/.htaccess takes it from there
+    RewriteCond %{REQUEST_URI} !^/public/
+    RewriteRule ^(.*)$ public/$1 [L]
+</IfModule>
+
+# Belt and braces for servers without mod_rewrite: nothing outside public/ is readable
+<IfModule mod_authz_core.c>
+    <FilesMatch "^\.|\.(ya?ml|lock|json|md|dist|sh|log|pem|sql|twig)$">
+        Require all denied
+    </FilesMatch>
+</IfModule>

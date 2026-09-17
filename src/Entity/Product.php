@@ -398,6 +398,18 @@ class Product
         return $this;
     }
 
+    /** Some side is sold as airtime (sides may differ: a screen on one, a static poster on another) */
+    public function hasAirtimeSides(): bool
+    {
+        return $this->sides->exists(static fn (int|string $i, ProductSide $side) => $side->isAirtime());
+    }
+
+    /** Some side is booked whole per month */
+    public function hasWholeSides(): bool
+    {
+        return $this->sides->exists(static fn (int|string $i, ProductSide $side) => !$side->isAirtime());
+    }
+
     /**
      * First photo of the first side that has one; used as the list thumbnail.
      */

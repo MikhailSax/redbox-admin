@@ -24,6 +24,17 @@ DirectoryIndex index.php
 
     RewriteEngine On
 
+    # Production (sibiradm.ru): one address for everything — https:// without www.
+    # Both rules only fire for that host, so localhost and the dev machine are untouched.
+    RewriteCond %{HTTP_HOST} ^www\.sibiradm\.ru$ [NC]
+    RewriteRule ^(.*)$ https://sibiradm.ru/$1 [R=301,L]
+
+    # The hosting terminates TLS on its proxy: HTTPS is off here, X-Forwarded-Proto tells the truth
+    RewriteCond %{HTTP_HOST} ^sibiradm\.ru$ [NC]
+    RewriteCond %{HTTPS} !=on
+    RewriteCond %{HTTP:X-Forwarded-Proto} !=https
+    RewriteRule ^(.*)$ https://sibiradm.ru/$1 [R=301,L]
+
     # Determine the RewriteBase automatically and set it as environment variable.
     # If you are using Apache aliases to do mass virtual hosting or installed the
     # project in a subdirectory, the base path will be prepended to allow proper
@@ -67,4 +78,23 @@ DirectoryIndex index.php
         RedirectMatch 307 ^/$ /index.php/
         # RedirectTemp cannot be used instead
     </IfModule>
+</IfModule>
+
+# Nothing but the front controller and the assets lives here, but be explicit about dot-files
+# (.env, .git…) in case the document root is ever pointed at the project folder by mistake.
+<FilesMatch "^\.">
+    Require all denied
+</FilesMatch>
+
+<IfModule mod_headers.c>
+    # The CRM is never framed, and browsers must not guess content types of uploads
+    Header always set X-Frame-Options "SAMEORIGIN"
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+    # Tell browsers to stay on HTTPS for half a year (only sent over HTTPS)
+    Header always set Strict-Transport-Security "max-age=15768000" "expr=%{HTTPS} == 'on' || %{HTTP:X-Forwarded-Proto} == 'https'"
+    # Hashed files of public/build never change: let browsers keep them
+    <FilesMatch "\.(js|css|woff2?|svg|png|jpe?g|webp|ico)$">
+        Header set Cache-Control "public, max-age=31536000, immutable"
+    </FilesMatch>
 </IfModule>

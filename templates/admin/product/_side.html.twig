@@ -18,11 +18,12 @@
 
     {{ form_errors(side_form) }}
 
-    <div class="grid gap-x-6 md:grid-cols-[10rem_12rem_1fr]">
+    <div class="grid gap-x-6 md:grid-cols-[10rem_16rem_12rem]">
         {{ form_row(side_form.name) }}
+        {{ form_row(side_form.productType) }}
         {{ form_row(side_form.price) }}
-        {{ form_row(side_form.description) }}
     </div>
+    {{ form_row(side_form.description) }}
 
     {% if photos is not empty %}
         <div class="relative overflow-x-auto mb-5 rounded-base border border-default">

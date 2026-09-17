@@ -82,7 +82,7 @@ final class ProductControllerTest extends AdminWebTestCase
         $values['product_form']['latitude'] = '55.7539303';
         $values['product_form']['longitude'] = '37.6205606';
         // A third side added on the page via the collection prototype
-        $values['product_form']['sides'][2] = ['name' => 'C', 'description' => 'Со стороны парка'];
+        $values['product_form']['sides'][2] = ['name' => 'C', 'description' => 'Со стороны парка', 'productType' => (string) $this->prismatron->getId()];
 
         $this->submit($uri, $values, [
             'product_form' => ['sides' => [
@@ -113,6 +113,10 @@ final class ProductControllerTest extends AdminWebTestCase
         self::assertSame([0, 1], $sideA->getPhotos()->map(fn (ProductSidePhoto $p) => $p->getPosition())->getValues());
         self::assertCount(0, $sideB->getPhotos());
         self::assertCount(1, $sideC->getPhotos());
+        // side C has its own type, the others follow the structure
+        self::assertNull($sideA->getProductType());
+        self::assertSame('Статика', $sideA->getEffectiveProductType()->getName());
+        self::assertSame('Призматрон', $sideC->getEffectiveProductType()->getName());
         foreach ($sideA->getPhotos() as $photo) {
             self::assertFileExists($this->photosDir.'/'.$photo->getFilename());
         }

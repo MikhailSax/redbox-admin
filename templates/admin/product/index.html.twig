@@ -140,8 +140,8 @@
                                         {% for side in item.sides %}
                                             {% set side_status = side.status %}
                                             <span class="inline-flex h-6 min-w-6 items-center justify-center rounded-md border px-1.5 text-xs font-medium {{ tones[side_status.value] }}"
-                                                  title="Сторона {{ side.sideName }}: {{ side_status.label|lower }}{{ side.airtime ? ', эфир ' ~ side.usedSeconds ~ '/120 сек' : '' }}">
-                                                {{ side.sideName }}{% if side.airtime %}<span class="ms-1 opacity-70">{{ side.usedSeconds }}″</span>{% endif %}
+                                                  title="Сторона {{ side.sideName }}: {{ side_status.label|lower }}{{ side.airtime ? ', эфир загружен на ' ~ side.loadPercent ~ '% (' ~ side.usedSeconds ~ '/120 сек)' : '' }}">
+                                                {{ side.sideName }}{% if side.airtime %}<span class="ms-1 opacity-70 tabular-nums">{{ side.loadPercent }}%</span>{% endif %}
                                             </span>
                                         {% else %}
                                             <span class="text-body-subtle">—</span>

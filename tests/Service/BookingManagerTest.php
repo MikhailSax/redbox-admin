@@ -239,6 +239,27 @@ final class BookingManagerTest extends KernelTestCase
         self::assertInstanceOf(Booking::class, $this->bookDays($this->screen, '2026-09-26', '2026-09-30', 15));
     }
 
+    public function testSidesOfOneStructureAreBookedByTheirOwnType(): void
+    {
+        // a static structure with a video screen on side B
+        $this->billboardB->setProductType($this->em->getRepository(ProductType::class)->findOneBy(['name' => 'Видеоэкран']));
+        $this->em->flush();
+        self::assertFalse($this->billboardA->isAirtime());
+        self::assertTrue($this->billboardB->isAirtime());
+
+        // side B sells clips: clients share its loop instead of taking the whole side
+        self::assertSame(15, $this->book($this->billboardB, '2026-09', clip: 15, client: 'Кафе')->getClipDuration());
+        self::assertSame(5, $this->bookDays($this->billboardB, '2026-09-12', '2026-09-18', 5, client: 'Салон')->getClipDuration());
+        // without a clip length a screen side can't be booked (it would take the whole loop)
+        $this->assertUnavailable(fn () => $this->book($this->billboardB, '2026-10', client: 'Без ролика'), 'выберите длину ролика');
+
+        // side A is still booked whole for the month, a clip length is ignored
+        $wholeSide = $this->book($this->billboardA, '2026-09', clip: 15);
+        self::assertNull($wholeSide->getClipDuration());
+        self::assertSame('2026-09-30', $wholeSide->getEndDate()->format('Y-m-d'));
+        $this->assertUnavailable(fn () => $this->book($this->billboardA, '2026-09', client: 'Другой'), 'Сторона A уже забронирована');
+    }
+
     private function bookDays(ProductSide $side, string $from, string $to, int $clip, string $client = 'ООО Ромашка'): Booking
     {
         $request = new BookingRequest();

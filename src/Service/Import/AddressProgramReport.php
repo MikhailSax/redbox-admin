@@ -12,6 +12,18 @@ final class AddressProgramReport
     public int $sidesCreated = 0;
     public int $sidesUpdated = 0;
 
+    /** Structures that got coordinates from their map link */
+    public int $coordinatesSet = 0;
+
+    /** @var list<string> "address: link" map links without a readable point */
+    public array $coordinatesFailed = [];
+
+    /** Photos downloaded and attached to sides (in a dry run: links that would be downloaded) */
+    public int $photosAdded = 0;
+
+    /** @var list<string> "address, сторона X: link" photo links that did not give an image */
+    public array $photosFailed = [];
+
     /** @var list<string> dictionary entries created on the way ("Категория «Суперсайт»") */
     public array $dictionariesCreated = [];
 

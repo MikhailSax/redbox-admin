@@ -16,8 +16,9 @@ use Symfony\Component\Lock\LockFactory;
 
 /**
  * Booking rules:
- *  - whole-side types: a side is booked for whole months, one active booking at a time;
- *  - airtime types (video): sold by days; clips of 5/10/15 s share a 120 s loop on every day;
+ *  - the side's type decides (sides of one structure may differ: a screen and a static poster);
+ *  - whole sides: a side is booked for whole months, one active booking at a time;
+ *  - airtime sides (video): sold by days; clips of 5/10/15 s share a 120 s loop on every day;
  *  - a new booking is a hold that blocks the slot for 24 hours; unpaid holds stop
  *    blocking at the deadline and are marked Expired by the scheduled cleanup.
  */
@@ -43,6 +44,10 @@ class BookingManager
         $side = $request->side;
         [$start, $end] = $request->period();
         $clip = $this->isAirtime($side) ? $request->clipDuration : null;
+        if ($this->isAirtime($side) && !\in_array($clip, BookingMode::CLIP_DURATIONS, true)) {
+            // e.g. a media plan item added before the side became a screen: without a clip it would take the whole loop
+            throw new BookingException(\sprintf('Сторона %s продаётся эфиром — выберите длину ролика: 5, 10 или 15 сек.', $side->getName()));
+        }
 
         // Serialises bookings of the same side, so two managers can't take the last slot at once.
         $lock = $this->lockFactory->createLock('booking-side-'.$side->getId(), 30);
@@ -199,7 +204,7 @@ class BookingManager
 
     public function isAirtime(ProductSide $side): bool
     {
-        return BookingMode::Airtime === $side->getProduct()?->getProductType()?->getBookingMode();
+        return $side->isAirtime();
     }
 
     /**

@@ -7,15 +7,18 @@ use App\Entity\ClientDocument;
 use App\Entity\PhotoReport;
 use App\Entity\PhotoReportPhoto;
 use App\Entity\User;
+use App\Enum\ClientType;
 use App\Form\ClientDocumentFormType;
 use App\Form\ClientFormType;
 use App\Form\PhotoReportFormType;
 use App\Repository\ClientDocumentRepository;
+use App\Repository\PaymentRepository;
 use App\Repository\PhotoReportRepository;
 use App\Repository\UserRepository;
 use App\Security\ClientFileVoter;
 use App\Service\PrivateFileStorage;
 use Doctrine\ORM\EntityManagerInterface;
+use Gesdinet\JWTRefreshTokenBundle\Model\RevokeRefreshTokenManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\Clock\ClockInterface;
 use Symfony\Component\ExpressionLanguage\Expression;
@@ -44,22 +47,28 @@ final class ClientController extends AbstractController
         private readonly UserRepository $users,
         private readonly ClientDocumentRepository $documents,
         private readonly PhotoReportRepository $reports,
+        private readonly PaymentRepository $payments,
         private readonly PrivateFileStorage $storage,
         private readonly UserPasswordHasherInterface $passwordHasher,
         private readonly ClockInterface $clock,
+        private readonly RevokeRefreshTokenManagerInterface $refreshTokens,
     ) {
     }
 
     #[Route('', name: 'index', methods: ['GET'])]
-    public function index(Request $request, #[MapQueryParameter] ?string $q = null): Response
+    public function index(Request $request, #[MapQueryParameter] ?string $q = null, #[MapQueryParameter] ?string $type = null): Response
     {
-        $clients = $this->users->findClients($q);
+        $type = null !== $type ? ClientType::tryFrom($type) : null;
+        $clients = $this->users->findClients($q, type: $type);
         $ids = array_map(static fn (User $c) => $c->getId(), $clients);
         $params = [
             'clients' => $clients,
             'documentCounts' => $this->documents->countByClient($ids),
             'reportCounts' => $this->reports->countByClient($ids),
+            'overdueSums' => $this->payments->overdueSumsByClient($ids, $this->clock->now()),
+            'typeCounts' => $this->users->countClientsByType(),
             'q' => $q,
+            'type' => $type,
         ];
 
         if ($request->headers->has('X-Live-Filter')) {
@@ -72,7 +81,7 @@ final class ClientController extends AbstractController
     #[Route('/new', name: 'new', methods: ['GET', 'POST'])]
     public function new(Request $request): Response
     {
-        return $this->profile($request, (new User())->setRole(User::ROLE_CLIENT), 'Клиент добавлен — прикрепите ему документы и фотоотчёты');
+        return $this->profile($request, (new User())->setRole(User::ROLE_CLIENT)->setClientType(ClientType::Individual), 'Клиент добавлен — прикрепите ему документы и фотоотчёты');
     }
 
     /**
@@ -102,12 +111,32 @@ final class ClientController extends AbstractController
         return $this->redirectToRoute('admin_client_index', status: Response::HTTP_SEE_OTHER);
     }
 
+    /**
+     * For a client who signed up on the website and whose address the manager checked with them (by phone, in person).
+     */
+    #[Route('/{id}/verify-email', name: 'verify_email', requirements: ['id' => Requirement::DIGITS], methods: ['POST'])]
+    #[IsCsrfTokenValid(new Expression('"verify-email-" ~ args["client"].getId()'))]
+    public function verifyEmail(User $client): Response
+    {
+        $this->assertClient($client);
+        $client->markEmailVerified($this->clock->now());
+        $this->entityManager->flush();
+        $this->addFlash('success', \sprintf('Почта %s подтверждена — клиенту можно выкладывать документы и оформлять медиапланы', $client->getEmail()));
+
+        return $this->redirectToRoute('admin_client_show', ['id' => $client->getId()], Response::HTTP_SEE_OTHER);
+    }
+
     /* ---------- Documents ---------- */
 
     #[Route('/{id}/documents', name: 'upload_documents', requirements: ['id' => Requirement::DIGITS], methods: ['POST'])]
     public function uploadDocuments(Request $request, User $client): Response
     {
         $this->assertClient($client);
+        if (!$client->isEmailVerified()) {
+            $this->addFlash('error', User::UNVERIFIED_MESSAGE);
+
+            return $this->redirectToRoute('admin_client_show', ['id' => $client->getId(), '_fragment' => 'documents'], Response::HTTP_SEE_OTHER);
+        }
         $form = $this->documentForm($client);
         $form->handleRequest($request);
 
@@ -157,6 +186,11 @@ final class ClientController extends AbstractController
     public function createReport(Request $request, User $client): Response
     {
         $this->assertClient($client);
+        if (!$client->isEmailVerified()) {
+            $this->addFlash('error', User::UNVERIFIED_MESSAGE);
+
+            return $this->redirectToRoute('admin_client_show', ['id' => $client->getId(), '_fragment' => 'reports'], Response::HTTP_SEE_OTHER);
+        }
         $report = $this->newReport($client);
         $form = $this->reportForm($client, $report);
         $form->handleRequest($request);
@@ -208,20 +242,31 @@ final class ClientController extends AbstractController
 
     private function profile(Request $request, User $client, string $successMessage): Response
     {
+        $emailBefore = $client->getEmail();
         $form = $this->createForm(ClientFormType::class, $client);
         $form->handleRequest($request);
 
         if ($form->isSubmitted() && $form->isValid()) {
+            // An address the manager typed in came from the client, unlike one typed on the website by anyone
+            if (null === $client->getId() || $client->getEmail() !== $emailBefore) {
+                $client->setEmailVerifiedAt($this->clock->now());
+            }
             $password = $form->get('plainPassword')->getData();
-            if (null !== $password && '' !== $password) {
+            $passwordChanged = null !== $password && '' !== $password;
+            if ($passwordChanged) {
                 $client->setPassword($this->passwordHasher->hashPassword($client, $password));
             } elseif (null === $client->getPassword()) {
                 // No password yet: nobody can sign in until the client sets one on the website
                 $client->setPassword($this->passwordHasher->hashPassword($client, bin2hex(random_bytes(24))));
             }
-            $client->touch();
+            // the fields of other types stay filled in the form when the type is switched
+            $client->clearRequisitesOfOtherTypes()->touch();
             $this->entityManager->persist($client);
             $this->entityManager->flush();
+            if ($passwordChanged && null !== $client->getId()) {
+                // A new password closes the client's website sessions on every device
+                $this->refreshTokens->revokeAllForUser($client);
+            }
             $this->addFlash('success', $successMessage);
 
             return $this->redirectToRoute('admin_client_show', ['id' => $client->getId()], Response::HTTP_SEE_OTHER);
@@ -234,6 +279,8 @@ final class ClientController extends AbstractController
                 'reports' => $this->reports->findForClient($client),
                 'documentForm' => $this->documentForm($client),
                 'reportForm' => $this->reportForm($client, $this->newReport($client)),
+                'payments' => $this->payments->findForClient($client),
+                'now' => $this->clock->now(),
             ];
         }
 

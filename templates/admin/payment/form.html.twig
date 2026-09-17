@@ -1,0 +1,56 @@
+{% extends 'admin/layout.html.twig' %}
+
+{# New / edit payment. Vars: payment, form, now #}
+{% set heading = payment.id ? 'Платёж: ' ~ payment.title : 'Новый платёж' %}
+
+{% block title %}{{ heading }} — {{ parent() }}{% endblock %}
+
+{% block content %}
+    <nav class="mb-2 text-sm">
+        <a href="{{ path('admin_payment_index', payment.dueDate ? {month: payment.dueDate|date('Y-m')} : {}) }}" class="text-body hover:text-heading">Платежи</a>
+        <span class="mx-1 text-body-subtle">/</span>
+        <span class="text-heading">{{ payment.id ? '#' ~ payment.id : 'Новый' }}</span>
+    </nav>
+    <div class="mb-6 flex flex-wrap items-center gap-3">
+        <h1 class="page-title">{{ payment.id ? 'Платёж' : heading }}</h1>
+        {% if payment.id %}{{ include('admin/payment/_status.html.twig') }}{% endif %}
+    </div>
+
+    <div class="grid gap-6 xl:grid-cols-[minmax(0,48rem)_1fr]">
+        <div>
+            {% form_theme form 'admin/form/theme.html.twig' %}
+            {{ form_start(form, {attr: {novalidate: 'novalidate'}}) }}
+                <div class="card mb-6">
+                    {{ form_errors(form) }}
+                    <div class="grid gap-x-6 md:grid-cols-2">
+                        {{ form_row(form.client) }}
+                        {{ form_row(form.mediaPlan) }}
+                    </div>
+                    {{ form_row(form.title) }}
+                    <div class="grid gap-x-6 md:grid-cols-2">
+                        {{ form_row(form.amount) }}
+                        {{ form_row(form.dueDate) }}
+                    </div>
+                    {{ form_row(form.comment, {row_attr: {class: 'mb-0'}}) }}
+                </div>
+                <div class="flex flex-wrap items-center gap-3">
+                    <button type="submit" class="btn btn-primary">{{ payment.id ? 'Сохранить' : 'Добавить в календарь' }}</button>
+                    <a href="{{ path('admin_payment_index', payment.dueDate ? {month: payment.dueDate|date('Y-m')} : {}) }}" class="btn btn-secondary">Отмена</a>
+                </div>
+            {{ form_end(form) }}
+        </div>
+
+        {% if payment.id %}
+            <aside class="card h-fit">
+                <h2 class="mb-3 text-base font-semibold text-heading">Оплата</h2>
+                {% if payment.paid %}
+                    <p class="mb-4 text-sm text-body">Отмечен оплаченным {{ payment.paidAt|date('d.m.Y H:i') }}.</p>
+                {% else %}
+                    <p class="mb-4 text-sm text-body">Когда деньги придут, отметьте оплату — платёж уйдёт из просроченных.</p>
+                {% endif %}
+                {{ include('admin/payment/_actions.html.twig', {return: 'calendar'}) }}
+                {% if payment.createdBy %}<p class="mt-4 text-xs text-body-subtle">Добавил(а) {{ payment.createdBy.name }}, {{ payment.createdAt|date('d.m.Y') }}</p>{% endif %}
+            </aside>
+        {% endif %}
+    </div>
+{% endblock %}

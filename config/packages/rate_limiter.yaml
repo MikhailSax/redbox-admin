@@ -1,0 +1,22 @@
+framework:
+    rate_limiter:
+        # Requests from the website (POST /api/v1/orders): per client account when signed in, per IP otherwise
+        orders:
+            policy: 'sliding_window'
+            limit: 20
+            interval: '1 hour'
+        # Sign-ups on the website (POST /api/v1/auth/register), per IP
+        registrations:
+            policy: 'sliding_window'
+            limit: 10
+            interval: '1 hour'
+        # "Забыли пароль?" (POST /api/v1/auth/forgot-password), per IP; per account it's throttle_limit in reset_password.yaml
+        password_resets:
+            policy: 'sliding_window'
+            limit: 10
+            interval: '1 hour'
+        # "Отправить письмо ещё раз" in the personal account (POST /api/v1/me/verify-email), per account
+        email_verifications:
+            policy: 'fixed_window'
+            limit: 3
+            interval: '1 hour'

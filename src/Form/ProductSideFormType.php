@@ -3,6 +3,10 @@
 namespace App\Form;
 
 use App\Entity\ProductSide;
+use App\Entity\ProductType;
+use Doctrine\ORM\EntityRepository;
+use Doctrine\ORM\QueryBuilder;
+use Symfony\Bridge\Doctrine\Form\Type\EntityType;
 use Symfony\Component\Form\AbstractType;
 use Symfony\Component\Form\Extension\Core\Type\FileType;
 use Symfony\Component\Form\Extension\Core\Type\MoneyType;
@@ -20,6 +24,15 @@ class ProductSideFormType extends AbstractType
             ->add('name', TextType::class, [
                 'label' => 'Сторона',
                 'attr' => ['placeholder' => 'A'],
+            ])
+            ->add('productType', EntityType::class, [
+                'label' => 'Тип стороны',
+                'class' => ProductType::class,
+                'query_builder' => static fn (EntityRepository $r): QueryBuilder => $r->createQueryBuilder('t')->orderBy('t.name', 'ASC'),
+                'choice_label' => static fn (ProductType $type): string => $type->getName().($type->getBookingMode()->isAirtime() ? ' · эфир' : ''),
+                'required' => false,
+                'placeholder' => 'Как у конструкции',
+                'help' => 'Если стороны разные: например, с одной стороны видеоэкран, с другой статика.',
             ])
             ->add('price', MoneyType::class, [
                 'label' => 'Цена стороны за месяц',

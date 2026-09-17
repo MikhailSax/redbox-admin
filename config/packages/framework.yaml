@@ -5,6 +5,14 @@ framework:
     # Note that the session will be started ONLY if you read or write from it.
     session: true
 
+    # The Next.js website calls the API from its server on behalf of visitors and passes their address
+    # in X-Forwarded-For: trusting it keeps login throttling and order limits per visitor, not per website
+    trusted_proxies: '%env(TRUSTED_PROXIES)%'
+    trusted_headers: ['x-forwarded-for', 'x-forwarded-proto']
+
+    # Host names served (APP_TRUSTED_HOSTS, set in .env.prod); empty in dev = any host
+    trusted_hosts: ['%env(APP_TRUSTED_HOSTS)%']
+
     #esi: true
     #fragments: true
 

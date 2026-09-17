@@ -5,6 +5,7 @@ namespace App\Controller\Admin;
 use App\Entity\ProductType;
 use App\Form\ProductTypeFormType;
 use App\Repository\ProductRepository;
+use App\Repository\ProductSideRepository;
 use App\Repository\ProductTypeRepository;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -46,9 +47,10 @@ final class ProductTypeController extends AbstractController
 
     #[Route('/{id}/delete', name: 'delete', requirements: ['id' => Requirement::DIGITS], methods: ['POST'])]
     #[IsCsrfTokenValid(new Expression('"delete-type-" ~ args["type"].getId()'))]
-    public function delete(ProductType $type, ProductRepository $products): Response
+    public function delete(ProductType $type, ProductRepository $products, ProductSideRepository $sides): Response
     {
-        $used = $products->count(['productType' => $type]);
+        // sides with their own type count too: removing it would silently change how they are booked
+        $used = $products->count(['productType' => $type]) + $sides->count(['productType' => $type]);
         if ($used > 0) {
             $this->addFlash('error', \sprintf('Нельзя удалить «%s»: тип используется в конструкциях (%d).', $type->getName(), $used));
 

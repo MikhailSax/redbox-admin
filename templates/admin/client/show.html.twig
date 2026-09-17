@@ -8,7 +8,9 @@
 {% set heading = client.id ? (client.company ?? client.name) : 'Новый клиент' %}
 {% set tabs = {profile: {label: 'Профиль'}} %}
 {% if client.id %}
+    {% set overdue_count = payments|filter(p => p.statusAt(now).value == 'overdue')|length %}
     {% set tabs = tabs|merge({
+        payments: {label: 'Платежи', counter: payments|length ?: null, alert: overdue_count > 0},
         documents: {label: 'Документы', counter: documents|length ?: null},
         reports: {label: 'Фотоотчёты', counter: reports|length ?: null},
     }) %}
@@ -34,7 +36,9 @@
             <h1 class="page-title">{{ heading }}</h1>
             {% if client.id %}
                 <p class="mt-1 text-sm text-body">
-                    {% if client.company %}{{ client.name }} · {% endif %}{{ client.email }}{% if client.phone %} · {{ client.phone }}{% endif %}
+                    {% if client.clientType %}<span class="me-1 inline-flex rounded-md bg-zinc-100 px-1.5 py-0.5 text-xs font-medium text-heading ring-1 ring-zinc-200">{{ client.clientType.label }}</span>{% endif %}
+                    {% if client.inn %}ИНН {{ client.inn }} · {% endif %}{% if client.company %}{{ client.name }} · {% endif %}{{ client.email }}{% if client.phone %} · {{ client.phone }}{% endif %}
+                    {% if not client.emailVerified %}<span class="ms-1 inline-flex rounded-md bg-warning-soft px-1.5 py-0.5 text-xs font-medium text-fg-warning ring-1 ring-warning-subtle">почта не подтверждена</span>{% endif %}
                 </p>
             {% endif %}
         </div>
@@ -43,12 +47,28 @@
                 action: path('admin_client_delete', {id: client.id}),
                 token_id: 'delete-client-' ~ client.id,
                 title: 'Удалить клиента?',
-                confirm: 'Учётная запись «' ~ heading ~ '» будет удалена вместе со всеми документами и фотоотчётами. Клиент больше не сможет войти в личный кабинет.',
+                confirm: 'Учётная запись «' ~ heading ~ '» будет удалена вместе со всеми документами, фотоотчётами и платежами. Клиент больше не сможет войти в личный кабинет.',
                 label: 'Удалить',
                 button_class: 'btn-danger-outline',
             }) }}
         {% endif %}
     </div>
+
+    {% if client.id and not client.emailVerified %}
+        {# Signed up on the website: the address is the visitor's word until proven #}
+        <div class="mb-6 flex flex-wrap items-center gap-4 rounded-base border border-warning-subtle bg-warning-soft p-4 text-sm">
+            <span class="grid size-8 shrink-0 place-items-center rounded-full bg-white text-fg-warning">{{ ui.icon('warning', 'size-4') }}</span>
+            <div class="min-w-0 flex-1">
+                <p class="font-semibold text-heading">Почта не подтверждена</p>
+                <p class="text-body">Клиент зарегистрировался на сайте и ещё не открыл ссылку из письма. Пока почта не подтверждена, документы, фотоотчёты, медиапланы и платежи к этому аккаунту не привязываются — адрес мог указать кто угодно.</p>
+            </div>
+            <form method="post" action="{{ path('admin_client_verify_email', {id: client.id}) }}"
+                  data-confirm="Подтвердить почту {{ client.email }}? Делайте это, только если сверили адрес с клиентом — по телефону или лично." data-confirm-title="Подтвердить почту вручную?">
+                <input type="hidden" name="_token" value="{{ csrf_token('verify-email-' ~ client.id) }}">
+                <button type="submit" class="btn btn-secondary btn-sm">{{ ui.icon('check', 'size-4') }} Подтвердить вручную</button>
+            </form>
+        </div>
+    {% endif %}
 
     {# Tab bar #}
     <div class="mb-6 overflow-x-auto overflow-y-hidden border-b border-default">
@@ -60,7 +80,8 @@
                        class="inline-flex items-center gap-2 rounded-t-base border-b-2 px-4 py-3 {{ is_active ? 'text-fg-brand border-brand' : 'border-transparent text-body hover:text-heading hover:border-default-strong' }}">
                         {{ tab.label }}
                         {% if tab.counter is defined and tab.counter is not null %}
-                            <span class="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-zinc-100 px-1.5 text-xs font-semibold text-heading">{{ tab.counter }}</span>
+                            <span class="inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-xs font-semibold {{ tab.alert ?? false ? 'bg-danger-soft text-fg-danger-strong' : 'bg-zinc-100 text-heading' }}"
+                                  {% if tab.alert ?? false %}title="Есть просроченные платежи"{% endif %}>{{ tab.counter }}</span>
                         {% endif %}
                     </a>
                 </li>
@@ -75,11 +96,23 @@
             <input type="hidden" name="_tab" value="profile" data-tab-input>
             <section class="card mb-6">
                 {{ form_errors(form) }}
-                <div class="grid gap-x-6 md:grid-cols-2">
+                {# Requisites follow the type (assets/admin/dependent-fields.js); fields of other types are dropped on save #}
+                {% set type_id = form.clientType.vars.id %}
+                {{ form_row(form.clientType) }}
+                <fieldset class="mb-5 rounded-lg border border-default p-4 pb-0" data-visible-when="{{ type_id }}" data-visible-values="entrepreneur legal">
+                    <legend class="px-1 text-sm font-medium text-heading">Реквизиты</legend>
                     {{ form_row(form.company) }}
+                    <div class="grid gap-x-6 md:grid-cols-3">
+                        {{ form_row(form.inn) }}
+                        {{ form_row(form.kpp, {row_attr: {'data-visible-when': type_id, 'data-visible-values': 'legal'}}) }}
+                        {{ form_row(form.ogrn) }}
+                    </div>
+                    {{ form_row(form.legalAddress) }}
+                </fieldset>
+                <div class="grid gap-x-6 md:grid-cols-2">
                     {{ form_row(form.name) }}
-                    {{ form_row(form.email) }}
                     {{ form_row(form.phone) }}
+                    {{ form_row(form.email) }}
                 </div>
                 <fieldset class="rounded-lg border border-default bg-zinc-50/60 p-4 pb-0">
                     <legend class="px-1 text-sm font-medium text-heading">Личный кабинет на сайте</legend>
@@ -98,9 +131,29 @@
     </div>
 
     {% if client.id %}
+        {# Payments #}
+        <div {{ _self.panel_attrs('payments', initialTab) }}>
+            {% set unpaid = payments|filter(p => not p.paid) %}
+            {% set overdue = payments|filter(p => p.statusAt(now).value == 'overdue') %}
+            <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+                <div class="flex flex-wrap gap-x-6 gap-y-1 text-sm text-body">
+                    <span>К оплате: <b class="font-semibold text-heading tabular-nums">{{ (unpaid|reduce((s, p) => s + p.amount, 0))|money }}</b></span>
+                    {% if overdue is not empty %}
+                        <span class="text-fg-danger-strong">Просрочено: <b class="font-semibold tabular-nums">{{ (overdue|reduce((s, p) => s + p.amount, 0))|money }}</b></span>
+                    {% endif %}
+                    <span>Оплачено: <b class="font-semibold text-heading tabular-nums">{{ (payments|filter(p => p.paid)|reduce((s, p) => s + p.amount, 0))|money }}</b></span>
+                </div>
+                <a href="{{ path('admin_payment_new', {client: client.id}) }}" class="btn btn-primary">{{ ui.icon('plus', 'size-4') }} Добавить платёж</a>
+            </div>
+            {{ include('admin/payment/_table.html.twig', {payments: payments, return: 'client', show_client: false, empty: 'Платежей пока нет. Составьте график из медиаплана клиента или добавьте платёж.'}) }}
+        </div>
+
         {# Documents #}
         <div {{ _self.panel_attrs('documents', initialTab) }}>
             {% form_theme documentForm 'admin/form/theme.html.twig' %}
+            {% if not client.emailVerified %}
+                <p class="card mb-6 text-sm text-body">Загрузка документов откроется, когда клиент подтвердит почту или вы подтвердите её вручную.</p>
+            {% else %}
             {{ form_start(documentForm, {attr: {novalidate: 'novalidate', class: 'card mb-6'}}) }}
                 <h2 class="mb-1 text-base font-semibold text-heading">Загрузить документы</h2>
                 <p class="mb-4 text-sm text-body">Договоры, приложения, счета и акты. Клиент увидит их в истории документов в личном кабинете.</p>
@@ -112,6 +165,7 @@
                 {{ form_row(documentForm.comment) }}
                 <button type="submit" class="btn btn-primary">{{ ui.icon('plus', 'size-4') }} Загрузить</button>
             {{ form_end(documentForm) }}
+            {% endif %}
 
             <div class="table-card">
                 <table class="data-table">
@@ -166,6 +220,9 @@
         {# Photo reports #}
         <div {{ _self.panel_attrs('reports', initialTab) }}>
             {% form_theme reportForm 'admin/form/theme.html.twig' %}
+            {% if not client.emailVerified %}
+                <p class="card mb-6 text-sm text-body">Фотоотчёты можно будет добавлять, когда клиент подтвердит почту или вы подтвердите её вручную.</p>
+            {% else %}
             {{ form_start(reportForm, {attr: {novalidate: 'novalidate', class: 'card mb-6'}}) }}
                 <h2 class="mb-1 text-base font-semibold text-heading">Новый фотоотчёт</h2>
                 <p class="mb-4 text-sm text-body">Фото размещения для клиента: смонтированный баннер, ролик на экране. Появится в личном кабинете.</p>
@@ -178,6 +235,7 @@
                 {{ form_row(reportForm.comment) }}
                 <button type="submit" class="btn btn-primary">{{ ui.icon('plus', 'size-4') }} Добавить фотоотчёт</button>
             {{ form_end(reportForm) }}
+            {% endif %}
 
             <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                 {% for report in reports %}

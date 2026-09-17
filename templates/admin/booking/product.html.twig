@@ -6,17 +6,23 @@
     {{ include('admin/product/_card_header.html.twig', {active_tab: 'booking', in_form: false}) }}
 
     <p class="text-sm text-body mb-4">
-        {{ airtime ? 'Продаётся эфиром по дням: ролики 5, 10 или 15 сек в петле ' ~ loopSeconds ~ ' сек.' : 'Сторона бронируется целиком на календарный месяц.' }}
+        {% if mixed %}
+            Стороны продаются по-разному: {{ grids[0].sides|map(s => s.name)|join(', ') }} — эфиром по дням (ролики 5, 10 или 15 сек в петле {{ loopSeconds }} сек), {{ grids[1].sides|map(s => s.name)|join(', ') }} — целиком на календарный месяц.
+        {% else %}
+            {{ airtime ? 'Продаётся эфиром по дням: ролики 5, 10 или 15 сек в петле ' ~ loopSeconds ~ ' сек.' : 'Сторона бронируется целиком на календарный месяц.' }}
+        {% endif %}
     </p>
 
-    {# Occupancy grid: sides × months #}
+    {# Occupancy grids: airtime sides × days, whole sides × months #}
+    {% for group in grids %}
+    {% set grid_airtime = group.airtime %}
     <div class="card !p-0 mb-6 overflow-hidden">
         <div class="flex flex-wrap items-center justify-between gap-3 px-6 pt-5 pb-4">
-            <h2 class="text-lg font-semibold text-heading">{{ airtime ? 'Занятость эфира на ' ~ columns|length ~ ' дней' : 'Занятость на 12 месяцев' }}</h2>
+            <h2 class="text-lg font-semibold text-heading">{{ grid_airtime ? 'Занятость эфира на ' ~ group.columns|length ~ ' дней' : 'Занятость на 12 месяцев' }}</h2>
             <div class="flex flex-wrap gap-3 text-xs text-body">
                 <span class="inline-flex items-center gap-1.5"><span class="w-3 h-3 rounded-xs bg-success-soft border border-success-subtle"></span>Свободно</span>
-                <span class="inline-flex items-center gap-1.5"><span class="w-3 h-3 rounded-xs bg-warning-soft border border-warning-subtle"></span>{{ airtime ? 'Частично занято' : 'Ждёт оплаты' }}</span>
-                <span class="inline-flex items-center gap-1.5"><span class="w-3 h-3 rounded-xs bg-danger-soft border border-danger-subtle"></span>{{ airtime ? 'Петля заполнена' : 'Оплачено' }}</span>
+                <span class="inline-flex items-center gap-1.5"><span class="w-3 h-3 rounded-xs bg-warning-soft border border-warning-subtle"></span>{{ grid_airtime ? 'Частично занято' : 'Ждёт оплаты' }}</span>
+                <span class="inline-flex items-center gap-1.5"><span class="w-3 h-3 rounded-xs bg-danger-soft border border-danger-subtle"></span>{{ grid_airtime ? 'Петля заполнена' : 'Оплачено' }}</span>
             </div>
         </div>
         <div class="overflow-x-auto border-t border-default">
@@ -24,7 +30,7 @@
                 <thead class="bg-neutral-secondary-soft border-b border-default">
                     <tr>
                         <th scope="col" class="sticky left-0 bg-neutral-secondary-soft px-4 py-2 text-left font-medium">Сторона</th>
-                        {% for column in columns %}
+                        {% for column in group.columns %}
                             <th scope="col" class="px-1 py-2 font-medium text-center whitespace-nowrap {{ column.weekend ? 'text-fg-danger-strong' : '' }}">
                                 {% if column.sub %}<div class="text-[10px] font-normal leading-none text-body-subtle">{{ column.sub }}</div>{% endif %}
                                 {{ column.label }}
@@ -33,18 +39,19 @@
                     </tr>
                 </thead>
                 <tbody>
-                    {% for side in product.sides %}
+                    {% for side in group.sides %}
                         <tr class="border-b border-default last:border-0">
                             <th scope="row" class="sticky left-0 bg-neutral-primary-soft px-4 py-2 text-left font-medium text-heading whitespace-nowrap">{{ side.name }}</th>
-                            {% for key, column in columns %}
-                                {% set cell = grid[side.id][key] %}
+                            {% for key, column in group.columns %}
+                                {% set cell = group.cells[side.id][key] %}
                                 {% set clients = cell.bookings|map(b => b.clientName ~ (b.clipDuration ? ' (' ~ b.clipDuration ~ ' сек)' : '') ~ ' — ' ~ b.statusAt(now).label)|join("\n") %}
                                 <td class="p-1">
-                                    {% if airtime %}
-                                        {% set percent = min(100, (cell.used / loopSeconds * 100)|round) %}
+                                    {% if grid_airtime %}
+                                        {# rounded down like BookingMode::loadPercent(): 100% only when not a second is left #}
+                                        {% set percent = min(100, (cell.used * 100 / loopSeconds)|round(0, 'floor')) %}
                                         <div class="rounded-sm border px-1.5 py-1 text-center {{ cell.used >= loopSeconds ? 'bg-danger-soft border-danger-subtle text-fg-danger-strong' : (cell.used > 0 ? 'bg-warning-soft border-warning-subtle text-fg-warning' : 'bg-success-soft border-success-subtle text-fg-success-strong') }}"
-                                             title="{{ clients ?: 'Эфир свободен' }}">
-                                            <div class="text-xs font-medium whitespace-nowrap">{{ cell.used }}</div>
+                                             title="Эфир загружен на {{ percent }}% ({{ cell.used }}/{{ loopSeconds }} сек){{ clients ? "\n" ~ clients }}">
+                                            <div class="text-xs font-medium whitespace-nowrap tabular-nums">{{ percent }}%</div>
                                             <div class="mt-1 h-1 rounded-full bg-neutral-tertiary-medium overflow-hidden"><div class="h-full bg-current" style="width: {{ percent }}%"></div></div>
                                         </div>
                                     {% else %}
@@ -62,12 +69,13 @@
                             {% endfor %}
                         </tr>
                     {% else %}
-                        <tr><td colspan="{{ columns|length + 1 }}" class="px-4 py-6 text-center">У конструкции нет сторон — добавьте их в карточке.</td></tr>
+                        <tr><td colspan="{{ group.columns|length + 1 }}" class="px-4 py-6 text-center">У конструкции нет сторон — добавьте их в карточке.</td></tr>
                     {% endfor %}
                 </tbody>
             </table>
         </div>
     </div>
+    {% endfor %}
 
     <div class="grid gap-6 lg:grid-cols-3 mb-6">
         {# New booking #}
@@ -80,18 +88,22 @@
                         {{ form_errors(form) }}
                     </div>
                 {% endif %}
+                {# When sides are booked differently, assets/admin/booking-mode.js shows the fields of the chosen side #}
+                {% set airtime_row = mixed ? {row_attr: {'data-booking-mode': 'airtime'}} : {} %}
+                {% set whole_row = mixed ? {row_attr: {'data-booking-mode': 'side'}} : {} %}
                 <div class="grid gap-x-6 md:grid-cols-3">
-                    {{ form_row(form.side) }}
-                    {% if airtime %}
-                        {{ form_row(form.startDate) }}
-                        {{ form_row(form.endDate) }}
-                    {% else %}
-                        {{ form_row(form.startMonth) }}
-                        {{ form_row(form.months) }}
+                    {{ form_row(form.side, mixed ? {attr: {'data-booking-mode-source': ''}} : {}) }}
+                    {% if form.startDate is defined %}
+                        {{ form_row(form.startDate, airtime_row) }}
+                        {{ form_row(form.endDate, airtime_row) }}
+                    {% endif %}
+                    {% if form.startMonth is defined %}
+                        {{ form_row(form.startMonth, whole_row) }}
+                        {{ form_row(form.months, whole_row) }}
                     {% endif %}
                 </div>
                 {% if form.clipDuration is defined %}
-                    {{ form_row(form.clipDuration) }}
+                    {{ form_row(form.clipDuration, airtime_row) }}
                 {% endif %}
                 <div class="grid gap-x-6 md:grid-cols-2">
                     {{ form_row(form.clientName) }}
@@ -108,9 +120,10 @@
                 <li>Новая бронь держит место <b class="text-heading">24 часа</b>. Если за это время не отметить оплату, бронь снимается автоматически и место освобождается.</li>
                 {% if airtime %}
                     <li>Эфир продаётся <b class="text-heading">по дням</b>: с любого дня по любой, включительно.</li>
-                    <li>Экран крутит ролики в петле <b class="text-heading">{{ loopSeconds }} секунд</b>. Клиенты покупают ролик 5, 10 или 15 сек, пока петля не заполнится. В сетке — сколько секунд петли занято в этот день.</li>
-                {% else %}
-                    <li>Сторона бронируется целиком на календарный месяц — одному клиенту.</li>
+                    <li>Экран крутит ролики в петле <b class="text-heading">{{ loopSeconds }} секунд</b>. Клиенты покупают ролик 5, 10 или 15 сек, пока петля не заполнится. В сетке — на сколько процентов загружена петля в этот день (секунды — в подсказке).</li>
+                {% endif %}
+                {% if whole %}
+                    <li>{{ mixed ? 'Статичная сторона' : 'Сторона' }} бронируется целиком на календарный месяц — одному клиенту.</li>
                 {% endif %}
                 <li>После оплаты нажмите «Оплачено» — бронь закрепится.</li>
             </ul>

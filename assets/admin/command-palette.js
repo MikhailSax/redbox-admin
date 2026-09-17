@@ -19,6 +19,7 @@ if (palette) {
         hold: 'bg-warning-soft text-fg-warning',
         paid: 'bg-success-soft text-fg-success-strong',
         promo: 'bg-violet-50 text-violet-700',
+        accent: 'bg-accent-soft text-accent-strong',
     };
 
     let timer = null;

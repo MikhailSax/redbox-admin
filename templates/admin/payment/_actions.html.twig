@@ -1,0 +1,27 @@
+{# Buttons of `payment`: paid / undo, edit, delete. `return` = 'calendar' | 'client' | 'plan' | 'dashboard' #}
+{% import 'admin/_icons.html.twig' as ui %}
+<div class="flex justify-end gap-1">
+    {% if not payment.paid %}
+        <form method="post" action="{{ path('admin_payment_pay', {id: payment.id}) }}"
+              data-confirm="{{ payment.client.clientTitle }} оплатил {{ payment.amount|money }} — «{{ payment.title }}»?"
+              data-confirm-title="Отметить оплату" data-confirm-button="Да, оплачено" data-confirm-variant="primary">
+            <input type="hidden" name="_token" value="{{ csrf_token('payment-' ~ payment.id) }}">
+            <input type="hidden" name="return" value="{{ return }}">
+            <button type="submit" class="btn btn-primary btn-sm">Оплачено</button>
+        </form>
+    {% else %}
+        <form method="post" action="{{ path('admin_payment_unpay', {id: payment.id}) }}"
+              data-confirm="Платёж снова будет ждать оплаты до {{ payment.dueDate|date('d.m.Y') }}." data-confirm-title="Снять отметку об оплате?" data-confirm-button="Снять">
+            <input type="hidden" name="_token" value="{{ csrf_token('payment-' ~ payment.id) }}">
+            <input type="hidden" name="return" value="{{ return }}">
+            <button type="submit" class="btn btn-ghost btn-sm">Не оплачен</button>
+        </form>
+    {% endif %}
+    <a href="{{ path('admin_payment_edit', {id: payment.id}) }}" class="btn btn-secondary btn-sm" title="Изменить">Изменить</a>
+    <form method="post" action="{{ path('admin_payment_delete', {id: payment.id}) }}"
+          data-confirm="Платёж «{{ payment.title }}» на {{ payment.amount|money }} пропадёт из календаря." data-confirm-title="Удалить платёж?">
+        <input type="hidden" name="_token" value="{{ csrf_token('delete-payment-' ~ payment.id) }}">
+        <input type="hidden" name="return" value="{{ return }}">
+        <button type="submit" class="btn btn-ghost btn-sm text-fg-danger hover:bg-danger-soft" aria-label="Удалить платёж">{{ ui.icon('x', 'size-4') }}</button>
+    </form>
+</div>

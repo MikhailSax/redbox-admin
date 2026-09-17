@@ -244,6 +244,40 @@
         {{ include('admin/_service_units.html.twig') }}
     </div>
 
+    {# Payment schedule: when the client pays for the plan (PaymentScheduler, the payment calendar) #}
+    <section id="payments" class="mb-6 scroll-mt-20">
+        <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
+            <div>
+                <h2 class="text-base font-semibold text-heading">График платежей</h2>
+                <p class="text-sm text-body">
+                    {% if plan.client %}
+                        Клиент <a href="{{ path('admin_client_show', {id: plan.client.id, _fragment: 'payments'}) }}" class="font-medium text-heading hover:underline">{{ plan.client.clientTitle }}</a>
+                        {%- if plan.client.clientType %} · {{ plan.client.clientType.label }}{% endif %}
+                        {%- if plan.payments is not empty %} · запланировано {{ plan.scheduledTotal|money }} из {{ plan.total|money }}{% endif %}
+                    {% else %}
+                        Чтобы вести платежи, выберите клиента в <a href="{{ path('admin_media_plan_edit', {id: plan.id}) }}" class="font-medium text-heading underline">параметрах</a>.
+                    {% endif %}
+                </p>
+            </div>
+            {% if plan.client %}
+                <div class="flex flex-wrap gap-2">
+                    {% if plan.payments is empty %}
+                        <form method="post" action="{{ path('admin_media_plan_schedule_payments', {id: plan.id}) }}"
+                              data-confirm="{{ plan.total|money }} разобьётся на {{ plan.months }} {{ plan.months == 1 ? 'платёж' : (plan.months < 5 ? 'платежа' : 'платежей') }} — по одному на месяц, со сроком до 1-го числа месяца размещения. Услуги войдут в первый платёж."
+                              data-confirm-title="Составить график платежей?" data-confirm-button="Составить" data-confirm-variant="primary">
+                            <input type="hidden" name="_token" value="{{ token }}">
+                            <button type="submit" class="btn btn-primary btn-sm">{{ ui.icon('calendar', 'size-4') }} Разбить на платежи по месяцам</button>
+                        </form>
+                    {% endif %}
+                    <a href="{{ path('admin_payment_new', {plan: plan.id}) }}" class="btn btn-secondary btn-sm">{{ ui.icon('plus', 'size-4') }} Платёж</a>
+                </div>
+            {% endif %}
+        </div>
+        {% if plan.client or plan.payments is not empty %}
+            {{ include('admin/payment/_table.html.twig', {payments: plan.payments, return: 'plan', show_client: false, show_plan: false, empty: 'Платежей пока нет.'}) }}
+        {% endif %}
+    </section>
+
     {# Picker #}
     <div class="card !p-0">
         <div class="flex flex-wrap items-center justify-between gap-3 border-b border-default p-5">
@@ -285,7 +319,7 @@
                                     <form method="post" action="{{ path('admin_media_plan_add_items', {id: plan.id}) }}" class="flex items-center gap-1">
                                         <input type="hidden" name="_token" value="{{ csrf_token('media-plan-' ~ plan.id) }}">
                                         <input type="hidden" name="sides[]" value="{{ side.id }}">
-                                        {% if product.productType.bookingMode.value == 'airtime' and not in_plan %}
+                                        {% if side.airtime and not in_plan %}
                                             <select name="clip" class="input h-8 !w-auto !py-0 !pe-7 text-xs" aria-label="Длина ролика">
                                                 {% for clip in [5, 10, 15] %}<option value="{{ clip }}" {{ clip == 15 ? 'selected' }}>{{ clip }}″</option>{% endfor %}
                                             </select>

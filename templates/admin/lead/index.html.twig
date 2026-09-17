@@ -1,0 +1,99 @@
+{% extends 'admin/layout.html.twig' %}
+{% import 'admin/_icons.html.twig' as ui %}
+
+{% block title %}Заявки — {{ parent() }}{% endblock %}
+
+{% block content %}
+    <div class="page-header">
+        <div>
+            <h1 class="page-title">Заявки</h1>
+            <p class="page-subtitle">Заказы с сайта. Пока заявка не превращена в медиаплан, места никем не заняты</p>
+        </div>
+    </div>
+
+    <form method="get" action="{{ path('admin_lead_index') }}" data-live-filter="lead-results" class="mb-4 max-w-md">
+        <label class="search-field">
+            <span class="sr-only">Поиск</span>
+            {{ ui.icon('search') }}
+            <input type="search" name="q" value="{{ q }}" class="input" autocomplete="off" placeholder="Клиент, организация, телефон или email…">
+        </label>
+        <input type="hidden" name="status" value="{{ filter ? filter.value : '' }}">
+    </form>
+
+    <div id="lead-results">
+        {% block results %}
+            {# Imported here too: renderBlock() (live filter) renders this block without the template top level #}
+            {% import 'admin/_icons.html.twig' as ui %}
+            {% set base = q ? {q: q} : {} %}
+            {% set tones = {
+                accent: 'bg-accent-soft text-accent-strong ring-accent/20',
+                warning: 'bg-warning-soft text-fg-warning ring-warning-subtle',
+                success: 'bg-success-soft text-fg-success-strong ring-success-subtle',
+                danger: 'bg-danger-soft text-fg-danger-strong ring-danger-subtle',
+            } %}
+
+            <div class="mb-4 flex flex-wrap gap-2">
+                {% set chip = 'inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-sm font-medium transition-colors' %}
+                <a href="{{ path('admin_lead_index', base) }}" data-live-link
+                   class="{{ chip }} {{ filter is null ? 'border-zinc-900 bg-zinc-900 text-white' : 'border-default bg-white text-body hover:text-heading' }}">Все</a>
+                {% for status in enum_cases('App\\Enum\\LeadStatus') %}
+                    <a href="{{ path('admin_lead_index', base|merge({status: status.value})) }}" data-live-link
+                       class="{{ chip }} {{ status == filter ? 'border-zinc-900 bg-zinc-900 text-white' : 'border-default bg-white text-body hover:text-heading' }}">
+                        {{ status.label }} <span class="tabular-nums opacity-60">{{ counts[status.value] }}</span>
+                    </a>
+                {% endfor %}
+            </div>
+
+            <div class="table-card">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th scope="col" class="px-4 py-2.5">Заявка</th>
+                            <th scope="col" class="px-4 py-2.5">Клиент</th>
+                            <th scope="col" class="px-4 py-2.5">Конструкции</th>
+                            <th scope="col" class="px-4 py-2.5 text-right">Ориентир</th>
+                            <th scope="col" class="px-4 py-2.5">Статус</th>
+                            <th scope="col" class="px-4 py-2.5"><span class="sr-only">Действия</span></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for lead in leads %}
+                            <tr>
+                                <th scope="row" class="px-4 py-3 font-normal">
+                                    <a href="{{ path('admin_lead_show', {id: lead.id}) }}" class="font-medium text-heading hover:underline">№{{ lead.id }}</a>
+                                    <div class="text-xs text-body-subtle">{{ lead.createdAt|date('d.m.Y H:i') }}{{ lead.fromSite ? ' · сайт' : '' }}</div>
+                                </th>
+                                <td class="px-4 py-3">
+                                    <div class="font-medium text-heading">{{ lead.clientTitle|highlight(q) }}</div>
+                                    <div class="text-xs text-body-subtle">{{ lead.phone|highlight(q) }}{% if lead.email %} · {{ lead.email|highlight(q) }}{% endif %}</div>
+                                </td>
+                                <td class="max-w-72 px-4 py-3">
+                                    <span class="line-clamp-2 text-heading">{{ lead.items|map(i => i.productTitle)|slice(0, 3)|join(', ') }}{% if lead.items|length > 3 %} и ещё {{ lead.items|length - 3 }}{% endif %}</span>
+                                    <span class="text-xs text-body-subtle">позиций: {{ lead.items|length }}</span>
+                                </td>
+                                <td class="px-4 py-3 text-right tabular-nums whitespace-nowrap">{{ lead.estimate > 0 ? (lead.estimate|number_format(0, ',', ' ') ~ ' ₽') : '—' }}</td>
+                                <td class="px-4 py-3">
+                                    <span class="inline-flex h-6 items-center rounded-md px-2 text-xs font-medium ring-1 ring-inset {{ tones[lead.status.tone] }}">{{ lead.status.label }}</span>
+                                    {% if lead.assignee %}<div class="mt-0.5 text-xs text-body-subtle">{{ lead.assignee.name }}</div>{% endif %}
+                                </td>
+                                <td class="px-4 py-3">
+                                    <div class="flex justify-end gap-1">
+                                        <a href="{{ path('admin_lead_show', {id: lead.id}) }}" class="btn btn-secondary btn-sm">Открыть</a>
+                                    </div>
+                                </td>
+                            </tr>
+                        {% else %}
+                            <tr>
+                                <td colspan="6" class="px-4 py-16 text-center">
+                                    <span class="mx-auto mb-3 grid size-12 place-items-center rounded-full bg-zinc-100 text-zinc-400">{{ ui.icon('inbox') }}</span>
+                                    <p class="font-medium text-heading">{{ q or filter ? 'Ничего не найдено' : 'Заявок пока нет' }}</p>
+                                    <p class="mt-1 text-sm text-body">{{ q or filter ? 'Измените запрос или фильтр.' : 'Здесь появятся заказы, отправленные с сайта.' }}</p>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% endblock %}
+    </div>
+{% endblock %}

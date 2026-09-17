@@ -16,6 +16,8 @@ use App\Service\BookingManager;
 use App\Service\MediaPlanManager;
 use App\Service\MediaPlanPdf;
 use App\Service\MonthCalendar;
+use App\Service\PaymentException;
+use App\Service\PaymentScheduler;
 use App\Service\ProductListing;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -299,6 +301,24 @@ final class MediaPlanController extends AbstractController
         }
 
         return $this->redirectToRoute('admin_media_plan_show', ['id' => $plan->getId()], Response::HTTP_SEE_OTHER);
+    }
+
+    /**
+     * Payment schedule: the plan total split into one payment per month, added to the payment calendar.
+     */
+    #[Route('/{id}/payments/schedule', name: 'schedule_payments', requirements: ['id' => Requirement::DIGITS], methods: ['POST'])]
+    #[IsCsrfTokenValid(new Expression('"media-plan-" ~ args["plan"].getId()'))]
+    public function schedulePayments(MediaPlan $plan, PaymentScheduler $scheduler): Response
+    {
+        try {
+            $user = $this->getUser();
+            $payments = $scheduler->scheduleMediaPlan($plan, $user instanceof User ? $user : null);
+            $this->addFlash('success', \sprintf('График платежей составлен: %d — по одному на месяц. Сроки и суммы можно поправить.', \count($payments)));
+        } catch (PaymentException $e) {
+            $this->addFlash('error', $e->getMessage());
+        }
+
+        return $this->redirectToRoute('admin_media_plan_show', ['id' => $plan->getId(), '_fragment' => 'payments'], Response::HTTP_SEE_OTHER);
     }
 
     #[Route('/{id}/pdf', name: 'pdf', requirements: ['id' => Requirement::DIGITS], methods: ['GET'])]

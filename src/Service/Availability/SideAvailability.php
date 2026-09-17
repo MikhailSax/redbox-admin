@@ -31,6 +31,12 @@ final readonly class SideAvailability
         return BookingMode::LOOP_SECONDS - $this->usedSeconds();
     }
 
+    /** How loaded the screen's loop is, 0..100 (busiest day of the month) */
+    public function loadPercent(): int
+    {
+        return BookingMode::loadPercent($this->usedSeconds());
+    }
+
     public function status(): AvailabilityStatus
     {
         $soldOut = $this->airtime

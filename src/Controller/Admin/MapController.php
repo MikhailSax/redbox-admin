@@ -76,6 +76,7 @@ final class MapController extends AbstractController
                     'label' => $side->status()->label(),
                     'airtime' => $side->airtime,
                     'used' => $side->usedSeconds(),
+                    'load' => $side->loadPercent(),
                 ], $item->sides),
                 'meta' => implode(' · ', array_filter([$product->getCategory()?->getName(), $product->getProductType()?->getName(), $product->getDistrict()?->getName()])),
                 'owner' => $product->getOwner()?->getName(),

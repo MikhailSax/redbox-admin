@@ -7,12 +7,15 @@ use App\Entity\Booking;
 use App\Entity\MediaPlan;
 use App\Entity\MediaPlanItem;
 use App\Entity\MediaPlanServiceLine;
+use App\Entity\Payment;
 use App\Entity\Category;
 use App\Entity\District;
 use App\Entity\Partner;
 use App\Entity\Product;
 use App\Entity\ProductSide;
 use App\Entity\ProductSidePhoto;
+use App\Entity\Lead;
+use App\Entity\LeadItem;
 use App\Entity\ProductType;
 use App\Entity\ClientDocument;
 use App\Entity\PhotoReport;
@@ -53,7 +56,7 @@ abstract class AdminWebTestCase extends WebTestCase
         // Login throttling state lives in a filesystem cache: reset it so failed logins don't leak between tests
         $container->get('cache.rate_limiter')->clear();
 
-        foreach ([MediaPlanServiceLine::class, MediaPlanItem::class, MediaPlan::class, Promotion::class, AdditionalService::class, PhotoReportPhoto::class, PhotoReport::class, ClientDocument::class, Booking::class, ProductSidePhoto::class, ProductSide::class, Product::class, Partner::class, ProductType::class, Category::class, District::class, User::class] as $class) {
+        foreach ([Payment::class, LeadItem::class, Lead::class, MediaPlanServiceLine::class, MediaPlanItem::class, MediaPlan::class, Promotion::class, AdditionalService::class, PhotoReportPhoto::class, PhotoReport::class, ClientDocument::class, Booking::class, ProductSidePhoto::class, ProductSide::class, Product::class, Partner::class, ProductType::class, Category::class, District::class, User::class] as $class) {
             $this->em->createQuery(\sprintf('DELETE FROM %s e', $class))->execute();
         }
 
@@ -65,7 +68,7 @@ abstract class AdminWebTestCase extends WebTestCase
 
     protected function createUser(string $email, string $role, string $password = self::PASSWORD): User
     {
-        $user = (new User())->setEmail($email)->setName('Пользователь '.$email)->setRole($role);
+        $user = (new User())->setEmail($email)->setName('Пользователь '.$email)->setRole($role)->setEmailVerifiedAt(new \DateTimeImmutable());
         $user->setPassword(static::getContainer()->get(UserPasswordHasherInterface::class)->hashPassword($user, $password));
         $this->em->persist($user);
         $this->em->flush();

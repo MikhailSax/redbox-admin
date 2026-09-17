@@ -1,0 +1,48 @@
+{#
+    Payments table. Vars: payments, now, return ('calendar' | 'client' | 'plan' | 'dashboard'),
+    show_client? (default true), show_plan? (default true), empty? (text when there are none), q? (highlight)
+#}
+{% set show_client = show_client ?? true %}
+{% set show_plan = show_plan ?? true %}
+<div class="table-card">
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th scope="col" class="px-4 py-2.5">Срок</th>
+                {% if show_client %}<th scope="col" class="px-4 py-2.5">Клиент</th>{% endif %}
+                <th scope="col" class="px-4 py-2.5">За что</th>
+                <th scope="col" class="px-4 py-2.5 text-right">Сумма</th>
+                <th scope="col" class="px-4 py-2.5">Статус</th>
+                <th scope="col" class="px-4 py-2.5"><span class="sr-only">Действия</span></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for payment in payments %}
+                {% set client = payment.client %}
+                <tr data-payment="{{ payment.id }}">
+                    <td class="px-4 py-3 whitespace-nowrap font-medium text-heading tabular-nums">{{ payment.dueDate|date('d.m.Y') }}</td>
+                    {% if show_client %}
+                        <td class="px-4 py-3">
+                            <a href="{{ path('admin_client_show', {id: client.id, _fragment: 'payments'}) }}" class="font-medium text-heading hover:underline">{{ client.clientTitle|highlight(q ?? null) }}</a>
+                            <div class="text-xs text-body-subtle">
+                                {{ client.clientType ? client.clientType.label : 'Клиент' }}{% if client.inn %} · ИНН {{ client.inn|highlight(q ?? null) }}{% endif %}{% if client.phone %} · {{ client.phone }}{% endif %}
+                            </div>
+                        </td>
+                    {% endif %}
+                    <td class="px-4 py-3">
+                        <div class="text-heading">{{ payment.title|highlight(q ?? null) }}</div>
+                        {% if show_plan and payment.mediaPlan %}
+                            <a href="{{ path('admin_media_plan_show', {id: payment.mediaPlan.id}) }}" class="text-xs text-body-subtle hover:underline">Медиаплан #{{ payment.mediaPlan.id }}</a>
+                        {% endif %}
+                        {% if payment.comment %}<div class="text-xs text-body">{{ payment.comment }}</div>{% endif %}
+                    </td>
+                    <td class="px-4 py-3 text-right font-medium text-heading tabular-nums whitespace-nowrap">{{ payment.amount|money }}</td>
+                    <td class="px-4 py-3">{{ include('admin/payment/_status.html.twig') }}</td>
+                    <td class="px-4 py-3">{{ include('admin/payment/_actions.html.twig') }}</td>
+                </tr>
+            {% else %}
+                <tr><td colspan="{{ 4 + (show_client ? 1 : 0) + 1 }}" class="px-4 py-10 text-center text-sm text-body">{{ empty ?? 'Платежей нет.' }}</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>

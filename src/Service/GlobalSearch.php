@@ -3,6 +3,7 @@
 namespace App\Service;
 
 use App\Entity\Booking;
+use App\Entity\Lead;
 use App\Entity\Category;
 use App\Entity\District;
 use App\Entity\Partner;
@@ -54,6 +55,7 @@ class GlobalSearch
         $groups = [
             ['title' => 'Конструкции', 'items' => $this->products($term)],
             ['title' => 'Брони и клиенты', 'items' => $this->bookings($term)],
+            ['title' => 'Заявки', 'items' => $this->leads($term)],
             ['title' => 'Клиенты', 'items' => $this->clients($term)],
             ['title' => 'Партнёры', 'items' => $this->partners($term)],
             ['title' => 'Акции', 'items' => $this->promotions($term)],
@@ -103,6 +105,19 @@ class GlobalSearch
                 'badge' => ['label' => $status->label(), 'tone' => $status->value],
             ];
         }, $this->bookings->findForList(null, $term, 5));
+    }
+
+    /**
+     * @return list<Item>
+     */
+    private function leads(string $term): array
+    {
+        return array_map(fn (Lead $lead) => [
+            'title' => \sprintf('Заявка №%d · %s', (int) $lead->getId(), $lead->getClientTitle()),
+            'subtitle' => implode(' · ', array_filter([$lead->getPhone(), $lead->getCreatedAt()?->format('d.m.Y')])),
+            'url' => $this->urls->generate('admin_lead_show', ['id' => $lead->getId()]),
+            'badge' => ['label' => $lead->getStatus()->label(), 'tone' => $lead->getStatus()->tone()],
+        ], $this->entityManager->getRepository(Lead::class)->findForList(null, $term, 3));
     }
 
     /**
