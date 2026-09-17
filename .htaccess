@@ -1,20 +1,50 @@
-# Only used when the document root of the domain points at the project folder instead of public/
-# (the default on reg.ru shared hosting). Everything is served through public/, so .env, src/, var/
-# and the rest never reach the browser. When the document root already points at public/, Apache
-# never reads this file. See docs/deploy-reg-ru.md.
+# Used when the document root of the domain points at the project folder instead of public/
+# (reg.ru shared hosting does not let you change it). Everything is routed into public/, so .env,
+# config/, src/ and var/ are never served — a request for them ends in a Symfony 404.
+# When the document root already points at public/, Apache never reads this file.
+# See docs/deploy-reg-ru.md.
+
+# No directory listings above public/
+Options -Indexes
+
+# Fallback when mod_rewrite is off: at least "/" opens the front controller
+DirectoryIndex public/index.php
 
 <IfModule mod_rewrite.c>
     Options +SymLinksIfOwnerMatch
     RewriteEngine On
 
-    # The request is served from public/; public/.htaccess takes it from there
-    RewriteCond %{REQUEST_URI} !^/public/
-    RewriteRule ^(.*)$ public/$1 [L]
+    # Production: one address for everything — https:// without www
+    RewriteCond %{HTTP_HOST} ^www\.sibiradm\.ru$ [NC]
+    RewriteRule ^(.*)$ https://sibiradm.ru/$1 [R=301,L]
+
+    # TLS is terminated on the hosting's proxy, so HTTPS is off here and X-Forwarded-Proto tells the truth
+    RewriteCond %{HTTP_HOST} ^sibiradm\.ru$ [NC]
+    RewriteCond %{HTTPS} !=on
+    RewriteCond %{HTTP:X-Forwarded-Proto} !=https
+    RewriteRule ^(.*)$ https://sibiradm.ru/$1 [R=301,L]
+
+    # Already inside public/: leave it to public/.htaccess
+    RewriteRule ^public/ - [L]
+
+    # A real file of public/ (build, uploads, images, favicon) is served as it is
+    RewriteCond %{DOCUMENT_ROOT}/public%{REQUEST_URI} -f
+    RewriteRule ^ public%{REQUEST_URI} [L]
+
+    # Everything else goes to Symfony. The front controller is named in full: with the document root
+    # above public/, the "/index.php" of public/.htaccess would point at a file that does not exist.
+    RewriteRule ^ public/index.php [L]
 </IfModule>
 
-# Belt and braces for servers without mod_rewrite: nothing outside public/ is readable
+# Dot-files (.env, .git…) are never served, whatever the rewriting does
 <IfModule mod_authz_core.c>
-    <FilesMatch "^\.|\.(ya?ml|lock|json|md|dist|sh|log|pem|sql|twig)$">
+    <FilesMatch "^\.">
         Require all denied
     </FilesMatch>
+</IfModule>
+
+# Belt and braces for a server without mod_rewrite: sources and settings stay invisible
+<IfModule mod_alias.c>
+    RedirectMatch 404 ^/(?:config|src|var|vendor|migrations|tests|bin|assets|templates|translations|docs|node_modules)(?:/|$)
+    RedirectMatch 404 ^/(?:composer\.(?:json|lock)|symfony\.lock|package(?:-lock)?\.json|phpunit\.dist\.xml|webpack\.config\.js)$
 </IfModule>
