@@ -16,6 +16,7 @@ use Symfony\Component\Lock\LockFactory;
 
 /**
  * Booking rules:
+ *  - every booking is made for a client card (BookingRequest::$client): that's who the side is taken by;
  *  - the side's type decides (sides of one structure may differ: a screen and a static poster);
  *  - whole sides: a side is booked for whole months, one active booking at a time;
  *  - airtime sides (video): sold by days; clips of 5/10/15 s share a 120 s loop on every day;
@@ -42,6 +43,9 @@ class BookingManager
     public function hold(BookingRequest $request, ?User $createdBy = null): Booking
     {
         $side = $request->side;
+        if (null === $request->client) {
+            throw new BookingException('Выберите клиента — бронь закрепляется за карточкой клиента.');
+        }
         [$start, $end] = $request->period();
         $clip = $this->isAirtime($side) ? $request->clipDuration : null;
         if ($this->isAirtime($side) && !\in_array($clip, BookingMode::CLIP_DURATIONS, true)) {
@@ -60,7 +64,7 @@ class BookingManager
             }
             $this->assertAvailable($side, $start, $end, $clip, $now);
 
-            $booking = new Booking($side, $start, $end, $clip, trim($request->clientName), trim($request->clientPhone), $request->comment, $createdBy);
+            $booking = new Booking($side, $start, $end, $clip, $request->client, $request->contactName(), $request->contactPhone(), $request->comment, $createdBy);
             $booking->hold($now->modify(self::HOLD_TTL));
 
             $this->entityManager->persist($booking);
@@ -217,7 +221,7 @@ class BookingManager
         if (null === $clip) {
             if ([] !== $existing) {
                 $taken = $existing[0];
-                throw new BookingException(\sprintf('Сторона %s уже забронирована: %s (%s).', $side->getName(), MonthCalendar::periodLabel($taken->getStartDate(), $taken->getEndDate()), $taken->getClientName()));
+                throw new BookingException(\sprintf('Сторона %s уже забронирована: %s (%s).', $side->getName(), MonthCalendar::periodLabel($taken->getStartDate(), $taken->getEndDate()), $taken->getClientTitle()));
             }
 
             return;

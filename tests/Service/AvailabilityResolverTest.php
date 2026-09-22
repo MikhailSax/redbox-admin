@@ -10,6 +10,7 @@ use App\Entity\Product;
 use App\Entity\ProductSide;
 use App\Entity\ProductSidePhoto;
 use App\Entity\ProductType;
+use App\Entity\User;
 use App\Enum\AvailabilityStatus;
 use App\Enum\BookingMode;
 use App\Service\Availability\AvailabilityResolver;
@@ -30,6 +31,7 @@ final class AvailabilityResolverTest extends KernelTestCase
     private MockClock $clock;
     private Product $billboard;
     private Product $screen;
+    private User $client;
 
     protected function setUp(): void
     {
@@ -39,9 +41,13 @@ final class AvailabilityResolverTest extends KernelTestCase
         $this->resolver = static::getContainer()->get(AvailabilityResolver::class);
         $this->bookings = static::getContainer()->get(BookingManager::class);
 
-        foreach ([Booking::class, ProductSidePhoto::class, ProductSide::class, Product::class, ProductType::class, Category::class, District::class] as $class) {
+        foreach ([Booking::class, ProductSidePhoto::class, ProductSide::class, Product::class, ProductType::class, Category::class, District::class, User::class] as $class) {
             $em->createQuery(\sprintf('DELETE FROM %s e', $class))->execute();
         }
+
+        $this->client = (new User())->setEmail('client@romashka.ru')->setName('Иван Петров')->setCompany('ООО Ромашка')
+            ->setRole(User::ROLE_CLIENT)->setPassword('x')->setEmailVerifiedAt(new \DateTimeImmutable());
+        $em->persist($this->client);
 
         $category = (new Category())->setName('Билборд 6х3');
         $static = (new ProductType())->setName('Статика');
@@ -203,8 +209,7 @@ final class AvailabilityResolverTest extends KernelTestCase
         $request->side = $product->getSides()->filter(fn (ProductSide $s) => $s->getName() === $side)->first();
         $request->startMonth = $month;
         $request->clipDuration = $clip;
-        $request->clientName = 'Клиент';
-        $request->clientPhone = '123';
+        $request->client = $this->client;
 
         return $this->bookings->hold($request);
     }
@@ -216,8 +221,7 @@ final class AvailabilityResolverTest extends KernelTestCase
         $request->startDate = new \DateTimeImmutable($from);
         $request->endDate = new \DateTimeImmutable($to);
         $request->clipDuration = $clip;
-        $request->clientName = 'Клиент';
-        $request->clientPhone = '123';
+        $request->client = $this->client;
 
         return $this->bookings->hold($request);
     }

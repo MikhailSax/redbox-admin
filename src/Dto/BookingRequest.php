@@ -3,6 +3,7 @@
 namespace App\Dto;
 
 use App\Entity\ProductSide;
+use App\Entity\User;
 use App\Enum\BookingMode;
 use App\Service\MonthCalendar;
 use Symfony\Component\Validator\Constraints as Assert;
@@ -38,15 +39,31 @@ final class BookingRequest
     /** Seconds; required for airtime (video) sides only */
     public ?int $clipDuration = null;
 
-    #[Assert\NotBlank(message: 'Укажите клиента', normalizer: 'trim')]
+    /** Whose the booking is; a side is never taken for nobody */
+    #[Assert\NotNull(message: 'Выберите клиента')]
+    public ?User $client = null;
+
+    /** Contact person of this booking; the one from the client card when left empty */
     #[Assert\Length(max: 255)]
     public ?string $clientName = null;
 
-    #[Assert\NotBlank(message: 'Укажите телефон клиента', normalizer: 'trim')]
+    /** Contact phone of this booking; the client card's phone when left empty */
     #[Assert\Length(max: 50)]
     public ?string $clientPhone = null;
 
     public ?string $comment = null;
+
+    /** What goes into the booking: the typed-in contact, or the contact person of the client card */
+    public function contactName(): string
+    {
+        return trim((string) $this->clientName) ?: (string) ($this->client?->getName() ?: $this->client?->getClientTitle());
+    }
+
+    /** The typed-in phone, the client card's phone, or a dash when neither is known */
+    public function contactPhone(): string
+    {
+        return trim((string) $this->clientPhone) ?: (string) $this->client?->getPhone() ?: '—';
+    }
 
     public function isAirtime(): bool
     {
@@ -72,6 +89,15 @@ final class BookingRequest
         $start = MonthCalendar::parse((string) $this->startMonth);
 
         return [$start, MonthCalendar::lastDay($start->modify(\sprintf('+%d months', max(1, (int) $this->months) - 1)))];
+    }
+
+    /** Same rule as media plans and payments: an account that hasn't confirmed its e-mail isn't a client yet */
+    #[Assert\Callback]
+    public function validateClient(ExecutionContextInterface $context): void
+    {
+        if (null !== $this->client && !$this->client->isEmailVerified()) {
+            $context->buildViolation(User::UNVERIFIED_MESSAGE)->atPath('client')->addViolation();
+        }
     }
 
     #[Assert\Callback]

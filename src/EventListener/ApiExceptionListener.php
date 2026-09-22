@@ -2,6 +2,7 @@
 
 namespace App\EventListener;
 
+use Psr\Log\LoggerInterface;
 use Symfony\Component\EventDispatcher\Attribute\AsEventListener;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Response;
@@ -18,6 +19,10 @@ use Symfony\Component\Validator\Exception\ValidationFailedException;
 #[AsEventListener(event: 'kernel.exception', priority: 64)]
 final class ApiExceptionListener
 {
+    public function __construct(private readonly LoggerInterface $logger)
+    {
+    }
+
     public function __invoke(ExceptionEvent $event): void
     {
         if (!str_starts_with($event->getRequest()->getPathInfo(), '/api/')) {
@@ -31,6 +36,10 @@ final class ApiExceptionListener
         }
 
         $status = $exception instanceof HttpExceptionInterface ? $exception->getStatusCode() : Response::HTTP_INTERNAL_SERVER_ERROR;
+        // Setting a response stops Symfony's own listener, which would have logged the error
+        if ($status >= 500) {
+            $this->logger->critical('API error: {message}', ['message' => $exception->getMessage(), 'exception' => $exception]);
+        }
 
         $validation = $exception->getPrevious();
         if ($validation instanceof ValidationFailedException) {

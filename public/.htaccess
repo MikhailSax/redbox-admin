@@ -24,6 +24,10 @@ DirectoryIndex index.php
 
     RewriteEngine On
 
+    # Uploaded files are data, never code: nothing under /uploads/ may be executed even if a
+    # crafted file ever gets past the image validation
+    RewriteRule ^uploads/.*\.(?:php\d*|phtml|phps|phar|pl|py|cgi|sh)$ - [F]
+
     # Production (sibiradm.ru): one address for everything — https:// without www.
     # Both rules only fire for that host, so localhost and the dev machine are untouched.
     RewriteCond %{HTTP_HOST} ^www\.sibiradm\.ru$ [NC]

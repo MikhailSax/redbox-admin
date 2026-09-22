@@ -3,13 +3,14 @@
 
 {#
     Client card: profile (account of the website's personal account), documents, photo reports — tabs (assets/admin/tabs.js).
-    Vars: client, form, initialTab; for a saved client also documents, reports, documentForm, reportForm.
+    Vars: client, form, initialTab; for a saved client also bookings, payments, documents, reports, documentForm, reportForm.
 #}
 {% set heading = client.id ? (client.company ?? client.name) : 'Новый клиент' %}
 {% set tabs = {profile: {label: 'Профиль'}} %}
 {% if client.id %}
     {% set overdue_count = payments|filter(p => p.statusAt(now).value == 'overdue')|length %}
     {% set tabs = tabs|merge({
+        bookings: {label: 'Брони', counter: bookings|length ?: null},
         payments: {label: 'Платежи', counter: payments|length ?: null, alert: overdue_count > 0},
         documents: {label: 'Документы', counter: documents|length ?: null},
         reports: {label: 'Фотоотчёты', counter: reports|length ?: null},
@@ -131,6 +132,40 @@
     </div>
 
     {% if client.id %}
+        {# Bookings: the structures this client holds #}
+        <div {{ _self.panel_attrs('bookings', initialTab) }}>
+            <div class="table-card">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th scope="col" class="px-4 py-2.5">Конструкция</th>
+                            <th scope="col" class="px-4 py-2.5">Период</th>
+                            <th scope="col" class="px-4 py-2.5">Статус</th>
+                            <th scope="col" class="px-4 py-2.5">Контакт по брони</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for booking in bookings %}
+                            <tr>
+                                <th scope="row" class="px-4 py-3 font-medium text-heading">
+                                    <a href="{{ path('admin_booking_product', {id: booking.product.id}) }}" class="hover:underline">{{ booking.product.name }}</a>
+                                    <div class="text-xs font-normal text-body-subtle">Сторона {{ booking.side.name }}</div>
+                                </th>
+                                <td class="px-4 py-3 whitespace-nowrap">{{ include('admin/booking/_period.html.twig') }}</td>
+                                <td class="px-4 py-3">{{ include('admin/booking/_status.html.twig') }}</td>
+                                <td class="px-4 py-3">
+                                    <div class="text-heading">{{ booking.clientName }}</div>
+                                    <div class="text-xs text-body-subtle">{{ booking.clientPhone }}</div>
+                                </td>
+                            </tr>
+                        {% else %}
+                            <tr><td colspan="4" class="px-4 py-8 text-center">Броней пока нет. Забронировать конструкцию можно в её карточке — вкладка «Бронирование».</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
         {# Payments #}
         <div {{ _self.panel_attrs('payments', initialTab) }}>
             {% set unpaid = payments|filter(p => not p.paid) %}

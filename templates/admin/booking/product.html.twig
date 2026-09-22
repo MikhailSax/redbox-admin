@@ -44,7 +44,7 @@
                             <th scope="row" class="sticky left-0 bg-neutral-primary-soft px-4 py-2 text-left font-medium text-heading whitespace-nowrap">{{ side.name }}</th>
                             {% for key, column in group.columns %}
                                 {% set cell = group.cells[side.id][key] %}
-                                {% set clients = cell.bookings|map(b => b.clientName ~ (b.clipDuration ? ' (' ~ b.clipDuration ~ ' сек)' : '') ~ ' — ' ~ b.statusAt(now).label)|join("\n") %}
+                                {% set clients = cell.bookings|map(b => b.clientTitle ~ (b.clipDuration ? ' (' ~ b.clipDuration ~ ' сек)' : '') ~ ' — ' ~ b.statusAt(now).label)|join("\n") %}
                                 <td class="p-1">
                                     {% if grid_airtime %}
                                         {# rounded down like BookingMode::loadPercent(): 100% only when not a second is left #}
@@ -59,7 +59,7 @@
                                         {% if booking %}
                                             {% set paid = booking.status.value == 'paid' %}
                                             <div class="rounded-sm border px-1.5 py-1 text-center text-xs font-medium truncate max-w-28 {{ paid ? 'bg-danger-soft border-danger-subtle text-fg-danger-strong' : 'bg-warning-soft border-warning-subtle text-fg-warning' }}" title="{{ clients }}">
-                                                {{ booking.clientName }}
+                                                {{ booking.clientTitle }}
                                             </div>
                                         {% else %}
                                             <div class="rounded-sm border px-1.5 py-1 text-center text-xs bg-success-soft border-success-subtle text-fg-success-strong">свободно</div>
@@ -105,6 +105,7 @@
                 {% if form.clipDuration is defined %}
                     {{ form_row(form.clipDuration, airtime_row) }}
                 {% endif %}
+                {{ form_row(form.client) }}
                 <div class="grid gap-x-6 md:grid-cols-2">
                     {{ form_row(form.clientName) }}
                     {{ form_row(form.clientPhone) }}
@@ -149,8 +150,8 @@
                         <td class="px-4 py-3 font-medium text-heading">{{ booking.side.name }}</td>
                         <td class="px-4 py-3 whitespace-nowrap">{{ include('admin/booking/_period.html.twig') }}</td>
                         <td class="px-4 py-3">
-                            <div class="text-heading">{{ booking.clientName }}</div>
-                            <div class="text-xs">{{ booking.clientPhone }}{% if booking.createdBy %} · оформил(а) {{ booking.createdBy.name }}{% endif %}</div>
+                            {{ include('admin/booking/_client.html.twig') }}
+                            {% if booking.createdBy %}<div class="text-xs text-body-subtle">оформил(а) {{ booking.createdBy.name }}</div>{% endif %}
                             {% if booking.comment %}<div class="text-xs mt-1">{{ booking.comment }}</div>{% endif %}
                         </td>
                         <td class="px-4 py-3">{{ include('admin/booking/_status.html.twig') }}</td>

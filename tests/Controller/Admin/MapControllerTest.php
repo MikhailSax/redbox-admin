@@ -67,7 +67,7 @@ final class MapControllerTest extends AdminWebTestCase
         $request = new BookingRequest();
         $request->side = $this->center->getSides()->first();
         $request->startMonth = '2026-09';
-        $request->clientName = 'Клиент';
+        $request->client = $this->createClientCard();
         $request->clientPhone = '123';
         static::getContainer()->get(BookingManager::class)->hold($request);
 

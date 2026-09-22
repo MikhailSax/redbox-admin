@@ -25,11 +25,13 @@ final class BookingControllerTest extends AdminWebTestCase
     private MockClock $clock;
     private Product $billboard;
     private Product $screen;
+    private User $customer;
 
     protected function setUp(): void
     {
         parent::setUp();
         $this->clock = self::mockTime('2026-09-10 12:00:00');
+        $this->customer = $this->createClientCard();
 
         $category = (new Category())->setName('Билборд 6х3');
         $district = (new District())->setName('Центральный');
@@ -56,19 +58,62 @@ final class BookingControllerTest extends AdminWebTestCase
         $values['booking_form']['side'] = (string) $this->side($this->billboard, 'B')->getId();
         $values['booking_form']['startMonth'] = '2026-10';
         $values['booking_form']['months'] = '2';
-        $values['booking_form']['clientName'] = 'ООО Ромашка';
-        $values['booking_form']['clientPhone'] = '+7 900 111-22-33';
+        $values['booking_form']['client'] = (string) $this->customer->getId();
         $this->submit($uri, $values);
 
         self::assertResponseRedirects($this->url($this->billboard));
         $crawler = $this->client->followRedirect();
         self::assertSelectorTextContains('[role=alert]', 'ждёт оплаты до 11.09.2026 12:00');
         self::assertSelectorTextContains('main', 'ООО Ромашка');
+        // the client card is linked, not just named
+        self::assertSelectorExists('tbody a[href="/admin/clients/'.$this->customer->getId().'"]');
 
         $booking = $this->em->getRepository(Booking::class)->findOneBy([]);
         self::assertSame('B', $booking->getSide()->getName());
         self::assertSame(2, $booking->getMonthCount());
+        self::assertSame($this->customer->getId(), $booking->getClient()?->getId());
+        // contact fields left empty are taken from the client card
+        self::assertSame('Иван Петров', $booking->getClientName());
+        self::assertSame('+7 900 111-22-33', $booking->getClientPhone());
         self::assertSame('me@redbox.local', $booking->getCreatedBy()?->getEmail());
+    }
+
+    public function testBookingWithoutAClientCardIsRefused(): void
+    {
+        $crawler = $this->client->request('GET', $this->url($this->billboard));
+        [$values, $uri] = $this->formValues($crawler, 'Забронировать на 24 часа');
+        $values['booking_form']['side'] = (string) $this->side($this->billboard, 'A')->getId();
+        $values['booking_form']['startMonth'] = '2026-10';
+        $values['booking_form']['client'] = '';
+        $this->submit($uri, $values);
+
+        self::assertResponseStatusCodeSame(422);
+        self::assertSelectorTextContains('#booking_form_client_error1', 'Выберите клиента');
+        self::assertSame(0, $this->em->getRepository(Booking::class)->count([]));
+    }
+
+    public function testAccountWithAnUnconfirmedEmailIsNotOfferedAsAClient(): void
+    {
+        $stranger = $this->createClientCard('ООО «Аноним»', 'stranger@example.com')->setEmailVerifiedAt(null);
+        $this->em->flush();
+
+        $crawler = $this->client->request('GET', $this->url($this->billboard));
+        $options = $crawler->filter('select[name="booking_form[client]"] option')->each(static fn ($o) => $o->attr('value'));
+        self::assertContains((string) $this->customer->getId(), $options);
+        self::assertNotContains((string) $stranger->getId(), $options);
+    }
+
+    public function testClientCardListsTheStructuresTheyHold(): void
+    {
+        $this->hold($this->side($this->billboard, 'A'), '2026-09');
+
+        $crawler = $this->client->request('GET', '/admin/clients/'.$this->customer->getId());
+        self::assertResponseIsSuccessful();
+        self::assertSelectorTextContains('[role=tablist] a[data-tab="bookings"]', 'Брони 1');
+        $bookings = $crawler->filter('#tab-bookings');
+        self::assertStringContainsString('Щит на Ленина', $bookings->text());
+        self::assertStringContainsString('Сентябрь 2026', $bookings->text());
+        self::assertSame('/admin/products/'.$this->billboard->getId().'/bookings', $bookings->filter('tbody a')->attr('href'));
     }
 
     public function testTakenSideShowsError(): void
@@ -79,6 +124,7 @@ final class BookingControllerTest extends AdminWebTestCase
         [$values, $uri] = $this->formValues($crawler, 'Забронировать на 24 часа');
         $values['booking_form']['side'] = (string) $this->side($this->billboard, 'A')->getId();
         $values['booking_form']['startMonth'] = '2026-09';
+        $values['booking_form']['client'] = (string) $this->customer->getId();
         $values['booking_form']['clientName'] = 'Второй';
         $values['booking_form']['clientPhone'] = '123';
         $this->submit($uri, $values);
@@ -101,6 +147,7 @@ final class BookingControllerTest extends AdminWebTestCase
         [$values, $uri] = $this->formValues($crawler, 'Забронировать на 24 часа');
         $values['booking_form']['startDate'] = '2026-09-12';
         $values['booking_form']['endDate'] = '2026-09-11';
+        $values['booking_form']['client'] = (string) $this->customer->getId();
         $values['booking_form']['clientName'] = 'Кафе';
         $values['booking_form']['clientPhone'] = '123';
         unset($values['booking_form']['clipDuration']);
@@ -134,6 +181,7 @@ final class BookingControllerTest extends AdminWebTestCase
         $values['booking_form']['startDate'] = '2026-09-01';
         $values['booking_form']['endDate'] = '2026-09-12';
         $values['booking_form']['clipDuration'] = '5';
+        $values['booking_form']['client'] = (string) $this->customer->getId();
         $values['booking_form']['clientName'] = 'Кафе';
         $values['booking_form']['clientPhone'] = '123';
         $this->submit($uri, $values);
@@ -164,6 +212,7 @@ final class BookingControllerTest extends AdminWebTestCase
         self::assertSame('side', $crawler->filter('option[value="'.$sideA->getId().'"]')->attr('data-booking-mode'));
 
         [$values, $uri] = $this->formValues($crawler, 'Забронировать на 24 часа');
+        $values['booking_form']['client'] = (string) $this->customer->getId();
         $values['booking_form']['clientName'] = 'Кафе';
         $values['booking_form']['clientPhone'] = '123';
 
@@ -202,6 +251,7 @@ final class BookingControllerTest extends AdminWebTestCase
         $request->side = $this->side($this->screen, 'A');
         $request->startMonth = '2026-09';
         $request->clipDuration = 15;
+        $request->client = $this->customer;
         $request->clientName = 'Кафе';
         $request->clientPhone = '123';
         static::getContainer()->get(BookingManager::class)->hold($request);
@@ -387,6 +437,7 @@ final class BookingControllerTest extends AdminWebTestCase
         $request = new BookingRequest();
         $request->side = $side;
         $request->startMonth = $month;
+        $request->client = $this->customer;
         $request->clientName = $client;
         $request->clientPhone = '+7 900 000-00-00';
 

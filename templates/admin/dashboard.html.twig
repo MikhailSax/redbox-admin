@@ -97,7 +97,7 @@
                             {{ minutes_left >= 60 ? (minutes_left / 60)|round(0, 'floor') ~ 'ч' : minutes_left ~ 'м' }}
                         </span>
                         <div class="min-w-0 flex-1">
-                            <a href="{{ path('admin_booking_product', {id: booking.product.id}) }}" class="block truncate text-sm font-medium text-heading hover:underline">{{ booking.clientName }}</a>
+                            <a href="{{ path('admin_booking_product', {id: booking.product.id}) }}" class="block truncate text-sm font-medium text-heading hover:underline">{{ booking.clientTitle }}</a>
                             <p class="truncate text-xs text-body">{{ booking.product.name }} · {{ booking.side.name }} · {{ period_label(booking.startDate, booking.endDate) }}</p>
                         </div>
                         {{ include('admin/booking/_actions.html.twig', {return: 'dashboard'}) }}

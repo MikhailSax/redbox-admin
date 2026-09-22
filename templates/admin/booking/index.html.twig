@@ -53,10 +53,7 @@
                                     <div class="text-xs font-normal text-body-subtle">Сторона {{ booking.side.name }}</div>
                                 </th>
                                 <td class="px-4 py-3 whitespace-nowrap">{{ include('admin/booking/_period.html.twig') }}</td>
-                                <td class="px-4 py-3">
-                                    <div class="font-medium text-heading">{{ booking.clientName|highlight(q) }}</div>
-                                    <div class="text-xs text-body-subtle">{{ booking.clientPhone|highlight(q) }}</div>
-                                </td>
+                                <td class="px-4 py-3">{{ include('admin/booking/_client.html.twig') }}</td>
                                 <td class="px-4 py-3">{{ include('admin/booking/_status.html.twig') }}</td>
                                 <td class="px-4 py-3 whitespace-nowrap">
                                     {{ booking.createdAt|date('d.m.Y H:i') }}

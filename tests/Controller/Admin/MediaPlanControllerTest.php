@@ -214,7 +214,7 @@ final class MediaPlanControllerTest extends AdminWebTestCase
         $request = new BookingRequest();
         $request->side = $sideB;
         $request->startMonth = '2026-09';
-        $request->clientName = 'Конкурент';
+        $request->client = $this->createClientCard('Конкурент', 'rival@example.com');
         $request->clientPhone = '1';
         static::getContainer()->get(BookingManager::class)->hold($request);
 
@@ -230,7 +230,24 @@ final class MediaPlanControllerTest extends AdminWebTestCase
         [$itemA, $itemB] = $plan->getItems()->getValues();
         self::assertSame(BookingStatus::Hold, $itemA->getBooking()?->getStatus());
         self::assertSame('Кафе «Лето»', $itemA->getBooking()->getClientName());
+        // the booking is made out to the plan's client card, not just to the name printed in the PDF
+        self::assertSame($plan->getClient()?->getId(), $itemA->getBooking()->getClient()?->getId());
         self::assertNull($itemB->getBooking());
+    }
+
+    public function testBookAllNeedsTheClientCardOfThePlan(): void
+    {
+        $plan = $this->plan();
+        $plan->setClient(null);
+        $this->em->flush();
+        $this->addSides($plan, [$this->billboard->getSides()->first()]);
+
+        $crawler = $this->client->request('GET', '/admin/media-plans/'.$plan->getId());
+        $this->submitPostForm($crawler, 'form[action$="/book"]');
+        $this->client->followRedirect();
+
+        self::assertSelectorTextContains('[role=alert]', 'Выберите клиента в параметрах медиаплана');
+        self::assertNull($this->reload($plan)->getItems()->first()->getBooking());
     }
 
     public function testPdf(): void
@@ -365,6 +382,7 @@ final class MediaPlanControllerTest extends AdminWebTestCase
     private function plan(int $months = 1, int $discount = 0): MediaPlan
     {
         $plan = (new MediaPlan())->setTitle('Осень')->setClientName('Кафе «Лето»')->setClientContact('+7 900 111-22-33')
+            ->setClient($this->createClientCard('Кафе «Лето»', 'cafe@example.com'))
             ->setStartMonth(new \DateTimeImmutable('2026-09-01'))->setMonths($months)->setDiscountPercent($discount);
         $this->em->persist($plan);
         $this->em->flush();

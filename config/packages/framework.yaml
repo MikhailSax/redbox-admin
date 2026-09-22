@@ -10,8 +10,8 @@ framework:
     trusted_proxies: '%env(TRUSTED_PROXIES)%'
     trusted_headers: ['x-forwarded-for', 'x-forwarded-proto']
 
-    # Host names served (APP_TRUSTED_HOSTS, set in .env.prod); empty in dev = any host
-    trusted_hosts: ['%env(APP_TRUSTED_HOSTS)%']
+    # Host names served (APP_TRUSTED_HOSTS, set in .env.prod); unset or empty = any host, as dev wants
+    trusted_hosts: ['%env(default::APP_TRUSTED_HOSTS)%']
 
     #esi: true
     #fragments: true

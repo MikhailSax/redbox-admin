@@ -76,6 +76,18 @@ abstract class AdminWebTestCase extends WebTestCase
         return $user;
     }
 
+    /** A client card bookings, media plans and payments can be made out to */
+    protected function createClientCard(string $company = 'ООО Ромашка', string $email = 'client@romashka.ru'): User
+    {
+        $client = $this->createUser($email, User::ROLE_CLIENT)
+            ->setName('Иван Петров')
+            ->setCompany($company)
+            ->setPhone('+7 900 111-22-33');
+        $this->em->flush();
+
+        return $client;
+    }
+
     protected function makeImage(string $name): UploadedFile
     {
         $path = tempnam(sys_get_temp_dir(), 'img');

@@ -132,7 +132,7 @@ final class ApiCatalogTest extends AdminWebTestCase
         $request->startDate = new \DateTimeImmutable('2026-09-14');
         $request->endDate = new \DateTimeImmutable('2026-09-20');
         $request->clipDuration = 15;
-        $request->clientName = 'Кафе «Лето»';
+        $request->client = $this->createClientCard('Кафе «Лето»', 'cafe@example.com');
         $request->clientPhone = '+7 900 000-00-00';
         static::getContainer()->get(BookingManager::class)->hold($request);
 

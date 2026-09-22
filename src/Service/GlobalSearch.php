@@ -99,7 +99,7 @@ class GlobalSearch
             $status = $booking->getStatusAt($now);
 
             return [
-                'title' => $booking->getClientName().' · '.$booking->getClientPhone(),
+                'title' => $booking->getClientTitle().' · '.$booking->getClientPhone(),
                 'subtitle' => \sprintf('%s, сторона %s · %s', $booking->getProduct()?->getName(), $booking->getSide()->getName(), MonthCalendar::periodLabel($booking->getStartDate(), $booking->getEndDate())),
                 'url' => $this->urls->generate('admin_booking_product', ['id' => $booking->getProduct()?->getId()]),
                 'badge' => ['label' => $status->label(), 'tone' => $status->value],

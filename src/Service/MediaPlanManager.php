@@ -121,12 +121,19 @@ class MediaPlanManager
     }
 
     /**
-     * Creates a 24h hold for every item that isn't booked yet. Taken sides are skipped and reported.
+     * Creates a 24h hold for every item that isn't booked yet, in the name of the plan's client.
+     * Taken sides are skipped and reported.
      *
      * @return array{booked: int, failed: list<string>}
      */
     public function bookAll(MediaPlan $plan, ?User $by): array
     {
+        $client = $plan->getClient();
+        if (null === $client) {
+            // Bookings are kept per client card, like payments
+            return ['booked' => 0, 'failed' => ['Выберите клиента в параметрах медиаплана — бронь закрепляется за карточкой клиента.']];
+        }
+
         $now = $this->clock->now();
         $booked = 0;
         $failed = [];
@@ -141,6 +148,7 @@ class MediaPlanManager
             $request->startMonth = $plan->getStartMonth()->format('Y-m');
             $request->months = $plan->getMonths();
             $request->clipDuration = $item->getClipDuration();
+            $request->client = $client;
             $request->clientName = (string) $plan->getClientName();
             $request->clientPhone = $plan->getClientContact() ?: '—';
             $request->comment = \sprintf('Медиаплан «%s»', $plan->getTitle());

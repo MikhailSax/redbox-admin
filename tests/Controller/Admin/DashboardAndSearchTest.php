@@ -18,11 +18,13 @@ final class DashboardAndSearchTest extends AdminWebTestCase
 
     private Product $billboard;
     private Product $screen;
+    private User $customer;
 
     protected function setUp(): void
     {
         parent::setUp();
         self::mockTime('2026-09-10 12:00:00');
+        $this->customer = $this->createClientCard();
 
         $category = (new Category())->setName('Билборд 6х3');
         $district = (new District())->setName('Центральный');
@@ -94,10 +96,10 @@ final class DashboardAndSearchTest extends AdminWebTestCase
         self::assertSame('/admin/products/'.$this->billboard->getId().'/edit', $data['groups'][0]['items'][0]['url']);
         self::assertSame('free', $data['groups'][0]['items'][0]['badge']['tone']);
 
-        // clients by name or phone, dictionaries by name
+        // clients by name or phone, dictionaries by name; a client's name finds their card and their bookings
         $this->client->request('GET', '/admin/search?q=ромаш');
         $data = json_decode($this->client->getResponse()->getContent(), true);
-        self::assertSame(['Брони и клиенты'], array_column($data['groups'], 'title'));
+        self::assertSame(['Брони и клиенты', 'Клиенты'], array_column($data['groups'], 'title'));
         self::assertStringStartsWith('ООО Ромашка', $data['groups'][0]['items'][0]['title']);
 
         $this->client->request('GET', '/admin/search?q=центр');
@@ -168,6 +170,7 @@ final class DashboardAndSearchTest extends AdminWebTestCase
         $request = new BookingRequest();
         $request->side = $product->getSides()->filter(fn (ProductSide $s) => $s->getName() === $side)->first();
         $request->startMonth = '2026-09';
+        $request->client = $this->customer;
         $request->clientName = $client;
         $request->clientPhone = '+7 900 000-00-00';
 

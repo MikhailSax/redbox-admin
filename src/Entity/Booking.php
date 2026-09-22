@@ -20,6 +20,7 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\HasLifecycleCallbacks]
 #[ORM\Index(name: 'idx_booking_side_period', columns: ['side_id', 'start_date', 'end_date'])]
 #[ORM\Index(name: 'idx_booking_status_expires', columns: ['status', 'expires_at'])]
+#[ORM\Index(name: 'idx_booking_client', columns: ['client_id'])]
 class Booking
 {
     use TimestampableTrait;
@@ -55,6 +56,15 @@ class Booking
     #[ORM\Column(nullable: true)]
     private ?\DateTimeImmutable $paidAt = null;
 
+    /**
+     * Whose the booking is: the client card the side is taken for. Required to book (see BookingRequest),
+     * but nullable in the database so deleting an account doesn't take the booking history with it.
+     */
+    #[ORM\ManyToOne]
+    #[ORM\JoinColumn(onDelete: 'SET NULL')]
+    private ?User $client;
+
+    /** Contact person of this booking; the one from the client card when the manager left it empty */
     #[ORM\Column(length: 255)]
     private string $clientName;
 
@@ -73,6 +83,7 @@ class Booking
         \DateTimeImmutable $startDate,
         \DateTimeImmutable $endDate,
         ?int $clipDuration,
+        ?User $client,
         string $clientName,
         string $clientPhone,
         ?string $comment = null,
@@ -82,6 +93,7 @@ class Booking
         $this->startDate = $startDate->setTime(0, 0);
         $this->endDate = $endDate->setTime(0, 0);
         $this->clipDuration = $clipDuration;
+        $this->client = $client;
         $this->clientName = $clientName;
         $this->clientPhone = $clientPhone;
         $this->comment = $comment;
@@ -207,6 +219,17 @@ class Booking
     public function getPaidAt(): ?\DateTimeImmutable
     {
         return $this->paidAt;
+    }
+
+    public function getClient(): ?User
+    {
+        return $this->client;
+    }
+
+    /** The client card's own title, the typed-in name when the account is gone */
+    public function getClientTitle(): string
+    {
+        return $this->client?->getClientTitle() ?? $this->clientName;
     }
 
     public function getClientName(): string

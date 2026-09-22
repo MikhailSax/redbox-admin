@@ -5,6 +5,7 @@ namespace App\Repository;
 use App\Entity\Booking;
 use App\Entity\Product;
 use App\Entity\ProductSide;
+use App\Entity\User;
 use App\Enum\BookingStatus;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\ORM\QueryBuilder;
@@ -73,16 +74,48 @@ class BookingRepository extends ServiceEntityRepository
     }
 
     /**
-     * Newest first; $status = null means every status. $search matches client name, phone or structure name.
+     * Every booking made for the client, newest first.
+     *
+     * @return list<Booking>
+     */
+    public function findForClient(User $client): array
+    {
+        return $this->createQueryBuilder('b')
+            ->addSelect('s', 'p')
+            ->join('b.side', 's')
+            ->join('s.product', 'p')
+            ->andWhere('b.client = :client')
+            ->setParameter('client', $client)
+            ->orderBy('b.startDate', 'DESC')
+            ->addOrderBy('b.id', 'DESC')
+            ->getQuery()
+            ->getResult();
+    }
+
+    /** Sides the client holds right now (paid, or on hold and not yet overdue) */
+    public function countActiveForClient(User $client, \DateTimeImmutable $now): int
+    {
+        return (int) $this->active($this->createQueryBuilder('b'), $now)
+            ->select('COUNT(b.id)')
+            ->andWhere('b.client = :client')
+            ->setParameter('client', $client)
+            ->getQuery()
+            ->getSingleScalarResult();
+    }
+
+    /**
+     * Newest first; $status = null means every status. $search matches the client (card or typed-in
+     * contact), the phone or the structure name.
      *
      * @return list<Booking>
      */
     public function findForList(?BookingStatus $status, ?string $search = null, int $limit = 200): array
     {
         $qb = $this->createQueryBuilder('b')
-            ->addSelect('s', 'p')
+            ->addSelect('s', 'p', 'c')
             ->join('b.side', 's')
             ->join('s.product', 'p')
+            ->leftJoin('b.client', 'c')
             ->orderBy('b.createdAt', 'DESC')
             ->setMaxResults($limit);
 
@@ -91,7 +124,7 @@ class BookingRepository extends ServiceEntityRepository
         }
 
         if (null !== $search && '' !== trim($search)) {
-            $qb->andWhere('b.clientName LIKE :search OR b.clientPhone LIKE :search OR p.name LIKE :search')
+            $qb->andWhere('b.clientName LIKE :search OR b.clientPhone LIKE :search OR p.name LIKE :search OR c.company LIKE :search OR c.name LIKE :search')
                 ->setParameter('search', self::like($search));
         }
 

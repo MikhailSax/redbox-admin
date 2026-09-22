@@ -10,6 +10,7 @@ use App\Entity\Product;
 use App\Entity\ProductSide;
 use App\Entity\ProductSidePhoto;
 use App\Entity\ProductType;
+use App\Entity\User;
 use App\Enum\BookingMode;
 use App\Enum\BookingStatus;
 use App\Service\BookingException;
@@ -37,7 +38,7 @@ final class BookingManagerTest extends KernelTestCase
         $this->em = static::getContainer()->get(EntityManagerInterface::class);
         $this->manager = static::getContainer()->get(BookingManager::class);
 
-        foreach ([Booking::class, ProductSidePhoto::class, ProductSide::class, Product::class, ProductType::class, Category::class, District::class] as $class) {
+        foreach ([Booking::class, ProductSidePhoto::class, ProductSide::class, Product::class, ProductType::class, Category::class, District::class, User::class] as $class) {
             $this->em->createQuery(\sprintf('DELETE FROM %s e', $class))->execute();
         }
 
@@ -267,7 +268,7 @@ final class BookingManagerTest extends KernelTestCase
         $request->startDate = new \DateTimeImmutable($from);
         $request->endDate = new \DateTimeImmutable($to);
         $request->clipDuration = $clip;
-        $request->clientName = $client;
+        $request->client = $this->clientAccount($client);
         $request->clientPhone = '+7 900 000-00-00';
 
         return $this->manager->hold($request);
@@ -280,10 +281,24 @@ final class BookingManagerTest extends KernelTestCase
         $request->startMonth = $month;
         $request->months = $months;
         $request->clipDuration = $clip;
-        $request->clientName = $client;
+        $request->client = $this->clientAccount($client);
         $request->clientPhone = '+7 900 000-00-00';
 
         return $this->manager->hold($request);
+    }
+
+    /** The client card a booking is made for, created on first use */
+    private function clientAccount(string $title): User
+    {
+        $client = $this->em->getRepository(User::class)->findOneBy(['company' => $title]);
+        if (null === $client) {
+            $client = (new User())->setEmail(uniqid('client').'@romashka.ru')->setName('Контакт '.$title)->setCompany($title)
+                ->setRole(User::ROLE_CLIENT)->setPassword('x')->setEmailVerifiedAt($this->clock->now());
+            $this->em->persist($client);
+            $this->em->flush();
+        }
+
+        return $client;
     }
 
     private function assertUnavailable(callable $action, string $expectedMessage): void

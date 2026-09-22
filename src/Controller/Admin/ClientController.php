@@ -11,6 +11,7 @@ use App\Enum\ClientType;
 use App\Form\ClientDocumentFormType;
 use App\Form\ClientFormType;
 use App\Form\PhotoReportFormType;
+use App\Repository\BookingRepository;
 use App\Repository\ClientDocumentRepository;
 use App\Repository\PaymentRepository;
 use App\Repository\PhotoReportRepository;
@@ -45,6 +46,7 @@ final class ClientController extends AbstractController
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly UserRepository $users,
+        private readonly BookingRepository $bookings,
         private readonly ClientDocumentRepository $documents,
         private readonly PhotoReportRepository $reports,
         private readonly PaymentRepository $payments,
@@ -280,6 +282,7 @@ final class ClientController extends AbstractController
                 'documentForm' => $this->documentForm($client),
                 'reportForm' => $this->reportForm($client, $this->newReport($client)),
                 'payments' => $this->payments->findForClient($client),
+                'bookings' => $this->bookings->findForClient($client),
                 'now' => $this->clock->now(),
             ];
         }

@@ -5,6 +5,7 @@ namespace App\Form;
 use App\Dto\BookingRequest;
 use App\Entity\Product;
 use App\Entity\ProductSide;
+use App\Entity\User;
 use App\Enum\BookingMode;
 use App\Service\MonthCalendar;
 use Doctrine\ORM\EntityRepository;
@@ -48,13 +49,33 @@ class BookingFormType extends AbstractType
                 'choice_attr' => static fn (ProductSide $side): array => ['data-booking-mode' => $side->getBookingMode()->value],
                 'placeholder' => $product->getSides()->count() > 1 ? 'Выберите сторону' : false,
             ])
-            ->add('clientName', TextType::class, [
+            ->add('client', EntityType::class, [
                 'label' => 'Клиент',
-                'attr' => ['placeholder' => 'ООО «Ромашка»'],
+                'class' => User::class,
+                'query_builder' => static fn (EntityRepository $r): QueryBuilder => $r->createQueryBuilder('u')
+                    ->andWhere('u.roles LIKE :client')
+                    // accounts from the website are booked for once their e-mail is confirmed
+                    ->andWhere('u.emailVerifiedAt IS NOT NULL')
+                    ->setParameter('client', '%'.User::ROLE_CLIENT.'%')
+                    ->orderBy('u.company', 'ASC')
+                    ->addOrderBy('u.name', 'ASC'),
+                'choice_label' => static fn (User $client): string => $client->getClientTitle().($client->getClientType() ? ' · '.$client->getClientType()->label() : ''),
+                'choice_attr' => static fn (User $client): array => ['data-contact' => $client->getName(), 'data-phone' => $client->getPhone() ?? ''],
+                'placeholder' => 'Выберите клиента',
+                'attr' => ['data-booking-client' => ''],
+                'help' => 'Конструкция закрепляется за карточкой клиента. Нет карточки — заведите её в разделе «Клиенты».',
+            ])
+            ->add('clientName', TextType::class, [
+                'label' => 'Контактное лицо',
+                'required' => false,
+                'attr' => ['placeholder' => 'Иван Петров'],
+                'help' => 'Пусто — название клиента из карточки.',
             ])
             ->add('clientPhone', TelType::class, [
                 'label' => 'Телефон',
+                'required' => false,
                 'attr' => ['placeholder' => '+7 900 000-00-00'],
+                'help' => 'Пусто — телефон из карточки клиента.',
             ])
             ->add('comment', TextareaType::class, [
                 'label' => 'Комментарий',

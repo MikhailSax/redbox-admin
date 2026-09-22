@@ -1,0 +1,14 @@
+{#
+    Who the structure is taken by: the client card, with the booking's own contact under it.
+    Vars: booking; optional q (search term to highlight).
+#}
+{% set q = q|default('') %}
+{% if booking.client %}
+    <a href="{{ path('admin_client_show', {id: booking.client.id}) }}" class="font-medium text-heading hover:underline">{{ booking.client.clientTitle|highlight(q) }}</a>
+{% else %}
+    <div class="font-medium text-heading">{{ booking.clientName|highlight(q) }}</div>
+    <div class="text-xs text-fg-warning">Без карточки клиента</div>
+{% endif %}
+<div class="text-xs text-body-subtle">
+    {% if booking.client and booking.clientName != booking.client.clientTitle %}{{ booking.clientName|highlight(q) }} · {% endif %}{{ booking.clientPhone|highlight(q) }}
+</div>
