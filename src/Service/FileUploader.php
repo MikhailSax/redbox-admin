@@ -41,6 +41,9 @@ class FileUploader
     {
         $filename = $this->filename($file, $originalName);
         $this->filesystem->copy($file->getPathname(), $this->path($folder, $filename));
+        // copy() keeps the source's mode, and a temporary file is 0600: the web server couldn't read it (403).
+        // Same mode as a file uploaded through a form (UploadedFile::move()).
+        $this->filesystem->chmod($this->path($folder, $filename), 0o666 & ~umask());
 
         return $filename;
     }
