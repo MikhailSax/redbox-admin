@@ -119,40 +119,41 @@ final class AvailabilityResolverTest extends KernelTestCase
         self::assertSame(AvailabilityStatus::Occupied, $this->resolve($this->billboard, '2026-10-01')->status());
     }
 
-    public function testAirtimeIsFreeUntilNotEvenAFiveSecondClipFits(): void
+    public function testScreenIsFreeWhileItHasAFreeSlot(): void
     {
-        for ($i = 0; $i < 7; ++$i) {
-            $this->pay($this->book($this->screen, 'A', clip: 15)); // 105 s paid
+        for ($i = 0; $i < 5; ++$i) {
+            $this->pay($this->book($this->screen, 'A', slots: 2)); // 10 slots paid
         }
-        $this->book($this->screen, 'A', clip: 10); // 115 s used, 5 s left
+        $this->book($this->screen, 'A', slots: 1); // 11 of 12 taken
 
         $side = $this->resolve($this->screen)->sides[0];
-        self::assertSame(115, $side->usedSeconds());
-        self::assertSame(95, $side->loadPercent()); // 115 of 120 s, rounded down: 100% only when the loop is full
+        self::assertSame(11, $side->usedSlots());
+        self::assertSame(12, $side->slotCount);
+        self::assertSame(91, $side->loadPercent()); // rounded down: 100% only when every slot is taken
         self::assertSame(AvailabilityStatus::Free, $side->status());
 
-        $this->book($this->screen, 'A', clip: 5); // loop full, part of it on hold
+        $this->book($this->screen, 'A', slots: 1); // every slot taken, part of them on hold
         self::assertSame(AvailabilityStatus::Booked, $this->resolve($this->screen)->status());
 
-        $this->clock->modify('+25 hours'); // holds (10 s + 5 s) expire
-        self::assertSame(105, $this->resolve($this->screen)->sides[0]->usedSeconds());
+        $this->clock->modify('+25 hours'); // the holds (2 slots) expire
+        self::assertSame(10, $this->resolve($this->screen)->sides[0]->usedSlots());
         self::assertSame(AvailabilityStatus::Free, $this->resolve($this->screen)->status());
     }
 
     public function testAirtimeStatusUsesTheBusiestDayFromToday(): void
     {
-        // the loop is full from the 20th to the 25th only
-        for ($i = 0; $i < 8; ++$i) {
-            $this->pay($this->bookDays('2026-09-20', '2026-09-25', 15));
+        // every slot is taken from the 13th to the 26th only
+        for ($i = 0; $i < 12; ++$i) {
+            $this->pay($this->bookDays('2026-09-13', '2026-09-26', 1));
         }
         self::assertSame(AvailabilityStatus::Occupied, $this->resolve($this->screen)->status());
-        self::assertSame(120, $this->resolve($this->screen)->sides[0]->usedSeconds());
+        self::assertSame(12, $this->resolve($this->screen)->sides[0]->usedSlots());
         self::assertSame(100, $this->resolve($this->screen)->sides[0]->loadPercent());
 
-        // after the 25th the rest of September is free again
-        $this->clock->modify('2026-09-26 09:00');
+        // after the 26th the rest of September is free again
+        $this->clock->modify('2026-09-27 09:00');
         self::assertSame(AvailabilityStatus::Free, $this->resolve($this->screen)->status());
-        self::assertSame(0, $this->resolve($this->screen)->sides[0]->usedSeconds());
+        self::assertSame(0, $this->resolve($this->screen)->sides[0]->usedSlots());
     }
 
     public function testEachSideUsesItsOwnType(): void
@@ -163,15 +164,15 @@ final class AvailabilityResolverTest extends KernelTestCase
         $em->flush();
 
         $this->pay($this->book($this->billboard, 'A'));
-        $this->pay($this->book($this->billboard, 'B', clip: 15));
+        $this->pay($this->book($this->billboard, 'B', slots: 3));
 
         [$sideA, $sideB] = $this->resolve($this->billboard)->sides;
         self::assertFalse($sideA->airtime);
         self::assertSame(AvailabilityStatus::Occupied, $sideA->status());
         self::assertTrue($sideB->airtime);
-        self::assertSame(15, $sideB->usedSeconds());
-        self::assertSame(12, $sideB->loadPercent());
-        self::assertSame(AvailabilityStatus::Free, $sideB->status()); // the rest of the loop is still for sale
+        self::assertSame(3, $sideB->usedSlots());
+        self::assertSame(25, $sideB->loadPercent());
+        self::assertSame(AvailabilityStatus::Free, $sideB->status()); // the rest of the block is still for sale
         self::assertSame(AvailabilityStatus::Free, $this->resolve($this->billboard)->status());
     }
 
@@ -189,13 +190,13 @@ final class AvailabilityResolverTest extends KernelTestCase
 
     public function testResolvesManyProductsAtOnce(): void
     {
-        $this->pay($this->book($this->screen, 'A', clip: 15));
+        $this->pay($this->book($this->screen, 'A', slots: 3));
 
         $all = $this->resolver->forProducts([$this->screen->getId(), $this->billboard->getId()], new \DateTimeImmutable(self::SEPTEMBER));
 
         self::assertSame([$this->screen->getId(), $this->billboard->getId()], array_keys($all));
-        self::assertSame(15, $all[$this->screen->getId()]->sides[0]->paidSeconds);
-        self::assertSame(0, $all[$this->billboard->getId()]->sides[0]->paidSeconds);
+        self::assertSame(3, $all[$this->screen->getId()]->sides[0]->paidSlots);
+        self::assertSame(0, $all[$this->billboard->getId()]->sides[0]->paidSlots);
     }
 
     private function resolve(Product $product, string $month = self::SEPTEMBER): \App\Service\Availability\ProductAvailability
@@ -203,24 +204,24 @@ final class AvailabilityResolverTest extends KernelTestCase
         return $this->resolver->forProduct($product->getId(), new \DateTimeImmutable($month));
     }
 
-    private function book(Product $product, string $side, string $month = '2026-09', ?int $clip = null): Booking
+    private function book(Product $product, string $side, string $month = '2026-09', ?int $slots = null): Booking
     {
         $request = new BookingRequest();
         $request->side = $product->getSides()->filter(fn (ProductSide $s) => $s->getName() === $side)->first();
         $request->startMonth = $month;
-        $request->clipDuration = $clip;
+        $request->slots = $slots;
         $request->client = $this->client;
 
         return $this->bookings->hold($request);
     }
 
-    private function bookDays(string $from, string $to, int $clip): Booking
+    private function bookDays(string $from, string $to, int $slots): Booking
     {
         $request = new BookingRequest();
         $request->side = $this->screen->getSides()->first();
         $request->startDate = new \DateTimeImmutable($from);
         $request->endDate = new \DateTimeImmutable($to);
-        $request->clipDuration = $clip;
+        $request->slots = $slots;
         $request->client = $this->client;
 
         return $this->bookings->hold($request);

@@ -11,10 +11,9 @@
                 <div class="text-sm font-medium text-heading">Сторона {{ side.sideName }}</div>
                 {% if side.airtime %}
                     <div class="text-xs text-body">
-                        эфир загружен на <b class="font-semibold text-heading tabular-nums">{{ side.loadPercent }}%</b>
-                        · {{ side.usedSeconds }}/{{ constant('App\\Enum\\BookingMode::LOOP_SECONDS') }} сек
+                        занято слотов: <b class="font-semibold text-heading tabular-nums">{{ side.usedSlots }} из {{ side.slotCount }}</b>
                     </div>
-                    <div class="mt-1.5 h-1.5 max-w-40 overflow-hidden rounded-full bg-neutral-tertiary-medium" role="progressbar" aria-label="Загрузка эфира" aria-valuenow="{{ side.loadPercent }}" aria-valuemin="0" aria-valuemax="100">
+                    <div class="mt-1.5 h-1.5 max-w-40 overflow-hidden rounded-full bg-neutral-tertiary-medium" role="progressbar" aria-label="Занятость слотов" aria-valuenow="{{ side.loadPercent }}" aria-valuemin="0" aria-valuemax="100">
                         <div class="h-full rounded-full {{ side.loadPercent >= 100 ? 'bg-danger' : (side.loadPercent > 0 ? 'bg-warning' : 'bg-success') }}" style="width: {{ side.loadPercent }}%"></div>
                     </div>
                 {% endif %}

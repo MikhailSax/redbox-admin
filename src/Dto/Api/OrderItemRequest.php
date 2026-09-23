@@ -2,7 +2,10 @@
 
 namespace App\Dto\Api;
 
+use App\Enum\BookingMode;
+use App\Service\MonthCalendar;
 use Symfony\Component\Validator\Constraints as Assert;
+use Symfony\Component\Validator\Context\ExecutionContextInterface;
 
 /**
  * One side in the cart the website sends with an order.
@@ -23,7 +26,20 @@ final class OrderItemRequest
     #[Assert\Date(message: 'Дата в формате ГГГГ-ММ-ДД')]
     public ?string $to = null;
 
-    /** Clip length in seconds, for screens */
-    #[Assert\Choice(choices: [5, 10, 15], message: 'Ролик — 5, 10 или 15 секунд')]
-    public ?int $clip = null;
+    /** Placement is two weeks at least; the order of the days is checked too */
+    #[Assert\Callback]
+    public function validatePeriod(ExecutionContextInterface $context): void
+    {
+        $from = null !== $this->from ? \DateTimeImmutable::createFromFormat('!Y-m-d', $this->from) : false;
+        $to = null !== $this->to ? \DateTimeImmutable::createFromFormat('!Y-m-d', $this->to) : false;
+        if (false === $from || false === $to) {
+            return; // reported by the Date constraints
+        }
+
+        if ($to < $from) {
+            $context->buildViolation('Окончание размещения раньше начала')->atPath('to')->addViolation();
+        } elseif (MonthCalendar::days($from, $to) < BookingMode::MIN_DAYS) {
+            $context->buildViolation(\sprintf('Минимальное размещение — %d дней', BookingMode::MIN_DAYS))->atPath('to')->addViolation();
+        }
+    }
 }

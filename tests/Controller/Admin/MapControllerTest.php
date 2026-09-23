@@ -83,7 +83,7 @@ final class MapControllerTest extends AdminWebTestCase
         self::assertCount(2, $points);
         self::assertSame('booked', $points['Щит в центре']['status']);
         self::assertEqualsWithDelta(55.7539303, $points['Щит в центре']['lat'], 1e-7);
-        self::assertSame([['id' => $this->center->getSides()->first()->getId(), 'name' => 'A', 'status' => 'booked', 'label' => 'Забронирована', 'airtime' => false, 'used' => 120, 'load' => 100]], $points['Щит в центре']['sides']);
+        self::assertSame([['id' => $this->center->getSides()->first()->getId(), 'name' => 'A', 'status' => 'booked', 'label' => 'Забронирована', 'airtime' => false, 'used' => 1, 'slots' => 1]], $points['Щит в центре']['sides']);
         self::assertSame('/admin/products/'.$this->center->getId().'/bookings', $points['Щит в центре']['urls']['booking']);
         self::assertSame('Наружка', $points['Щит на окраине']['owner']);
         self::assertNull($points['Щит в центре']['owner']);

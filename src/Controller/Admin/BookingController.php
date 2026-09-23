@@ -80,7 +80,7 @@ final class BookingController extends AbstractController
         }
         if ($airtime) {
             $bookingRequest->startDate = $now->setTime(0, 0);
-            $bookingRequest->endDate = $now->setTime(0, 0)->modify('+6 days');
+            $bookingRequest->endDate = $now->setTime(0, 0)->modify(\sprintf('+%d days', BookingMode::MIN_DAYS - 1));
         }
 
         $form = $this->createForm(BookingFormType::class, $bookingRequest, ['product' => $product, 'now' => $now]);
@@ -124,7 +124,7 @@ final class BookingController extends AbstractController
             'airtime' => $airtime,
             'whole' => $whole,
             'mixed' => $airtime && $whole,
-            'loopSeconds' => BookingMode::LOOP_SECONDS,
+            'minDays' => BookingMode::MIN_DAYS,
             'now' => $now,
         ]);
     }

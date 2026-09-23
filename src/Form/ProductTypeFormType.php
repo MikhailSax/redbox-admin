@@ -34,7 +34,7 @@ class ProductTypeFormType extends AbstractType
                 'class' => BookingMode::class,
                 'choice_label' => static fn (BookingMode $mode): string => $mode->label(),
                 'expanded' => true,
-                'help' => 'Видеоэкраны продаются эфиром: ролики 5, 10 или 15 сек в петле 2 минуты. Остальные — сторона целиком на месяц.',
+                'help' => 'Видеоэкраны продаются эфиром: блок делится на слоты (обычно 12 по 5 сек), клиент берёт слоты. Остальные — сторона целиком на месяц.',
             ])
             ->add('categories', EntityType::class, [
                 'label' => 'Категории, в которых доступен тип',

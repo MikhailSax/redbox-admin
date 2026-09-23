@@ -11,7 +11,8 @@ use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Style\SymfonyStyle;
 
 /**
- * Imports structures, sides, sizes and prices from the address programme spreadsheet:
+ * Imports structures, sides, sizes, prices (month, two weeks, 3 and 6 months, print) and screen slots
+ * from the address programme spreadsheet:
  *   bin/console app:import:address-program "Адресная программа.xlsx" --dry-run
  * Coordinates come from the map links (short Yandex links need access to yandex.ru); photos are downloaded
  * from the photo links and attached to their sides.
@@ -54,6 +55,12 @@ final class ImportAddressProgramCommand
             ['Конструкции', $report->productsCreated, $report->productsUpdated],
             ['Стороны', $report->sidesCreated, $report->sidesUpdated],
         ]);
+        if ([] !== $report->merged) {
+            $io->note("Конструкции одного адреса объединены в одну:\n".implode("\n", $report->merged));
+        }
+        if ([] !== $report->sideTypes) {
+            $io->text("Тип стороны задан по файлу:\n  ".implode("\n  ", $report->sideTypes));
+        }
         $io->text(\sprintf('Координаты из ссылок на карту: %d', $report->coordinatesSet));
         if ([] !== $report->coordinatesFailed) {
             $io->warning("Не удалось получить координаты по ссылке:\n".implode("\n", $report->coordinatesFailed));

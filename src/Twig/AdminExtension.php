@@ -56,6 +56,21 @@ class AdminExtension
     }
 
     /**
+     * "1 слот", "2 слота", "12 слотов": {{ n|plural('слот', 'слота', 'слотов') }}.
+     */
+    #[AsTwigFilter('plural')]
+    public static function plural(int $n, string $one, string $few, string $many): string
+    {
+        $word = match (true) {
+            1 === $n % 10 && 11 !== $n % 100 => $one,
+            \in_array($n % 10, [2, 3, 4], true) && !\in_array($n % 100, [12, 13, 14], true) => $few,
+            default => $many,
+        };
+
+        return $n.' '.$word;
+    }
+
+    /**
      * Running promotions for a structure: every one ($publicOnly = false) or only those any client gets.
      *
      * @return list<Promotion>

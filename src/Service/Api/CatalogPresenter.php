@@ -12,7 +12,6 @@ use App\Repository\BookingRepository;
 use App\Service\Availability\ProductAvailability;
 use App\Service\Availability\SideAvailability;
 use App\Service\BookingManager;
-use App\Service\MediaPlanManager;
 use App\Service\PromotionResolver;
 use Symfony\Component\Asset\Packages;
 use Symfony\Component\Clock\ClockInterface;
@@ -21,7 +20,8 @@ use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 /**
  * Turns structures into the JSON the website gets.
  *
- * Only what a visitor may see: no partner names, purchase prices or margins.
+ * Only what a visitor may see: no partner names, purchase prices or margins, and for screens only whether
+ * they are free: how the block is split into slots and how many are taken stays in the CRM.
  */
 class CatalogPresenter
 {
@@ -49,14 +49,14 @@ class CatalogPresenter
             'code' => $product->getSchemeNumber(),
             'name' => $product->getName(),
             'category' => $product->getCategory()?->getName(),
-            'type' => $product->getProductType()?->getName(),
+            // the sides' own types: "Видеоэкран + Статика" when a screen and a static poster share the structure
+            'type' => $product->getTypeLabel(),
             'district' => $product->getDistrict()?->getName(),
             'size' => $product->getSize(),
             'sizeLabel' => ProductHelper::sizeLabel($product->getSize()),
             // true when some side is a screen; each side says how it is sold ("airtime" of the side)
             'airtime' => $product->hasAirtimeSides(),
-            'loopSeconds' => $product->hasAirtimeSides() ? BookingMode::LOOP_SECONDS : null,
-            'clipDurations' => $product->hasAirtimeSides() ? BookingMode::CLIP_DURATIONS : null,
+            'minDays' => BookingMode::MIN_DAYS,
             'priceFrom' => null !== $product->getPrice() ? (float) $product->getPrice() : null,
             'description' => $product->getShortDescription(),
             'lat' => null !== $product->getLatitude() ? (float) $product->getLatitude() : null,
@@ -71,30 +71,27 @@ class CatalogPresenter
 
     /**
      * Busy periods of every side between two days, so the site can draw a calendar.
+     * A whole side is busy while booked; a screen only while every slot of its block is taken.
      *
      * @return array<string, mixed>
      */
     public function availability(Product $product, \DateTimeImmutable $from, \DateTimeImmutable $to): array
     {
         $now = $this->clock->now();
-        $airtime = $product->hasAirtimeSides();
 
         $sides = [];
         foreach ($product->getSides() as $side) {
             $active = $this->bookings->findActiveOverlapping($side, $from, $to, $now);
+            $busy = $side->isAirtime()
+                ? BookingManager::fullPeriods($side, $active, $from, $to)
+                : array_map(static fn (Booking $booking) => [max($booking->getStartDate(), $from), min($booking->getEndDate(), $to)], $active);
             $sides[] = [
                 'id' => $side->getId(),
                 'name' => $side->getName(),
                 'type' => $side->getEffectiveProductType()?->getName(),
                 'airtime' => $side->isAirtime(),
                 'price' => null !== $side->getEffectivePrice() ? (float) $side->getEffectivePrice() : null,
-                // For a screen: seconds of the loop taken on the busiest day of the period
-                'busySeconds' => $side->isAirtime() ? BookingManager::peak($active, $from, $to)['used'] : null,
-                'busy' => array_map(static fn (Booking $booking) => array_filter([
-                    'from' => max($booking->getStartDate(), $from)->format('Y-m-d'),
-                    'to' => min($booking->getEndDate(), $to)->format('Y-m-d'),
-                    'seconds' => $booking->getClipDuration(),
-                ], static fn (mixed $value) => null !== $value), $active),
+                'busy' => array_map(static fn (array $period) => ['from' => $period[0]->format('Y-m-d'), 'to' => $period[1]->format('Y-m-d')], $busy),
             ];
         }
 
@@ -102,8 +99,8 @@ class CatalogPresenter
             'id' => $product->getId(),
             'from' => $from->format('Y-m-d'),
             'to' => $to->format('Y-m-d'),
-            'airtime' => $airtime,
-            'loopSeconds' => $airtime ? BookingMode::LOOP_SECONDS : null,
+            'airtime' => $product->hasAirtimeSides(),
+            'minDays' => BookingMode::MIN_DAYS,
             'sides' => $sides,
         ];
     }
@@ -129,13 +126,18 @@ class CatalogPresenter
             'type' => $side->getEffectiveProductType()?->getName(),
             'airtime' => $side->isAirtime(),
             'price' => null !== $side->getEffectivePrice() ? (float) $side->getEffectivePrice() : null,
-            // Price of a 5 s clip is the side price; a 15 s clip costs three times as much
-            'priceUnit' => $side->isAirtime() ? 'per5sec' : 'perMonth',
+            'priceUnit' => 'perMonth',
+            // per month for 1, 3 and 6 months; two weeks as a whole
+            'prices' => array_filter([
+                'twoWeeks' => self::amount($side->getPrice2Weeks()),
+                'month' => self::amount($side->getEffectivePrice()),
+                'threeMonths' => self::amount($side->getPrice3Months()),
+                'sixMonths' => self::amount($side->getPrice6Months()),
+            ], static fn (?float $value) => null !== $value) ?: null,
+            'print' => null !== $side->getPrintPrice() ? array_filter(['price' => (float) $side->getPrintPrice(), 'note' => $side->getPrintNote()], static fn (mixed $value) => null !== $value) : null,
+            // a screen is free while it has a free slot; the slots themselves are not shown
             'status' => $state?->status()->value,
             'statusLabel' => $state?->status()->label(),
-            'freeSeconds' => null !== $state && $state->airtime ? $state->freeSeconds() : null,
-            // how loaded the screen's loop is this month, 0..100
-            'loadPercent' => null !== $state && $state->airtime ? $state->loadPercent() : null,
             'photos' => array_map(fn ($photo) => $this->assets->getUrl($photo->getWebPath()), $side->getPhotos()->toArray()),
         ], static fn (mixed $value) => null !== $value);
     }
@@ -169,9 +171,8 @@ class CatalogPresenter
         ], static fn (mixed $value) => null !== $value);
     }
 
-    /** Price of a side for a period, at the list price with public promotions applied */
-    public function priceFor(ProductSide $side, ?int $clip): float
+    private static function amount(?string $price): ?float
     {
-        return MediaPlanManager::priceFor($side, $clip);
+        return null !== $price ? (float) $price : null;
     }
 }

@@ -7,19 +7,18 @@ use App\Entity\MediaPlan;
 use App\Entity\MediaPlanItem;
 use App\Entity\ProductSide;
 use App\Entity\User;
-use App\Enum\BookingMode;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Clock\ClockInterface;
 
 /**
  * Building media plans and turning them into bookings.
  *
- * Prices: a structure's price is per side per month; for airtime (video) sides it is per 5 s of the loop,
- * so a 15 s clip costs three times the price.
+ * Prices: a structure's price is per side per month; for airtime (video) sides it is per slot of the block,
+ * so 3 slots cost three times the price. A plan of 3 or 6 months and more takes the side's 3- or 6-month price.
  */
 class MediaPlanManager
 {
-    public const DEFAULT_CLIP = 15;
+    public const DEFAULT_SLOTS = 1;
 
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
@@ -32,17 +31,14 @@ class MediaPlanManager
     /**
      * Adds a side at its current price, lowered by the best promotion. Returns null when the side is already in the plan.
      */
-    public function addSide(MediaPlan $plan, ProductSide $side, ?int $clipDuration = null): ?MediaPlanItem
+    public function addSide(MediaPlan $plan, ProductSide $side, ?int $slots = null): ?MediaPlanItem
     {
         if ($plan->hasSide($side)) {
             return null;
         }
 
-        $clip = $this->bookingManager->isAirtime($side)
-            ? (\in_array($clipDuration, BookingMode::CLIP_DURATIONS, true) ? $clipDuration : self::DEFAULT_CLIP)
-            : null;
-
-        $item = new MediaPlanItem($side, number_format(self::priceFor($side, $clip), 2, '.', ''), $clip);
+        $slots = self::slotsFor($side, $slots);
+        $item = new MediaPlanItem($side, self::format(self::priceFor($side, $slots, $plan->getMonths())), $slots);
         $plan->addItem($item);
         $this->applyBestPromotion($item);
         $plan->touch();
@@ -52,7 +48,8 @@ class MediaPlanManager
     }
 
     /**
-     * Re-applies promotions to every item whose price the manager hasn't typed by hand
+     * Takes the list price anew (the price list and the term may have changed) and re-applies promotions
+     * to every item whose price the manager hasn't typed by hand
      * (after the promo code, the first order flag or the length changed, or on request).
      *
      * @return int items whose price changed
@@ -65,6 +62,7 @@ class MediaPlanManager
                 continue;
             }
             $before = $item->getMonthlyPrice();
+            $item->setBasePrice(self::format(self::priceFor($item->getSide(), $item->getSlots(), $plan->getMonths())));
             $this->applyBestPromotion($item);
             if (abs($before - $item->getMonthlyPrice()) > 0.004) {
                 ++$changed;
@@ -81,7 +79,20 @@ class MediaPlanManager
     public function resetPrice(MediaPlanItem $item): void
     {
         $item->resetManualPrice();
+        $item->setBasePrice(self::format(self::priceFor($item->getSide(), $item->getSlots(), (int) $item->getPlan()?->getMonths())));
         $this->applyBestPromotion($item);
+        $item->getPlan()?->touch();
+    }
+
+    /**
+     * Changes the slots of a screen item; the price follows unless the manager typed it.
+     */
+    public function changeSlots(MediaPlanItem $item, int $slots): void
+    {
+        $item->setSlots(self::slotsFor($item->getSide(), $slots));
+        if (!$item->isManualPrice()) {
+            $this->resetPrice($item);
+        }
         $item->getPlan()?->touch();
     }
 
@@ -94,11 +105,23 @@ class MediaPlanManager
         $item->applyPromotion($best['promotion'] ?? null, $best['price'] ?? $item->getBasePrice());
     }
 
-    public static function priceFor(ProductSide $side, ?int $clipDuration): float
+    /**
+     * List price per month of a side placed for $months months: per slot for a screen.
+     */
+    public static function priceFor(ProductSide $side, ?int $slots, int $months = 1): float
     {
-        $price = (float) ($side->getEffectivePrice() ?? 0);
+        return (float) ($side->getMonthlyPriceFor($months) ?? 0) * ($slots ?? 1);
+    }
 
-        return null !== $clipDuration ? $price * $clipDuration / 5 : $price;
+    /** Slots an item of the side takes: 1..the block for a screen, none for a whole side */
+    public static function slotsFor(ProductSide $side, ?int $slots): ?int
+    {
+        return $side->isAirtime() ? min($side->getSlotCount(), max(1, $slots ?? self::DEFAULT_SLOTS)) : null;
+    }
+
+    private static function format(float $price): string
+    {
+        return number_format($price, 2, '.', '');
     }
 
     /**
@@ -114,7 +137,7 @@ class MediaPlanManager
             if ($item->getBooking()?->isActiveAt($now)) {
                 continue;
             }
-            $problems[$item->getId()] = $this->bookingManager->availabilityProblem($item->getSide(), $plan->getStartMonth(), $plan->getEndDate(), $item->getClipDuration());
+            $problems[$item->getId()] = $this->bookingManager->availabilityProblem($item->getSide(), $plan->getStartMonth(), $plan->getEndDate(), $item->getSlots());
         }
 
         return $problems;
@@ -147,7 +170,7 @@ class MediaPlanManager
             $request->side = $item->getSide();
             $request->startMonth = $plan->getStartMonth()->format('Y-m');
             $request->months = $plan->getMonths();
-            $request->clipDuration = $item->getClipDuration();
+            $request->slots = $item->getSlots();
             $request->client = $client;
             $request->clientName = (string) $plan->getClientName();
             $request->clientPhone = $plan->getClientContact() ?: '—';

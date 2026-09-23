@@ -16,7 +16,8 @@ use Symfony\Component\Clock\ClockInterface;
  * Status is derived on the fly (never stored), so expiring holds and month changes are always reflected.
  *
  * For the current month only the days from today on count. Whole sides are taken by any booking in the period;
- * airtime sides by the busiest day of the period (bookings are by days, so the load differs from day to day).
+ * airtime sides when every slot is taken on the busiest day of the period (bookings are by days, so the load
+ * differs from day to day).
  */
 class AvailabilityResolver
 {
@@ -44,7 +45,7 @@ class AvailabilityResolver
 
         $sides = $this->entityManager->createQueryBuilder()
             // a side's own type wins over the structure's (a screen on one side, a static poster on another)
-            ->select('p.id AS productId', 's.id AS sideId', 's.name AS sideName', 'COALESCE(st.bookingMode, t.bookingMode) AS mode')
+            ->select('p.id AS productId', 's.id AS sideId', 's.name AS sideName', 's.slotCount AS slotCount', 'COALESCE(st.bookingMode, t.bookingMode) AS mode')
             ->from(ProductSide::class, 's')
             ->join('s.product', 'p')
             ->join('p.productType', 't')
@@ -84,7 +85,7 @@ class AvailabilityResolver
             $airtime = BookingMode::Airtime === $mode;
             [$paid, $hold] = self::load($bookingsBySide[(int) $row['sideId']] ?? [], $airtime, $from, $to);
 
-            $sidesByProduct[(int) $row['productId']][] = new SideAvailability((int) $row['sideId'], (string) $row['sideName'], $airtime, $paid, $hold);
+            $sidesByProduct[(int) $row['productId']][] = new SideAvailability((int) $row['sideId'], (string) $row['sideName'], $airtime, $paid, $hold, $airtime ? (int) $row['slotCount'] : 1);
         }
 
         $result = [];
@@ -101,12 +102,12 @@ class AvailabilityResolver
     }
 
     /**
-     * Seconds of the loop taken by paid bookings and by holds: on the busiest day for airtime,
-     * the full loop for any booking of a whole side.
+     * Slots taken by paid bookings and by holds: on the busiest day for airtime,
+     * 1 of 1 for any booking of a whole side.
      *
      * @param list<Booking> $bookings
      *
-     * @return array{0: int, 1: int} [paid seconds, hold seconds]
+     * @return array{0: int, 1: int} [paid slots, hold slots]
      */
     private static function load(array $bookings, bool $airtime, \DateTimeImmutable $from, \DateTimeImmutable $to): array
     {
@@ -114,7 +115,7 @@ class AvailabilityResolver
         $hold = array_values(array_filter($bookings, static fn (Booking $b) => BookingStatus::Hold === $b->getStatus()));
 
         if (!$airtime) {
-            return [[] !== $paid ? BookingMode::LOOP_SECONDS : 0, [] !== $hold ? BookingMode::LOOP_SECONDS : 0];
+            return [[] !== $paid ? 1 : 0, [] !== $hold ? 1 : 0];
         }
 
         $peak = BookingManager::peak($bookings, $from, $to);

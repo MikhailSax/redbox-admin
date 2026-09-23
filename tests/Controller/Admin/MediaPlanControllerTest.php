@@ -83,15 +83,15 @@ final class MediaPlanControllerTest extends AdminWebTestCase
         $this->client->submit($form);
         self::assertResponseRedirects('/admin/media-plans/'.$plan->getId());
 
-        // airtime side with a 10 s clip costs 2 × the price per 5 s
-        $this->addSides($plan, [$this->screen->getSides()->first()], clip: 10);
+        // airtime side with 2 slots costs 2 × the price per slot
+        $this->addSides($plan, [$this->screen->getSides()->first()], slots: 2);
 
         $plan = $this->reload($plan);
         self::assertCount(2, $plan->getItems());
         [$billboardItem, $screenItem] = $plan->getItems()->getValues();
         self::assertSame(40000.0, $billboardItem->getMonthlyPrice());
         self::assertSame(20000.0, $screenItem->getMonthlyPrice());
-        self::assertSame(10, $screenItem->getClipDuration());
+        self::assertSame(2, $screenItem->getSlots());
 
         // adding the same side again does nothing
         $this->addSides($plan, [$billboardItem->getSide()]);
@@ -263,6 +263,71 @@ final class MediaPlanControllerTest extends AdminWebTestCase
         self::assertStringStartsWith('%PDF', $this->client->getResponse()->getContent());
     }
 
+    public function testItemTextsAndSlotsAreEditableForTheProposal(): void
+    {
+        $plan = $this->plan();
+        $this->addSides($plan, [$this->screen->getSides()->first()]);
+        $item = $this->reload($plan)->getItems()->first();
+        self::assertSame(1, $item->getSlots()); // one slot by default
+        self::assertSame('Билборд 6х3, видеоэкран', $item->getDisplayFormat()); // the side's own type
+
+        $crawler = $this->client->request('GET', '/admin/media-plans/'.$plan->getId());
+        $form = $crawler->filter('form[action$="/items/'.$item->getId().'/edit"]');
+        self::assertSame('Экран у вокзала', $form->filter('input[name="title"]')->attr('value'));
+        $this->client->request('POST', $form->attr('action'), [
+            '_token' => $form->filter('input[name="_token"]')->attr('value'),
+            'title' => 'Экран у ж/д вокзала, выезд на Ленина',
+            'format' => 'Билборд 6х3, видеоэкран', // same as the structure's: not kept as own
+            'description' => 'Пешеходный поток 20 000 чел./день',
+            'slots' => '3',
+        ]);
+        self::assertResponseRedirects('/admin/media-plans/'.$plan->getId().'#item-'.$item->getId());
+        $this->client->followRedirect();
+        self::assertSelectorTextContains('#item-'.$item->getId(), 'Экран у ж/д вокзала, выезд на Ленина');
+        self::assertSelectorTextContains('#item-'.$item->getId(), '3 слота из 12');
+
+        $item = $this->reload($plan)->getItems()->first();
+        self::assertSame('Экран у ж/д вокзала, выезд на Ленина', $item->getTitle());
+        self::assertNull($item->getFormat());
+        self::assertSame('Пешеходный поток 20 000 чел./день', $item->getDisplayDescription());
+        self::assertSame(3, $item->getSlots());
+        self::assertSame(30000.0, $item->getMonthlyPrice()); // 3 slots × 10 000 ₽
+        self::assertSame('Экран у вокзала', $item->getProduct()->getName()); // the structure card is untouched
+
+        // the PDF is built with the proposal's texts
+        $this->client->request('GET', '/admin/media-plans/'.$plan->getId().'/pdf');
+        self::assertResponseIsSuccessful();
+
+        // emptied fields go back to the structure's
+        $crawler = $this->client->request('GET', '/admin/media-plans/'.$plan->getId());
+        $form = $crawler->filter('form[action$="/items/'.$item->getId().'/edit"]');
+        $this->client->request('POST', $form->attr('action'), ['_token' => $form->filter('input[name="_token"]')->attr('value'), 'title' => '', 'format' => '', 'description' => '', 'slots' => '3']);
+        $item = $this->reload($plan)->getItems()->first();
+        self::assertFalse($item->hasOwnTexts());
+        self::assertSame('Экран у вокзала', $item->getDisplayTitle());
+    }
+
+    public function testLongerPlansTakeTheSidePriceForTheTerm(): void
+    {
+        $side = $this->billboard->getSides()->first()->setPrice3Months('36000')->setPrice6Months('34000');
+        $this->em->flush();
+
+        $plan = $this->plan(months: 3);
+        $this->addSides($plan, [$side]);
+        self::assertSame(36000.0, $this->reload($plan)->getItems()->first()->getMonthlyPrice());
+
+        // the term changes: prices are taken anew
+        $crawler = $this->client->request('GET', '/admin/media-plans/'.$plan->getId().'/edit');
+        [$values, $uri] = $this->formValues($crawler, 'Сохранить');
+        $values['media_plan_form']['months'] = '6';
+        $this->submit($uri, $values);
+        self::assertSame(34000.0, $this->reload($plan)->getItems()->first()->getMonthlyPrice());
+
+        $values['media_plan_form']['months'] = '1';
+        $this->submit($uri, $values);
+        self::assertSame(40000.0, $this->reload($plan)->getItems()->first()->getMonthlyPrice());
+    }
+
     public function testListAndLiveSearch(): void
     {
         $this->plan();
@@ -318,7 +383,7 @@ final class MediaPlanControllerTest extends AdminWebTestCase
         $values['media_plan_form']['promoCode'] = 'autumn';
         $this->submit($uri, $values);
         $this->client->followRedirect();
-        self::assertSelectorTextContains('[role=alert]', 'Цены пересчитаны по акциям');
+        self::assertSelectorTextContains('[role=alert]', 'Цены пересчитаны по прайсу и акциям');
         $plan = $this->reload($plan);
         self::assertSame('AUTUMN', $plan->getPromoCode());
         self::assertSame(30000.0, $plan->getItems()->first()->getMonthlyPrice());
@@ -393,14 +458,14 @@ final class MediaPlanControllerTest extends AdminWebTestCase
     /**
      * @param list<ProductSide> $sides
      */
-    private function addSides(MediaPlan $plan, array $sides, ?int $clip = null): void
+    private function addSides(MediaPlan $plan, array $sides, ?int $slots = null): void
     {
         $crawler = $this->client->request('GET', '/admin/media-plans/'.$plan->getId());
         $token = $crawler->filter('form[action$="/items"] input[name="_token"]')->attr('value');
         $this->client->request('POST', '/admin/media-plans/'.$plan->getId().'/items', [
             '_token' => $token,
             'sides' => array_map(fn (ProductSide $s) => $s->getId(), $sides),
-            'clip' => $clip,
+            'slots' => $slots,
         ]);
     }
 

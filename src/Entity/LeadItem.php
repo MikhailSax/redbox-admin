@@ -39,9 +39,9 @@ class LeadItem
     #[ORM\Column(type: Types::DATE_IMMUTABLE)]
     private \DateTimeImmutable $endDate;
 
-    /** Seconds, for airtime sides */
+    /** Slots of the screen's block, for airtime sides */
     #[ORM\Column(nullable: true)]
-    private ?int $clipDuration;
+    private ?int $slots;
 
     /** Price per month shown on the website, rubles */
     #[ORM\Column(type: Types::DECIMAL, precision: 12, scale: 2, nullable: true)]
@@ -53,7 +53,7 @@ class LeadItem
         ?string $sideName,
         \DateTimeImmutable $startDate,
         \DateTimeImmutable $endDate,
-        ?int $clipDuration = null,
+        ?int $slots = null,
         ?string $monthlyPrice = null,
     ) {
         $this->side = $side;
@@ -61,7 +61,7 @@ class LeadItem
         $this->sideName = $sideName;
         $this->startDate = $startDate->setTime(0, 0);
         $this->endDate = $endDate->setTime(0, 0);
-        $this->clipDuration = $clipDuration;
+        $this->slots = $slots;
         $this->monthlyPrice = $monthlyPrice;
     }
 
@@ -117,9 +117,9 @@ class LeadItem
         return (int) $this->startDate->diff($this->endDate)->days + 1;
     }
 
-    public function getClipDuration(): ?int
+    public function getSlots(): ?int
     {
-        return $this->clipDuration;
+        return $this->slots;
     }
 
     public function getMonthlyPrice(): ?float

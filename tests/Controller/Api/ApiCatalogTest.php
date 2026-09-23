@@ -72,10 +72,10 @@ final class ApiCatalogTest extends AdminWebTestCase
         self::assertSame('Билборд', $billboard['category']);
         self::assertSame('6x3', $billboard['size']);
         self::assertSame('6 × 3 м', $billboard['sizeLabel']);
-        self::assertSame(25000.0, $billboard['priceFrom']);
+        self::assertEquals(25000, $billboard['priceFrom']); // JSON has no 25000.0: AbstractController::json() drops JSON_PRESERVE_ZERO_FRACTION
         self::assertSame('free', $billboard['status']);
         self::assertSame([['title' => 'Осень −15%', 'label' => '−15%']], $billboard['promotions']);
-        self::assertSame(['А' => 28000.0, 'В' => 25000.0], array_column($billboard['sides'], 'price', 'name'));
+        self::assertEquals(['А' => 28000, 'В' => 25000], array_column($billboard['sides'], 'price', 'name'));
 
         // what a visitor must never see
         $json = json_encode($data, \JSON_UNESCAPED_UNICODE);
@@ -84,9 +84,13 @@ final class ApiCatalogTest extends AdminWebTestCase
 
         $screen = $this->itemOf($data, 'Экран у вокзала');
         self::assertTrue($screen['airtime']);
-        self::assertSame(120, $screen['loopSeconds']);
-        self::assertSame([5, 10, 15], $screen['clipDurations']);
-        self::assertSame('per5sec', $screen['sides'][0]['priceUnit']);
+        self::assertSame(14, $screen['minDays']);
+        self::assertSame('perMonth', $screen['sides'][0]['priceUnit']);
+        // how the block is split into slots stays in the CRM: a screen is only free or not
+        self::assertSame('free', $screen['sides'][0]['status']);
+        foreach (['slots', 'slotCount', 'freeSlots', 'freeSeconds', 'loadPercent', 'loopSeconds', 'clipDurations'] as $key) {
+            self::assertStringNotContainsString('"'.$key.'"', $json);
+        }
     }
 
     public function testCatalogueFilters(): void
@@ -110,42 +114,47 @@ final class ApiCatalogTest extends AdminWebTestCase
         $this->em->flush();
 
         $data = $this->get('/api/v1/structures/'.$this->billboard->getId());
-        self::assertSame('Статика', $data['type']);
+        self::assertSame('Статика + Видеоэкран', $data['type']); // the sides' own types, not the structure's for both
         self::assertTrue($data['airtime']); // some side is a screen
         $sides = array_column($data['sides'], null, 'name');
-        self::assertSame(['Статика', false, 'perMonth'], [$sides['А']['type'], $sides['А']['airtime'], $sides['А']['priceUnit']]);
-        self::assertSame(['Видеоэкран', true, 'per5sec', 120, 0], [$sides['В']['type'], $sides['В']['airtime'], $sides['В']['priceUnit'], $sides['В']['freeSeconds'], $sides['В']['loadPercent']]);
+        self::assertSame(['Статика', false, 'free'], [$sides['А']['type'], $sides['А']['airtime'], $sides['А']['status']]);
+        self::assertSame(['Видеоэкран', true, 'free'], [$sides['В']['type'], $sides['В']['airtime'], $sides['В']['status']]);
 
         $availability = $this->get('/api/v1/structures/'.$this->billboard->getId().'/availability?from=2026-09-10&to=2026-09-30');
         self::assertSame([false, true], array_column($availability['sides'], 'airtime'));
-        self::assertSame([null, 0], array_map(static fn (array $side) => $side['busySeconds'] ?? null, $availability['sides']));
+        self::assertSame(['Статика', 'Видеоэкран'], array_column($availability['sides'], 'type'));
 
         // the type filter finds the structure through its side
         self::assertSame(2, $this->get('/api/v1/structures?type='.$video->getId())['total']);
     }
 
-    public function testAvailabilityShowsBusyDays(): void
+    public function testScreenIsBusyOnlyWhenEverySlotIsTaken(): void
     {
-        $side = $this->screen->getSides()->first();
-        $request = new BookingRequest();
-        $request->side = $side;
-        $request->startDate = new \DateTimeImmutable('2026-09-14');
-        $request->endDate = new \DateTimeImmutable('2026-09-20');
-        $request->clipDuration = 15;
-        $request->client = $this->createClientCard('Кафе «Лето»', 'cafe@example.com');
-        $request->clientPhone = '+7 900 000-00-00';
-        static::getContainer()->get(BookingManager::class)->hold($request);
+        $side = $this->screen->getSides()->first()->setSlotCount(2);
+        $this->em->flush();
+        $client = $this->createClientCard('Кафе «Лето»', 'cafe@example.com');
+        foreach ([['2026-09-14', '2026-09-27'], ['2026-09-20', '2026-10-03']] as [$from, $to]) {
+            $request = new BookingRequest();
+            $request->side = $side;
+            $request->startDate = new \DateTimeImmutable($from);
+            $request->endDate = new \DateTimeImmutable($to);
+            $request->slots = 1;
+            $request->client = $client;
+            $request->clientPhone = '+7 900 000-00-00';
+            static::getContainer()->get(BookingManager::class)->hold($request);
+        }
 
         $data = $this->get('/api/v1/structures/'.$this->screen->getId().'/availability?from=2026-09-10&to=2026-09-30');
 
         self::assertTrue($data['airtime']);
-        self::assertSame(120, $data['loopSeconds']);
-        self::assertSame([['from' => '2026-09-14', 'to' => '2026-09-20', 'seconds' => 15]], $data['sides'][0]['busy']);
-        self::assertSame(15, $data['sides'][0]['busySeconds']);
+        self::assertSame(14, $data['minDays']);
+        // one slot of two is taken from the 14th, both only from the 20th to the 27th
+        self::assertSame([['from' => '2026-09-20', 'to' => '2026-09-27']], $data['sides'][0]['busy']);
+        self::assertArrayNotHasKey('busySeconds', $data['sides'][0]);
         // the client's name is not public
         self::assertStringNotContainsString('Лето', json_encode($data, \JSON_UNESCAPED_UNICODE));
 
-        self::assertSame(422, $this->request('GET', '/api/v1/structures/'.$this->screen->getId().'/availability?from=2026-09-30&to=2026-09-01')['status'] ?? 400);
+        self::assertSame(400, $this->request('GET', '/api/v1/structures/'.$this->screen->getId().'/availability?from=2026-09-30&to=2026-09-01')['status']);
     }
 
     public function testOrderFromTheWebsiteBecomesALead(): void
@@ -164,7 +173,7 @@ final class ApiCatalogTest extends AdminWebTestCase
             'comment' => 'Нужен монтаж',
             'items' => [
                 ['sideId' => $side->getId(), 'from' => '2026-10-01', 'to' => '2026-10-31'],
-                ['sideId' => $screenSide->getId(), 'from' => '2026-10-05', 'to' => '2026-10-11', 'clip' => 10],
+                ['sideId' => $screenSide->getId(), 'from' => '2026-10-05', 'to' => '2026-10-18', 'clip' => 10], // an old site's clip is ignored
             ],
         ]);
 
@@ -181,8 +190,8 @@ final class ApiCatalogTest extends AdminWebTestCase
         self::assertSame('№7/23 · Щит на Ленина', $first->getProductTitle());
         self::assertSame(28000.0, $first->getMonthlyPrice()); // the side's own price
         self::assertSame(31, $first->getDays());
-        self::assertSame(10, $second->getClipDuration());
-        self::assertSame(20000.0, $second->getMonthlyPrice()); // 10 s clip = two times the price per 5 s
+        self::assertSame(1, $second->getSlots()); // the site sells one slot of a screen
+        self::assertSame(10000.0, $second->getMonthlyPrice());
     }
 
     public function testOrderValidation(): void
@@ -206,6 +215,11 @@ final class ApiCatalogTest extends AdminWebTestCase
         $gone = $this->post('/api/v1/orders', ['contactName' => 'Иван', 'phone' => '+7 900', 'items' => [['sideId' => 999999, 'from' => '2026-10-01', 'to' => '2026-10-31']]]);
         self::assertSame(422, $gone['status']);
         self::assertSame('unknown_sides', $gone['body']['error']);
+
+        // placement is two weeks at least
+        $short = $this->post('/api/v1/orders', ['contactName' => 'Иван', 'phone' => '+7 900', 'items' => [['sideId' => $side->getId(), 'from' => '2026-10-01', 'to' => '2026-10-13']]]);
+        self::assertSame(422, $short['status']);
+        self::assertSame('Минимальное размещение — 14 дней', $short['body']['violations'][0]['message']);
 
         self::assertSame(0, $this->em->getRepository(Lead::class)->count([]));
     }

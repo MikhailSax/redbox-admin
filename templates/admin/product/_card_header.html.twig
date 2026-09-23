@@ -32,7 +32,7 @@
         </div>
         {% if product.id %}
             <p class="text-sm text-body mt-1">
-                {{ product.category.name ?? '' }}{% if product.productType %} · {{ product.productType.name }}{% endif %}
+                {{ product.category.name ?? '' }}{% if product.productType %} · {{ product.typeLabel }}{% endif %}
                 · обновлено {{ product.updatedAt|date('d.m.Y H:i') }}
             </p>
         {% endif %}

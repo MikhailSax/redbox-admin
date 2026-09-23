@@ -8,12 +8,14 @@ use App\Entity\ProductSide;
 use App\Entity\User;
 use App\Enum\BookingMode;
 use App\Service\MonthCalendar;
+use App\Twig\AdminExtension;
 use Doctrine\ORM\EntityRepository;
 use Doctrine\ORM\QueryBuilder;
 use Symfony\Bridge\Doctrine\Form\Type\EntityType;
 use Symfony\Component\Form\AbstractType;
 use Symfony\Component\Form\Extension\Core\Type\ChoiceType;
 use Symfony\Component\Form\Extension\Core\Type\DateType;
+use Symfony\Component\Form\Extension\Core\Type\IntegerType;
 use Symfony\Component\Form\Extension\Core\Type\TelType;
 use Symfony\Component\Form\Extension\Core\Type\TextareaType;
 use Symfony\Component\Form\Extension\Core\Type\TextType;
@@ -45,7 +47,7 @@ class BookingFormType extends AbstractType
                     ->andWhere('s.product = :product')
                     ->setParameter('product', $product)
                     ->orderBy('s.name', 'ASC'),
-                'choice_label' => static fn (ProductSide $side): string => 'Сторона '.$side->getName().($mixed ? ' · '.($side->isAirtime() ? 'эфир' : 'на месяц') : ''),
+                'choice_label' => static fn (ProductSide $side): string => 'Сторона '.$side->getName().($side->isAirtime() ? \sprintf(' · %s по %d сек', AdminExtension::plural($side->getSlotCount(), 'слот', 'слота', 'слотов'), $side->getSlotSeconds()) : ($mixed ? ' · на месяц' : '')),
                 'choice_attr' => static fn (ProductSide $side): array => ['data-booking-mode' => $side->getBookingMode()->value],
                 'placeholder' => $product->getSides()->count() > 1 ? 'Выберите сторону' : false,
             ])
@@ -84,7 +86,7 @@ class BookingFormType extends AbstractType
             ]);
 
         if ($airtime) {
-            // Airtime is sold by days
+            // Airtime is sold by days, two weeks at least
             $today = \DateTimeImmutable::createFromInterface($options['now'])->format('Y-m-d');
             $builder
                 ->add('startDate', DateType::class, [
@@ -124,16 +126,12 @@ class BookingFormType extends AbstractType
         }
 
         if ($airtime) {
-            $builder->add('clipDuration', ChoiceType::class, [
-                'label' => 'Длина ролика',
-                'choices' => array_combine(
-                    array_map(static fn (int $s) => $s.' сек', BookingMode::CLIP_DURATIONS),
-                    BookingMode::CLIP_DURATIONS,
-                ),
-                'expanded' => true,
+            $slotCounts = $product->getSides()->filter(static fn (ProductSide $side) => $side->isAirtime())->map(static fn (ProductSide $side) => $side->getSlotCount())->getValues();
+            $builder->add('slots', IntegerType::class, [
+                'label' => 'Слотов',
                 'required' => !$mixed,
-                'placeholder' => false,
-                'help' => \sprintf('Ролики крутятся в петле %d секунд.', BookingMode::LOOP_SECONDS),
+                'attr' => ['min' => 1, 'max' => [] !== $slotCounts ? max($slotCounts) : BookingMode::DEFAULT_SLOT_COUNT],
+                'help' => 'Сколько слотов блока берёт клиент — обычно 1. Экран занят, когда разобраны все слоты.',
             ]);
         }
     }

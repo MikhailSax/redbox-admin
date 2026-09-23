@@ -19,7 +19,9 @@ use Symfony\Component\Lock\LockFactory;
  *  - every booking is made for a client card (BookingRequest::$client): that's who the side is taken by;
  *  - the side's type decides (sides of one structure may differ: a screen and a static poster);
  *  - whole sides: a side is booked for whole months, one active booking at a time;
- *  - airtime sides (video): sold by days; clips of 5/10/15 s share a 120 s loop on every day;
+ *  - airtime sides (video): sold by days; the screen's block has a number of slots (ProductSide::$slotCount,
+ *    12 by default) and a booking takes one or more of them on every day; the screen is taken when every slot is;
+ *  - nothing is placed for less than two weeks (BookingMode::MIN_DAYS);
  *  - a new booking is a hold that blocks the slot for 24 hours; unpaid holds stop
  *    blocking at the deadline and are marked Expired by the scheduled cleanup.
  */
@@ -47,10 +49,13 @@ class BookingManager
             throw new BookingException('Выберите клиента — бронь закрепляется за карточкой клиента.');
         }
         [$start, $end] = $request->period();
-        $clip = $this->isAirtime($side) ? $request->clipDuration : null;
-        if ($this->isAirtime($side) && !\in_array($clip, BookingMode::CLIP_DURATIONS, true)) {
-            // e.g. a media plan item added before the side became a screen: without a clip it would take the whole loop
-            throw new BookingException(\sprintf('Сторона %s продаётся эфиром — выберите длину ролика: 5, 10 или 15 сек.', $side->getName()));
+        $slots = $this->isAirtime($side) ? $request->slots : null;
+        if ($this->isAirtime($side) && (null === $slots || $slots < 1 || $slots > $side->getSlotCount())) {
+            // e.g. a media plan item added before the side became a screen: without slots it would take the whole block
+            throw new BookingException(\sprintf('Сторона %s продаётся эфиром — укажите число слотов: от 1 до %d.', $side->getName(), $side->getSlotCount()));
+        }
+        if (MonthCalendar::days($start, $end) < BookingMode::MIN_DAYS) {
+            throw new BookingException(\sprintf('Минимальное размещение — %d дней.', BookingMode::MIN_DAYS));
         }
 
         // Serialises bookings of the same side, so two managers can't take the last slot at once.
@@ -62,9 +67,9 @@ class BookingManager
             if ($request->isByDays() && $start < $now->setTime(0, 0)) {
                 throw new BookingException('Первый день брони уже прошёл — выберите сегодня или позже.');
             }
-            $this->assertAvailable($side, $start, $end, $clip, $now);
+            $this->assertAvailable($side, $start, $end, $slots, $now);
 
-            $booking = new Booking($side, $start, $end, $clip, $request->client, $request->contactName(), $request->contactPhone(), $request->comment, $createdBy);
+            $booking = new Booking($side, $start, $end, $slots, $request->client, $request->contactName(), $request->contactPhone(), $request->comment, $createdBy);
             $booking->hold($now->modify(self::HOLD_TTL));
 
             $this->entityManager->persist($booking);
@@ -124,7 +129,7 @@ class BookingManager
 
     /**
      * Occupancy of each side of the product per column (a month or a day of the grid).
-     * "used" is the seconds of the loop taken on the busiest day of the column.
+     * "used" is the slots of the block taken on the busiest day of the column.
      *
      * @param array<string, array{0: \DateTimeImmutable, 1: \DateTimeImmutable}> $columns key => [first day, last day]
      *
@@ -157,8 +162,8 @@ class BookingManager
     }
 
     /**
-     * The busiest day of [$from, $to]: seconds of the loop taken by $bookings on it
-     * (a whole-side booking takes the full loop).
+     * The busiest day of [$from, $to]: slots of the block taken by $bookings on it
+     * (a whole-side booking takes the whole block).
      *
      * @param list<Booking> $bookings
      *
@@ -166,23 +171,8 @@ class BookingManager
      */
     public static function peak(array $bookings, \DateTimeImmutable $from, \DateTimeImmutable $to): array
     {
-        // Sweep over the days where the load changes: +clip on the first day, -clip the day after the last one
-        $changes = [];
-        foreach ($bookings as $booking) {
-            $seconds = $booking->getClipDuration() ?? BookingMode::LOOP_SECONDS;
-            $start = max($booking->getStartDate(), $from)->format('Y-m-d');
-            $end = min($booking->getEndDate(), $to)->modify('+1 day')->format('Y-m-d');
-            if ($start < $end) {
-                $changes[$start] = ($changes[$start] ?? 0) + $seconds;
-                $changes[$end] = ($changes[$end] ?? 0) - $seconds;
-            }
-        }
-        ksort($changes);
-
         $peak = ['day' => $from, 'used' => 0];
-        $used = 0;
-        foreach ($changes as $day => $change) {
-            $used += $change;
+        foreach (self::load($bookings, $from, $to) as $day => $used) {
             if ($used > $peak['used']) {
                 $peak = ['day' => new \DateTimeImmutable($day), 'used' => $used];
             }
@@ -192,13 +182,68 @@ class BookingManager
     }
 
     /**
+     * Periods within [$from, $to] when every slot of the side is taken: what a client sees as "busy".
+     *
+     * @param list<Booking> $bookings active bookings of the side
+     *
+     * @return list<array{0: \DateTimeImmutable, 1: \DateTimeImmutable}> [first day, last day]
+     */
+    public static function fullPeriods(ProductSide $side, array $bookings, \DateTimeImmutable $from, \DateTimeImmutable $to): array
+    {
+        $periods = [];
+        $start = null;
+        foreach (self::load($bookings, $from, $to) as $day => $used) {
+            $day = new \DateTimeImmutable($day);
+            if ($used >= $side->getSlotCount()) {
+                $start ??= $day;
+            } elseif (null !== $start) {
+                $periods[] = [$start, $day->modify('-1 day')];
+                $start = null;
+            }
+        }
+
+        // the load drops back to 0 the day after the last booking (clipped to $to), which closes every period
+        return $periods;
+    }
+
+    /**
+     * Slots taken from each day on where the load changes: +slots on the first day, -slots the day after the last one.
+     *
+     * @param list<Booking> $bookings
+     *
+     * @return array<string, int> "Y-m-d" => slots taken from that day on, in date order
+     */
+    private static function load(array $bookings, \DateTimeImmutable $from, \DateTimeImmutable $to): array
+    {
+        $changes = [];
+        foreach ($bookings as $booking) {
+            $slots = $booking->getSide()->slotsTakenBy($booking);
+            $start = max($booking->getStartDate(), $from)->format('Y-m-d');
+            $end = min($booking->getEndDate(), $to)->modify('+1 day')->format('Y-m-d');
+            if ($start < $end) {
+                $changes[$start] = ($changes[$start] ?? 0) + $slots;
+                $changes[$end] = ($changes[$end] ?? 0) - $slots;
+            }
+        }
+        ksort($changes);
+
+        $load = [];
+        $used = 0;
+        foreach ($changes as $day => $change) {
+            $load[$day] = $used += $change;
+        }
+
+        return $load;
+    }
+
+    /**
      * Why the side can't be booked for the days [$start, $end] right now, or null when it can.
      * A read-only check (no lock): the real booking re-checks under the lock.
      */
-    public function availabilityProblem(ProductSide $side, \DateTimeImmutable $start, \DateTimeImmutable $end, ?int $clip): ?string
+    public function availabilityProblem(ProductSide $side, \DateTimeImmutable $start, \DateTimeImmutable $end, ?int $slots): ?string
     {
         try {
-            $this->assertAvailable($side, $start, $end, $this->isAirtime($side) ? $clip : null, $this->clock->now());
+            $this->assertAvailable($side, $start, $end, $this->isAirtime($side) ? max(1, (int) $slots) : null, $this->clock->now());
 
             return null;
         } catch (BookingException $e) {
@@ -214,11 +259,11 @@ class BookingManager
     /**
      * @throws BookingException
      */
-    private function assertAvailable(ProductSide $side, \DateTimeImmutable $start, \DateTimeImmutable $end, ?int $clip, \DateTimeImmutable $now): void
+    private function assertAvailable(ProductSide $side, \DateTimeImmutable $start, \DateTimeImmutable $end, ?int $slots, \DateTimeImmutable $now): void
     {
         $existing = $this->bookings->findActiveOverlapping($side, $start, $end, $now);
 
-        if (null === $clip) {
+        if (null === $slots) {
             if ([] !== $existing) {
                 $taken = $existing[0];
                 throw new BookingException(\sprintf('Сторона %s уже забронирована: %s (%s).', $side->getName(), MonthCalendar::periodLabel($taken->getStartDate(), $taken->getEndDate()), $taken->getClientTitle()));
@@ -227,13 +272,13 @@ class BookingManager
             return;
         }
 
-        // Every day of the period must have room for the clip; checking the busiest one is enough.
-        // A whole-side booking on an airtime side (e.g. type switched later) takes the full loop.
+        // Every day of the period must have room for the slots; checking the busiest one is enough.
+        // A whole-side booking on an airtime side (e.g. type switched later) takes the whole block.
         $peak = self::peak($existing, $start, $end);
-        if ($peak['used'] + $clip > BookingMode::LOOP_SECONDS) {
+        if ($peak['used'] + $slots > $side->getSlotCount()) {
             throw new BookingException(\sprintf(
-                'На %s в петле стороны %s свободно %d сек из %d — ролик %d сек не помещается.',
-                MonthCalendar::periodLabel($peak['day'], $peak['day']), $side->getName(), max(0, BookingMode::LOOP_SECONDS - $peak['used']), BookingMode::LOOP_SECONDS, $clip,
+                'На %s у стороны %s свободно слотов: %d из %d, а нужно %d.',
+                MonthCalendar::periodLabel($peak['day'], $peak['day']), $side->getName(), max(0, $side->getSlotCount() - $peak['used']), $side->getSlotCount(), $slots,
             ));
         }
     }

@@ -130,7 +130,7 @@ final class LeadController extends AbstractController
         $this->entityManager->persist($plan);
 
         foreach ($sides as $item) {
-            $this->mediaPlans->addSide($plan, $item->getSide(), $item->getClipDuration());
+            $this->mediaPlans->addSide($plan, $item->getSide(), $item->getSlots());
         }
 
         $lead->setMediaPlan($plan)->setStatus(LeadStatus::Quoted)->touch();

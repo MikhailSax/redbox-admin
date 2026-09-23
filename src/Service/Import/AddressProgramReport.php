@@ -35,4 +35,10 @@ final class AddressProgramReport
 
     /** Rows with a note in the "Бронь" column: not imported, a booking needs a client */
     public int $bookingNotes = 0;
+
+    /** @var list<string> "«address» #12 → #4": structures of one address joined into one */
+    public array $merged = [];
+
+    /** @var list<string> "address, сторона X: Статика" sides whose own type was set or changed */
+    public array $sideTypes = [];
 }

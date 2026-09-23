@@ -120,7 +120,7 @@
                                             <span class="block truncate font-medium text-heading group-hover:underline">{{ product.name|highlight(query.q) }}</span>
                                             <span class="block truncate text-xs text-body-subtle">
                                                 {%- if product.schemeNumber %}№{{ product.schemeNumber|highlight(query.q) }} · {% endif -%}
-                                                {{ product.category.name|highlight(query.q) }} · {{ product.productType.name }}
+                                                {{ product.category.name|highlight(query.q) }} · {{ product.typeLabel }}
                                                 {%- if product.size %} · {{ product.sizeLabel }}{% endif -%}
                                             </span>
                                             <span class="mt-1 flex flex-wrap items-center gap-1">
@@ -140,8 +140,8 @@
                                         {% for side in item.sides %}
                                             {% set side_status = side.status %}
                                             <span class="inline-flex h-6 min-w-6 items-center justify-center rounded-md border px-1.5 text-xs font-medium {{ tones[side_status.value] }}"
-                                                  title="Сторона {{ side.sideName }}: {{ side_status.label|lower }}{{ side.airtime ? ', эфир загружен на ' ~ side.loadPercent ~ '% (' ~ side.usedSeconds ~ '/120 сек)' : '' }}">
-                                                {{ side.sideName }}{% if side.airtime %}<span class="ms-1 opacity-70 tabular-nums">{{ side.loadPercent }}%</span>{% endif %}
+                                                  title="Сторона {{ side.sideName }}: {{ side_status.label|lower }}{{ side.airtime ? ', занято слотов: ' ~ side.usedSlots ~ ' из ' ~ side.slotCount : '' }}">
+                                                {{ side.sideName }}{% if side.airtime %}<span class="ms-1 opacity-70 tabular-nums">{{ side.usedSlots }}/{{ side.slotCount }}</span>{% endif %}
                                             </span>
                                         {% else %}
                                             <span class="text-body-subtle">—</span>

@@ -73,7 +73,7 @@
                                     <span class="ms-1 text-xs text-body-subtle">(конструкции больше нет)</span>
                                 {% endif %}
                                 <div class="text-xs text-body-subtle">
-                                    Сторона {{ item.sideName }}{% if item.clipDuration %} · ролик {{ item.clipDuration }} сек{% endif %}
+                                    Сторона {{ item.sideName }}{% if item.slots %} · {{ item.slots|plural('слот', 'слота', 'слотов') }}{% endif %}
                                 </div>
                             </th>
                             <td class="px-4 py-3">

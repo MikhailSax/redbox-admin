@@ -77,13 +77,13 @@
                     {% endif %}
                 </td>
                 <td class="info">
-                    <div class="name">{{ product.name }}</div>
+                    <div class="name">{{ item.displayTitle }}</div>
                     <table class="specs">
-                        <tr><td class="k">Формат</td><td>{{ product.category.name }}, {{ product.productType.name|lower }}</td></tr>
-                        <tr><td class="k">Сторона</td><td>{{ item.side.name }}{% if item.clipDuration %} · ролик {{ item.clipDuration }} сек в петле 120 сек{% endif %}</td></tr>
+                        {% if item.displayFormat %}<tr><td class="k">Формат</td><td>{{ item.displayFormat }}</td></tr>{% endif %}
+                        <tr><td class="k">Сторона</td><td>{{ item.side.name }}{% if item.slots %} · {{ item.slots|plural('слот', 'слота', 'слотов') }} по {{ item.side.slotSeconds }} сек, блок {{ item.side.blockSeconds }} сек{% endif %}</td></tr>
                         {% if product.district %}<tr><td class="k">Район</td><td>{{ product.district.name }}</td></tr>{% endif %}
                         {% if product.latitude and product.longitude %}<tr><td class="k">Координаты</td><td>{{ product.latitude|number_format(5, '.', '') }}, {{ product.longitude|number_format(5, '.', '') }}</td></tr>{% endif %}
-                        {% if product.shortDescription %}<tr><td class="k">Описание</td><td>{{ product.shortDescription }}</td></tr>{% endif %}
+                        {% if item.displayDescription %}<tr><td class="k">Описание</td><td style="white-space: pre-line">{{ item.displayDescription }}</td></tr>{% endif %}
                     </table>
                 </td>
                 <td class="price">

@@ -58,6 +58,9 @@ class ProductFormType extends AbstractType
                 'class' => ProductType::class,
                 'query_builder' => $byName,
                 'placeholder' => 'Выберите тип',
+                // sides without a type of their own follow it: their slot fields show for a screen (side-airtime.js)
+                'choice_attr' => static fn (ProductType $type): array => ['data-airtime' => $type->getBookingMode()->isAirtime() ? '1' : '0'],
+                'attr' => ['data-product-type' => ''],
             ])
             ->add('district', EntityType::class, [
                 'label' => 'Район',
@@ -70,7 +73,7 @@ class ProductFormType extends AbstractType
                 'currency' => 'RUB',
                 'input' => 'string',
                 'invalid_message' => 'Введите сумму числом, например 45000',
-                'help' => 'За одну сторону; для видеоэкрана — за 5 секунд в петле. Если стороны стоят по-разному, цену стороны можно указать на вкладке «Стороны и фото».',
+                'help' => 'За одну сторону; для видеоэкрана — за один слот. Если стороны стоят по-разному, цену стороны, цены за 2 недели, 3 и 6 месяцев — на вкладке «Стороны и фото».',
             ])
             ->add('owner', EntityType::class, [
                 'label' => 'Владелец',

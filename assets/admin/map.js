@@ -122,7 +122,7 @@ async function initConstructionMap(element) {
     function balloon(point) {
         const plan = planSelect?.selectedOptions[0];
         const sides = point.sides.map((side) => '<span class="map-side-chip" data-status="' + escape(side.status) + '" title="Сторона '
-            + escape(side.name) + ': ' + escape(side.label.toLowerCase()) + (side.airtime ? ', эфир загружен на ' + side.load + '% (' + side.used + '/120 сек)' : '') + '">' + escape(side.name) + (side.airtime ? ' · ' + side.load + '%' : '') + '</span>').join('');
+            + escape(side.name) + ': ' + escape(side.label.toLowerCase()) + (side.airtime ? ', занято слотов: ' + side.used + ' из ' + side.slots : '') + '">' + escape(side.name) + (side.airtime ? ' · ' + side.used + '/' + side.slots : '') + '</span>').join('');
         const promos = point.promotions.map((promo) => '<span class="promo-badge">' + escape(promo.label + ' ' + promo.title) + '</span>').join('');
 
         let planBox = '';

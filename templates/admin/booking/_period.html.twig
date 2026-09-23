@@ -2,5 +2,5 @@
 {{ period_label(booking.startDate, booking.endDate) }}
 <div class="text-xs text-body">
     {{- booking.wholeMonths ? booking.monthCount ~ ' мес.' : booking.days ~ ' дн.' -}}
-    {%- if booking.clipDuration %} · ролик {{ booking.clipDuration }} сек{% endif -%}
+    {%- if booking.slots %} · {{ booking.slots|plural('слот', 'слота', 'слотов') }}{% endif -%}
 </div>

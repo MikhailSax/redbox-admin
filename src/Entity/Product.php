@@ -398,6 +398,23 @@ class Product
         return $this;
     }
 
+    /**
+     * Types of the sides, each once: "Видеоэкран + Статика" when a screen and a static poster share the structure,
+     * otherwise the structure's own type.
+     */
+    public function getTypeLabel(): string
+    {
+        $names = [];
+        foreach ($this->sides as $side) {
+            $name = $side->getEffectiveProductType()?->getName();
+            if (null !== $name && !\in_array($name, $names, true)) {
+                $names[] = $name;
+            }
+        }
+
+        return [] !== $names ? implode(' + ', $names) : (string) $this->productType?->getName();
+    }
+
     /** Some side is sold as airtime (sides may differ: a screen on one, a static poster on another) */
     public function hasAirtimeSides(): bool
     {

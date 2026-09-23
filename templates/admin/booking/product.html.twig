@@ -7,9 +7,9 @@
 
     <p class="text-sm text-body mb-4">
         {% if mixed %}
-            Стороны продаются по-разному: {{ grids[0].sides|map(s => s.name)|join(', ') }} — эфиром по дням (ролики 5, 10 или 15 сек в петле {{ loopSeconds }} сек), {{ grids[1].sides|map(s => s.name)|join(', ') }} — целиком на календарный месяц.
+            Стороны продаются по-разному: {{ grids[0].sides|map(s => s.name)|join(', ') }} — эфиром по дням (слоты блока, от {{ minDays }} дней), {{ grids[1].sides|map(s => s.name)|join(', ') }} — целиком на календарный месяц.
         {% else %}
-            {{ airtime ? 'Продаётся эфиром по дням: ролики 5, 10 или 15 сек в петле ' ~ loopSeconds ~ ' сек.' : 'Сторона бронируется целиком на календарный месяц.' }}
+            {{ airtime ? 'Продаётся эфиром по дням: клиент берёт слоты блока, от ' ~ minDays ~ ' дней.' : 'Сторона бронируется целиком на календарный месяц.' }}
         {% endif %}
     </p>
 
@@ -22,7 +22,7 @@
             <div class="flex flex-wrap gap-3 text-xs text-body">
                 <span class="inline-flex items-center gap-1.5"><span class="w-3 h-3 rounded-xs bg-success-soft border border-success-subtle"></span>Свободно</span>
                 <span class="inline-flex items-center gap-1.5"><span class="w-3 h-3 rounded-xs bg-warning-soft border border-warning-subtle"></span>{{ grid_airtime ? 'Частично занято' : 'Ждёт оплаты' }}</span>
-                <span class="inline-flex items-center gap-1.5"><span class="w-3 h-3 rounded-xs bg-danger-soft border border-danger-subtle"></span>{{ grid_airtime ? 'Петля заполнена' : 'Оплачено' }}</span>
+                <span class="inline-flex items-center gap-1.5"><span class="w-3 h-3 rounded-xs bg-danger-soft border border-danger-subtle"></span>{{ grid_airtime ? 'Все слоты заняты' : 'Оплачено' }}</span>
             </div>
         </div>
         <div class="overflow-x-auto border-t border-default">
@@ -41,17 +41,19 @@
                 <tbody>
                     {% for side in group.sides %}
                         <tr class="border-b border-default last:border-0">
-                            <th scope="row" class="sticky left-0 bg-neutral-primary-soft px-4 py-2 text-left font-medium text-heading whitespace-nowrap">{{ side.name }}</th>
+                            <th scope="row" class="sticky left-0 bg-neutral-primary-soft px-4 py-2 text-left font-medium text-heading whitespace-nowrap">
+                                {{ side.name }}
+                                {% if grid_airtime %}<div class="text-[11px] font-normal text-body-subtle">{{ side.slotCount }} × {{ side.slotSeconds }} сек</div>{% endif %}
+                            </th>
                             {% for key, column in group.columns %}
                                 {% set cell = group.cells[side.id][key] %}
-                                {% set clients = cell.bookings|map(b => b.clientTitle ~ (b.clipDuration ? ' (' ~ b.clipDuration ~ ' сек)' : '') ~ ' — ' ~ b.statusAt(now).label)|join("\n") %}
+                                {% set clients = cell.bookings|map(b => b.clientTitle ~ (b.slots ? ' (слотов: ' ~ b.slots ~ ')' : '') ~ ' — ' ~ b.statusAt(now).label)|join("\n") %}
                                 <td class="p-1">
                                     {% if grid_airtime %}
-                                        {# rounded down like BookingMode::loadPercent(): 100% only when not a second is left #}
-                                        {% set percent = min(100, (cell.used * 100 / loopSeconds)|round(0, 'floor')) %}
-                                        <div class="rounded-sm border px-1.5 py-1 text-center {{ cell.used >= loopSeconds ? 'bg-danger-soft border-danger-subtle text-fg-danger-strong' : (cell.used > 0 ? 'bg-warning-soft border-warning-subtle text-fg-warning' : 'bg-success-soft border-success-subtle text-fg-success-strong') }}"
-                                             title="Эфир загружен на {{ percent }}% ({{ cell.used }}/{{ loopSeconds }} сек){{ clients ? "\n" ~ clients }}">
-                                            <div class="text-xs font-medium whitespace-nowrap tabular-nums">{{ percent }}%</div>
+                                        {% set percent = min(100, (cell.used * 100 / side.slotCount)|round(0, 'floor')) %}
+                                        <div class="rounded-sm border px-1.5 py-1 text-center {{ cell.used >= side.slotCount ? 'bg-danger-soft border-danger-subtle text-fg-danger-strong' : (cell.used > 0 ? 'bg-warning-soft border-warning-subtle text-fg-warning' : 'bg-success-soft border-success-subtle text-fg-success-strong') }}"
+                                             title="Занято слотов: {{ min(cell.used, side.slotCount) }} из {{ side.slotCount }}{{ clients ? "\n" ~ clients }}">
+                                            <div class="text-xs font-medium whitespace-nowrap tabular-nums">{{ min(cell.used, side.slotCount) }}/{{ side.slotCount }}</div>
                                             <div class="mt-1 h-1 rounded-full bg-neutral-tertiary-medium overflow-hidden"><div class="h-full bg-current" style="width: {{ percent }}%"></div></div>
                                         </div>
                                     {% else %}
@@ -102,8 +104,8 @@
                         {{ form_row(form.months, whole_row) }}
                     {% endif %}
                 </div>
-                {% if form.clipDuration is defined %}
-                    {{ form_row(form.clipDuration, airtime_row) }}
+                {% if form.slots is defined %}
+                    <div class="md:w-1/3">{{ form_row(form.slots, airtime_row) }}</div>
                 {% endif %}
                 {{ form_row(form.client) }}
                 <div class="grid gap-x-6 md:grid-cols-2">
@@ -120,8 +122,8 @@
             <ul class="space-y-3 text-sm text-body list-disc ps-5">
                 <li>Новая бронь держит место <b class="text-heading">24 часа</b>. Если за это время не отметить оплату, бронь снимается автоматически и место освобождается.</li>
                 {% if airtime %}
-                    <li>Эфир продаётся <b class="text-heading">по дням</b>: с любого дня по любой, включительно.</li>
-                    <li>Экран крутит ролики в петле <b class="text-heading">{{ loopSeconds }} секунд</b>. Клиенты покупают ролик 5, 10 или 15 сек, пока петля не заполнится. В сетке — на сколько процентов загружена петля в этот день (секунды — в подсказке).</li>
+                    <li>Эфир продаётся <b class="text-heading">по дням</b>: с любого дня по любой, включительно, но не меньше <b class="text-heading">{{ minDays }} дней</b>.</li>
+                    <li>Блок экрана делится на <b class="text-heading">слоты</b> (обычно 12 по 5 сек). Клиент берёт один или несколько слотов; экран занят, когда разобраны все. В сетке — сколько слотов занято в этот день.</li>
                 {% endif %}
                 {% if whole %}
                     <li>{{ mixed ? 'Статичная сторона' : 'Сторона' }} бронируется целиком на календарный месяц — одному клиенту.</li>

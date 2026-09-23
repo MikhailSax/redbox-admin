@@ -7,6 +7,8 @@ use Doctrine\ORM\Mapping as ORM;
 
 /**
  * One side in a media plan, with the monthly price fixed when it was added (editable by the manager).
+ * The name, format and description printed in the PDF come from the structure unless the manager typed
+ * this proposal's own ones.
  */
 #[ORM\Entity]
 #[ORM\UniqueConstraint(name: 'uniq_media_plan_side', columns: ['plan_id', 'side_id'])]
@@ -25,11 +27,11 @@ class MediaPlanItem
     #[ORM\JoinColumn(nullable: false, onDelete: 'CASCADE')]
     private ProductSide $side;
 
-    /** Clip length in seconds for airtime (video) sides */
+    /** Slots of the screen's block, for airtime (video) sides */
     #[ORM\Column(nullable: true)]
-    private ?int $clipDuration;
+    private ?int $slots;
 
-    /** Selling price per month for this side (and clip), rubles */
+    /** Selling price per month for this side (all its slots), rubles */
     #[ORM\Column(type: Types::DECIMAL, precision: 12, scale: 2)]
     private string $monthlyPrice;
 
@@ -58,12 +60,24 @@ class MediaPlanItem
     #[ORM\Column]
     private int $position = 0;
 
-    public function __construct(ProductSide $side, string $monthlyPrice, ?int $clipDuration = null)
+    /** The structure's name in this proposal; null = Product::$name */
+    #[ORM\Column(length: 255, nullable: true)]
+    private ?string $title = null;
+
+    /** "Формат" line in the PDF; null = category and the side's type */
+    #[ORM\Column(length: 255, nullable: true)]
+    private ?string $format = null;
+
+    /** Description in the PDF; null = Product::$shortDescription */
+    #[ORM\Column(type: Types::TEXT, nullable: true)]
+    private ?string $description = null;
+
+    public function __construct(ProductSide $side, string $monthlyPrice, ?int $slots = null)
     {
         $this->side = $side;
         $this->monthlyPrice = $monthlyPrice;
         $this->basePrice = $monthlyPrice;
-        $this->clipDuration = $clipDuration;
+        $this->slots = $slots;
     }
 
     public function getBasePrice(): float
@@ -151,9 +165,84 @@ class MediaPlanItem
         return $this->side->getProduct();
     }
 
-    public function getClipDuration(): ?int
+    public function getSlots(): ?int
     {
-        return $this->clipDuration;
+        return $this->slots;
+    }
+
+    public function setSlots(?int $slots): static
+    {
+        $this->slots = $slots;
+
+        return $this;
+    }
+
+    /** List price per month set anew (the price list, the slots or the term changed); promotions are applied on top */
+    public function setBasePrice(string $basePrice): static
+    {
+        $this->basePrice = $basePrice;
+
+        return $this;
+    }
+
+    public function getTitle(): ?string
+    {
+        return $this->title;
+    }
+
+    public function getFormat(): ?string
+    {
+        return $this->format;
+    }
+
+    public function getDescription(): ?string
+    {
+        return $this->description;
+    }
+
+    /**
+     * The proposal's own texts; an empty one, or one equal to the structure's, falls back to the structure's.
+     */
+    public function setTexts(?string $title, ?string $format, ?string $description): static
+    {
+        $own = static fn (?string $value, ?string $default): ?string => '' === ($value = trim((string) $value)) || $value === trim((string) $default) ? null : $value;
+        $this->title = $own($title, $this->getProduct()?->getName());
+        $this->format = $own($format, $this->getDefaultFormat());
+        $this->description = $own($description, $this->getProduct()?->getShortDescription());
+
+        return $this;
+    }
+
+    public function hasOwnTexts(): bool
+    {
+        return null !== $this->title || null !== $this->format || null !== $this->description;
+    }
+
+    public function getDisplayTitle(): string
+    {
+        return $this->title ?? (string) $this->getProduct()?->getName();
+    }
+
+    public function getDisplayFormat(): string
+    {
+        return $this->format ?? $this->getDefaultFormat();
+    }
+
+    public function getDisplayDescription(): ?string
+    {
+        return $this->description ?? $this->getProduct()?->getShortDescription();
+    }
+
+    /** "Суперсайт, видеоэкран · 12 × 4 м": the side's own type, not the structure's (sides may differ) */
+    public function getDefaultFormat(): string
+    {
+        $product = $this->getProduct();
+        $type = $this->side->getEffectiveProductType()?->getName();
+
+        return implode(' · ', array_filter([
+            implode(', ', array_filter([$product?->getCategory()?->getName(), null !== $type ? mb_strtolower($type) : null])),
+            $product?->getSizeLabel(),
+        ]));
     }
 
     public function getMonthlyPrice(): float
@@ -170,7 +259,7 @@ class MediaPlanItem
 
     /**
      * What Redbox pays the partner per month for this side; 0 for own structures.
-     * Partner prices, like selling prices, are per side (per 5 s of the loop for airtime).
+     * Partner prices, like selling prices, are per side (per slot for airtime).
      */
     public function getMonthlyPartnerCost(): float
     {
@@ -179,7 +268,7 @@ class MediaPlanItem
             return 0.0;
         }
 
-        return (float) $product->getPurchasePrice() * (null !== $this->clipDuration ? $this->clipDuration / 5 : 1);
+        return (float) $product->getPurchasePrice() * ($this->slots ?? 1);
     }
 
     public function getBooking(): ?Booking

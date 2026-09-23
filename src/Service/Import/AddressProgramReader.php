@@ -12,6 +12,7 @@ use OpenSpout\Reader\XLSX\Sheet;
  * own header row starting with "Номер в схеме" / "Номер"; columns are found by header text, so their order may differ.
  * Title rows above the tables ("Улан-Удэ", "Районы Республики ...") tell the city from the regional districts.
  * The photo ("Фото") and map ("Карта") links are kept for side photos and coordinates.
+ * Some headers take two rows ("Стоимость" above "3 мес | 6 мес"): the second row adds its columns to the table's.
  */
 class AddressProgramReader
 {
@@ -27,6 +28,15 @@ class AddressProgramReader
         'размер, м' => 'size',
         'месяц' => 'price',
         'стоимость размещения' => 'price',
+        '14 дней' => 'price2Weeks',
+        '3 месяца' => 'price3Months',
+        '3 мес' => 'price3Months',
+        '6 месяцев' => 'price6Months',
+        '6 мес' => 'price6Months',
+        'печать баннера/пленки' => 'print',
+        'печать баннера/плёнки' => 'print',
+        'хронометраж' => 'slot',
+        'длина блока' => 'block',
         'бронь' => 'booking',
         'карта' => 'map',
         'фото' => 'photo',
@@ -78,6 +88,12 @@ class AddressProgramReader
                     continue;
                 }
 
+                // Second header row of the table: no address, only column names
+                if (null !== $columns && null === ($cells[$columns['address'] ?? -1] ?? null) && [] !== ($more = self::columns($cells))) {
+                    $columns += $more;
+                    continue;
+                }
+
                 // Title row: only the first cell is filled
                 if (null !== ($cells[0] ?? null) && 1 === \count(array_filter($cells, static fn (?string $v) => null !== $v))) {
                     if (str_starts_with($first, 'районы')) {
@@ -105,6 +121,12 @@ class AddressProgramReader
                     bookingNote: $get('booking'),
                     mapUrl: $get('map'),
                     photoUrl: $get('photo'),
+                    price2Weeks: $get('price2Weeks'),
+                    price3Months: $get('price3Months'),
+                    price6Months: $get('price6Months'),
+                    printText: $get('print'),
+                    slotText: $get('slot'),
+                    blockText: $get('block'),
                 );
             }
 

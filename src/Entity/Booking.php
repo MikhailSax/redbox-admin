@@ -10,8 +10,8 @@ use Doctrine\ORM\Mapping as ORM;
 
 /**
  * Booking of a structure side for an inclusive period of days.
- * Whole sides (static, prismatron) are booked for whole calendar months; airtime (video) sides for any days,
- * a clip of $clipDuration seconds in the loop.
+ * Whole sides (static, prismatron) are booked for whole calendar months; airtime (video) sides for any days
+ * (two weeks at least), $slots slots of the screen's block.
  *
  * Created as a 24h hold via BookingManager; a hold that is not paid in time
  * stops blocking the side at $expiresAt and is later marked Expired.
@@ -42,9 +42,9 @@ class Booking
     #[ORM\Column(type: Types::DATE_IMMUTABLE)]
     private \DateTimeImmutable $endDate;
 
-    /** Clip length in seconds for airtime bookings; null for whole-side bookings */
+    /** Slots of the screen's block taken by an airtime booking; null for whole-side bookings */
     #[ORM\Column(nullable: true)]
-    private ?int $clipDuration;
+    private ?int $slots;
 
     #[ORM\Column(length: 20, enumType: BookingStatus::class)]
     private BookingStatus $status = BookingStatus::Hold;
@@ -82,7 +82,7 @@ class Booking
         ProductSide $side,
         \DateTimeImmutable $startDate,
         \DateTimeImmutable $endDate,
-        ?int $clipDuration,
+        ?int $slots,
         ?User $client,
         string $clientName,
         string $clientPhone,
@@ -92,7 +92,7 @@ class Booking
         $this->side = $side;
         $this->startDate = $startDate->setTime(0, 0);
         $this->endDate = $endDate->setTime(0, 0);
-        $this->clipDuration = $clipDuration;
+        $this->slots = $slots;
         $this->client = $client;
         $this->clientName = $clientName;
         $this->clientPhone = $clientPhone;
@@ -154,9 +154,9 @@ class Booking
         return $this->overlaps($day, $day);
     }
 
-    public function getClipDuration(): ?int
+    public function getSlots(): ?int
     {
-        return $this->clipDuration;
+        return $this->slots;
     }
 
     public function getStatus(): BookingStatus

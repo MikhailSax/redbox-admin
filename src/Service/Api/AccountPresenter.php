@@ -106,7 +106,6 @@ class AccountPresenter
                 'side' => $item->getSideName(),
                 'from' => $item->getStartDate()->format('Y-m-d'),
                 'to' => $item->getEndDate()->format('Y-m-d'),
-                'clip' => $item->getClipDuration(),
                 'monthlyPrice' => $item->getMonthlyPrice(),
                 'total' => $item->getTotal(),
             ], $lead->getItems()->toArray()),
@@ -180,11 +179,11 @@ class AccountPresenter
         return [
             'structureId' => $product?->getId(),
             'code' => $product?->getSchemeNumber(),
-            'name' => $product?->getName(),
-            'type' => $product?->getProductType()?->getName(),
+            // as in the proposal the client got
+            'name' => $item->getDisplayTitle(),
+            'type' => $item->getSide()->getEffectiveProductType()?->getName(),
             'sizeLabel' => null !== $product ? ProductHelper::sizeLabel($product->getSize()) : null,
             'side' => $item->getSide()->getName(),
-            'clip' => $item->getClipDuration(),
             'monthlyPrice' => $item->getMonthlyPrice(),
             'basePrice' => $item->getBasePrice(),
             'promotion' => $item->hasPromotionPrice() ? $item->getPromotionTitle() : null,

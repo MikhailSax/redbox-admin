@@ -9,6 +9,7 @@ use App\Entity\LeadItem;
 use App\Entity\ProductSide;
 use App\Entity\User;
 use App\Service\MediaPlanManager;
+use App\Service\MonthCalendar;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\DependencyInjection\Attribute\Target;
@@ -91,16 +92,20 @@ final class OrderController extends AbstractController
     private function item(ProductSide $side, OrderItemRequest $request): LeadItem
     {
         $product = $side->getProduct();
-        $clip = $side->isAirtime() ? $request->clip : null;
+        $start = new \DateTimeImmutable((string) $request->from);
+        $end = new \DateTimeImmutable((string) $request->to);
+        // the site sells a screen by one slot; the manager changes the slots in the media plan if needed
+        $slots = MediaPlanManager::slotsFor($side, null);
+        $monthly = (float) ($side->getMonthlyPriceForDays(MonthCalendar::days($start, $end)) ?? 0) * ($slots ?? 1);
 
         return new LeadItem(
             side: $side,
             productTitle: trim(\sprintf('%s%s', $product?->getSchemeNumber() ? '№'.$product->getSchemeNumber().' · ' : '', (string) $product?->getName())),
             sideName: $side->getName(),
-            startDate: new \DateTimeImmutable((string) $request->from),
-            endDate: new \DateTimeImmutable((string) $request->to),
-            clipDuration: $clip,
-            monthlyPrice: number_format(MediaPlanManager::priceFor($side, $clip), 2, '.', ''),
+            startDate: $start,
+            endDate: $end,
+            slots: $slots,
+            monthlyPrice: number_format($monthly, 2, '.', ''),
         );
     }
 }

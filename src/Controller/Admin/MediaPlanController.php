@@ -82,7 +82,7 @@ final class MediaPlanController extends AbstractController
         $sideProblems = [];
         foreach ($candidates as $product) {
             foreach ($product->getSides() as $side) {
-                $sideProblems[$side->getId()] = $bookings->availabilityProblem($side, $plan->getStartMonth(), $plan->getEndDate(), MediaPlanManager::DEFAULT_CLIP);
+                $sideProblems[$side->getId()] = $bookings->availabilityProblem($side, $plan->getStartMonth(), $plan->getEndDate(), MediaPlanManager::DEFAULT_SLOTS);
             }
         }
 
@@ -201,12 +201,12 @@ final class MediaPlanController extends AbstractController
     public function addItems(Request $request, MediaPlan $plan): Response
     {
         $payload = $request->getPayload();
-        // getInt() rejects an empty string with a 400; an empty or missing clip just means "default"
-        $clip = (int) $payload->getString('clip') ?: null;
+        // getInt() rejects an empty string with a 400; empty or missing slots just mean "default"
+        $slots = (int) $payload->getString('slots') ?: null;
         $added = 0;
         foreach ($payload->all('sides') as $sideId) {
             $side = $this->entityManager->find(ProductSide::class, (int) $sideId);
-            if (null !== $side && null !== $this->manager->addSide($plan, $side, $clip)) {
+            if (null !== $side && null !== $this->manager->addSide($plan, $side, $slots)) {
                 ++$added;
             }
         }
@@ -243,6 +243,33 @@ final class MediaPlanController extends AbstractController
     }
 
     /**
+     * The item as the proposal shows it: its own name, format and description for the PDF, and the slots of a screen.
+     * Empty texts fall back to the structure's.
+     */
+    #[Route('/{id}/items/{item}/edit', name: 'item_edit', requirements: ['id' => Requirement::DIGITS, 'item' => Requirement::DIGITS], methods: ['POST'])]
+    #[IsCsrfTokenValid(new Expression('"media-plan-" ~ args["plan"].getId()'))]
+    public function editItem(Request $request, MediaPlan $plan, MediaPlanItem $item): Response
+    {
+        $this->assertItemOf($plan, $item);
+        $payload = $request->getPayload();
+
+        $title = mb_substr(trim($payload->getString('title')), 0, 255);
+        $format = mb_substr(trim($payload->getString('format')), 0, 255);
+        $item->setTexts($title, $format, $payload->getString('description'));
+
+        $slots = (int) $payload->getString('slots');
+        if ($item->getSide()->isAirtime() && $slots > 0 && $slots !== $item->getSlots()) {
+            $this->manager->changeSlots($item, $slots);
+        }
+
+        $plan->touch();
+        $this->entityManager->flush();
+        $this->addFlash('success', 'Позиция обновлена');
+
+        return $this->redirectToRoute('admin_media_plan_show', ['id' => $plan->getId(), '_fragment' => 'item-'.$item->getId()], Response::HTTP_SEE_OTHER);
+    }
+
+    /**
      * Back from a hand-typed price to the list price with promotions.
      */
     #[Route('/{id}/items/{item}/auto-price', name: 'item_auto_price', requirements: ['id' => Requirement::DIGITS, 'item' => Requirement::DIGITS], methods: ['POST'])]
@@ -264,7 +291,7 @@ final class MediaPlanController extends AbstractController
     {
         $changed = $this->manager->recalculate($plan);
         $this->entityManager->flush();
-        $this->addFlash('success', $changed > 0 ? \sprintf('Цены пересчитаны по акциям: изменилось позиций — %d', $changed) : 'Цены актуальны — ничего не изменилось');
+        $this->addFlash('success', $changed > 0 ? \sprintf('Цены пересчитаны по прайсу и акциям: изменилось позиций — %d', $changed) : 'Цены актуальны — ничего не изменилось');
 
         return $this->redirectToRoute('admin_media_plan_show', ['id' => $plan->getId()], Response::HTTP_SEE_OTHER);
     }
@@ -363,7 +390,7 @@ final class MediaPlanController extends AbstractController
                 $user = $this->getUser();
                 $plan->setCreatedBy($user instanceof User ? $user : null);
             } elseif ($promoTerms($plan) !== $termsBefore && ($changed = $this->manager->recalculate($plan)) > 0) {
-                $successMessage .= \sprintf('. Цены пересчитаны по акциям: изменилось позиций — %d', $changed);
+                $successMessage .= \sprintf('. Цены пересчитаны по прайсу и акциям: изменилось позиций — %d', $changed);
             }
             $plan->touch();
             $this->entityManager->persist($plan);

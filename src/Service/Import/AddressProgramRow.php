@@ -18,10 +18,23 @@ final readonly class AddressProgramRow
         public string $side,
         public string $format,
         public ?string $sizeText,
+        /** Per month */
         public ?string $price,
         public ?string $bookingNote,
         public ?string $mapUrl = null,
         public ?string $photoUrl = null,
+        /** For 14 days as a whole */
+        public ?string $price2Weeks = null,
+        /** Per month when placed for 3 months */
+        public ?string $price3Months = null,
+        /** Per month when placed for 6 months */
+        public ?string $price6Months = null,
+        /** "3 500,00 (баннер)" */
+        public ?string $printText = null,
+        /** Screens: slot length, "5 сек" */
+        public ?string $slotText = null,
+        /** Screens: block length, "60 сек" */
+        public ?string $blockText = null,
     ) {
     }
 }

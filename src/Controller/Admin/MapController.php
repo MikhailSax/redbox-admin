@@ -75,10 +75,10 @@ final class MapController extends AbstractController
                     'status' => $side->status()->value,
                     'label' => $side->status()->label(),
                     'airtime' => $side->airtime,
-                    'used' => $side->usedSeconds(),
-                    'load' => $side->loadPercent(),
+                    'used' => $side->usedSlots(),
+                    'slots' => $side->slotCount,
                 ], $item->sides),
-                'meta' => implode(' · ', array_filter([$product->getCategory()?->getName(), $product->getProductType()?->getName(), $product->getDistrict()?->getName()])),
+                'meta' => implode(' · ', array_filter([$product->getCategory()?->getName(), $product->getTypeLabel(), $product->getDistrict()?->getName()])),
                 'owner' => $product->getOwner()?->getName(),
                 'price' => null !== $product->getPrice() ? (float) $product->getPrice() : null,
                 // only what any client gets; conditional promotions are on the structure card

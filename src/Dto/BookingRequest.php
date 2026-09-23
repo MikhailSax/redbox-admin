@@ -12,7 +12,7 @@ use Symfony\Component\Validator\Context\ExecutionContextInterface;
 /**
  * Data of the "new booking" form; turned into a Booking by BookingManager::hold().
  *
- * Whole sides are booked by month ($startMonth + $months), airtime by days ($startDate … $endDate).
+ * Whole sides are booked by month ($startMonth + $months), airtime by days ($startDate … $endDate), two weeks at least.
  * Airtime may also be booked by month (media plans): then $startDate stays empty.
  * The mode is the chosen side's: a structure may have a screen on one side and a static poster on another,
  * so the form sends both sets of fields and only the side's set counts.
@@ -36,8 +36,8 @@ final class BookingRequest
     /** Last day (inclusive), airtime by days */
     public ?\DateTimeImmutable $endDate = null;
 
-    /** Seconds; required for airtime (video) sides only */
-    public ?int $clipDuration = null;
+    /** Slots of the screen's block; airtime (video) sides only */
+    public ?int $slots = 1;
 
     /** Whose the booking is; a side is never taken for nobody */
     #[Assert\NotNull(message: 'Выберите клиента')]
@@ -103,8 +103,8 @@ final class BookingRequest
     #[Assert\Callback]
     public function validatePeriod(ExecutionContextInterface $context): void
     {
-        if ($this->isAirtime() && !\in_array($this->clipDuration, BookingMode::CLIP_DURATIONS, true)) {
-            $context->buildViolation('Выберите длину ролика')->atPath('clipDuration')->addViolation();
+        if ($this->isAirtime() && (null === $this->slots || $this->slots < 1 || $this->slots > $this->side->getSlotCount())) {
+            $context->buildViolation(\sprintf('Слотов — от 1 до %d', $this->side->getSlotCount()))->atPath('slots')->addViolation();
         }
 
         if ($this->isAirtime() && ($this->isByDays() || null === $this->startMonth)) {
@@ -114,6 +114,8 @@ final class BookingRequest
                 $context->buildViolation('Укажите последний день')->atPath('endDate')->addViolation();
             } elseif ($this->endDate < $this->startDate) {
                 $context->buildViolation('Последний день не может быть раньше первого')->atPath('endDate')->addViolation();
+            } elseif (MonthCalendar::days($this->startDate, $this->endDate) < BookingMode::MIN_DAYS) {
+                $context->buildViolation(\sprintf('Минимальное размещение — %d дней', BookingMode::MIN_DAYS))->atPath('endDate')->addViolation();
             } elseif (MonthCalendar::days($this->startDate, $this->endDate) > self::MAX_DAYS) {
                 $context->buildViolation(\sprintf('Не больше %d дней за одну бронь', self::MAX_DAYS))->atPath('endDate')->addViolation();
             }

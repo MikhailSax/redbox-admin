@@ -66,7 +66,7 @@ final class BookingManagerTest extends KernelTestCase
         self::assertEquals(new \DateTimeImmutable('2026-09-01'), $booking->getStartDate());
         self::assertEquals(new \DateTimeImmutable('2026-09-30'), $booking->getEndDate());
         self::assertTrue($booking->isWholeMonths());
-        self::assertNull($booking->getClipDuration());
+        self::assertNull($booking->getSlots());
     }
 
     public function testSideCanBeBookedOncePerMonth(): void
@@ -135,32 +135,44 @@ final class BookingManagerTest extends KernelTestCase
         $this->assertUnavailable(fn () => $this->manager->cancel($booking), 'уже не действует');
     }
 
-    public function testAirtimeLoopHoldsUpTo120Seconds(): void
+    public function testScreenBlockHoldsUpToItsSlots(): void
     {
+        self::assertSame(BookingMode::DEFAULT_SLOT_COUNT, $this->screen->getSlotCount()); // 12 × 5 s
         $bookings = [];
-        for ($i = 1; $i <= 8; ++$i) { // 8 × 15 s = 120 s
-            $bookings[] = $this->book($this->screen, '2026-09', clip: 15, client: 'Клиент '.$i);
+        for ($i = 1; $i <= 4; ++$i) { // 4 × 3 slots = 12
+            $bookings[] = $this->book($this->screen, '2026-09', slots: 3, client: 'Клиент '.$i);
         }
 
-        $this->assertUnavailable(fn () => $this->book($this->screen, '2026-09', clip: 5), 'свободно 0 сек из 120');
-        // the next month is a separate loop
-        self::assertSame(5, $this->book($this->screen, '2026-10', clip: 5)->getClipDuration());
+        $this->assertUnavailable(fn () => $this->book($this->screen, '2026-09', slots: 1), 'свободно слотов: 0 из 12');
+        // the next month is a separate block
+        self::assertSame(1, $this->book($this->screen, '2026-10', slots: 1)->getSlots());
 
-        $this->manager->cancel($bookings[0]); // frees 15 s
-        $this->book($this->screen, '2026-09', clip: 10);
-        $this->book($this->screen, '2026-09', clip: 5);
-        $this->assertUnavailable(fn () => $this->book($this->screen, '2026-09', clip: 5), 'свободно 0 сек');
+        $this->manager->cancel($bookings[0]); // frees 3 slots
+        $this->book($this->screen, '2026-09', slots: 2);
+        $this->book($this->screen, '2026-09', slots: 1);
+        $this->assertUnavailable(fn () => $this->book($this->screen, '2026-09', slots: 1), 'свободно слотов: 0 из 12');
     }
 
-    public function testAirtimeReportsFreeSecondsWhenClipDoesNotFit(): void
+    public function testScreenReportsFreeSlotsWhenTheyDoNotFit(): void
     {
-        for ($i = 0; $i < 7; ++$i) {
-            $this->book($this->screen, '2026-09', clip: 15);
+        for ($i = 0; $i < 5; ++$i) {
+            $this->book($this->screen, '2026-09', slots: 2);
         }
-        $this->book($this->screen, '2026-09', clip: 10); // 115 s used
 
-        $this->assertUnavailable(fn () => $this->book($this->screen, '2026-09', clip: 10), 'свободно 5 сек из 120 — ролик 10 сек не помещается');
-        self::assertSame(5, $this->book($this->screen, '2026-09', clip: 5)->getClipDuration());
+        $this->assertUnavailable(fn () => $this->book($this->screen, '2026-09', slots: 3), 'свободно слотов: 2 из 12, а нужно 3');
+        self::assertSame(2, $this->book($this->screen, '2026-09', slots: 2)->getSlots());
+    }
+
+    public function testSlotsAreSetPerScreen(): void
+    {
+        $this->screen->setSlotSeconds(10)->setSlotCount(2);
+        $this->em->flush();
+        self::assertSame(20, $this->screen->getBlockSeconds());
+
+        $this->book($this->screen, '2026-09', slots: 1);
+        $this->book($this->screen, '2026-09', slots: 1, client: 'Второй');
+        $this->assertUnavailable(fn () => $this->book($this->screen, '2026-09', slots: 1, client: 'Третий'), 'свободно слотов: 0 из 2');
+        $this->assertUnavailable(fn () => $this->book($this->screen, '2026-10', slots: 3), 'укажите число слотов: от 1 до 2');
     }
 
     public function testExpireOverdueHoldsOnlyTouchesUnpaidHolds(): void
@@ -181,63 +193,83 @@ final class BookingManagerTest extends KernelTestCase
 
     public function testOccupancyGrid(): void
     {
-        $this->book($this->screen, '2026-09', clip: 15);
-        $this->book($this->screen, '2026-09', months: 2, clip: 10);
-        $this->bookDays($this->screen, '2026-10-05', '2026-10-06', 5);
+        $this->book($this->screen, '2026-09', slots: 3);
+        $this->book($this->screen, '2026-09', months: 2, slots: 2);
+        $this->bookDays($this->screen, '2026-10-05', '2026-10-18', 1);
 
         $columns = [];
         foreach (['2026-09', '2026-10', '2026-11'] as $month) {
             $columns[$month] = [new \DateTimeImmutable($month.'-01'), new \DateTimeImmutable($month.'-01 last day of this month')];
         }
-        $columns['2026-10-07'] = [new \DateTimeImmutable('2026-10-07'), new \DateTimeImmutable('2026-10-07')];
+        $columns['2026-10-19'] = [new \DateTimeImmutable('2026-10-19'), new \DateTimeImmutable('2026-10-19')];
         $grid = $this->manager->occupancy($this->screen->getProduct(), $columns)[$this->screen->getId()];
 
-        self::assertSame(25, $grid['2026-09']['used']);
-        self::assertSame(15, $grid['2026-10']['used']); // busiest day: 10 s all month + 5 s on the 5th and 6th
-        self::assertSame(10, $grid['2026-10-07']['used']);
+        self::assertSame(5, $grid['2026-09']['used']);
+        self::assertSame(3, $grid['2026-10']['used']); // busiest day: 2 slots all month + 1 from the 5th to the 18th
+        self::assertSame(2, $grid['2026-10-19']['used']);
         self::assertSame(0, $grid['2026-11']['used']);
         self::assertCount(2, $grid['2026-09']['bookings']);
     }
 
-    public function testAirtimeIsBookedByDays(): void
+    public function testAirtimeIsBookedByDaysForTwoWeeksAtLeast(): void
     {
-        $booking = $this->bookDays($this->screen, '2026-09-12', '2026-09-18', 15);
+        $booking = $this->bookDays($this->screen, '2026-09-12', '2026-09-25', 2);
 
         self::assertEquals(new \DateTimeImmutable('2026-09-12'), $booking->getStartDate());
-        self::assertEquals(new \DateTimeImmutable('2026-09-18'), $booking->getEndDate());
-        self::assertSame(7, $booking->getDays());
+        self::assertEquals(new \DateTimeImmutable('2026-09-25'), $booking->getEndDate());
+        self::assertSame(14, $booking->getDays());
         self::assertFalse($booking->isWholeMonths());
 
-        $this->assertUnavailable(fn () => $this->bookDays($this->screen, '2026-09-09', '2026-09-12', 5), 'Первый день брони уже прошёл');
+        $this->assertUnavailable(fn () => $this->bookDays($this->screen, '2026-09-12', '2026-09-24', 1), 'Минимальное размещение — 14 дней');
+        $this->assertUnavailable(fn () => $this->bookDays($this->screen, '2026-09-09', '2026-09-30', 1), 'Первый день брони уже прошёл');
     }
 
-    public function testLoopIsCheckedForEveryDay(): void
+    public function testBlockIsCheckedForEveryDay(): void
     {
-        // 105 s taken on the 12th–15th and 105 s on the 16th–20th: never more than 105 s on one day
-        foreach (range(1, 7) as $i) {
-            $this->bookDays($this->screen, '2026-09-12', '2026-09-15', 15, 'Первая неделя '.$i);
-            $this->bookDays($this->screen, '2026-09-16', '2026-09-20', 15, 'Вторая неделя '.$i);
+        // 10 slots taken on 12–25 September and 10 on 26 September – 9 October: never more than 10 on one day
+        foreach (range(1, 5) as $i) {
+            $this->bookDays($this->screen, '2026-09-12', '2026-09-25', 2, 'Первые две недели '.$i);
+            $this->bookDays($this->screen, '2026-09-26', '2026-10-09', 2, 'Вторые две недели '.$i);
         }
 
-        // so a 15 s clip for the whole period fits (a per-month sum would say 210 s are taken)
-        self::assertInstanceOf(Booking::class, $this->bookDays($this->screen, '2026-09-12', '2026-09-20', 15));
+        // so 2 slots for the whole period fit (a sum over the period would say 20 are taken)
+        self::assertInstanceOf(Booking::class, $this->bookDays($this->screen, '2026-09-12', '2026-10-09', 2));
 
-        // now the loop is full on every day from the 12th to the 20th, but free before and after
-        $this->assertUnavailable(fn () => $this->bookDays($this->screen, '2026-09-19', '2026-09-22', 5), 'На 19 сентября 2026 в петле стороны A свободно 0 сек из 120');
-        self::assertInstanceOf(Booking::class, $this->bookDays($this->screen, '2026-09-21', '2026-09-22', 15));
-        self::assertInstanceOf(Booking::class, $this->bookDays($this->screen, '2026-09-10', '2026-09-11', 15));
+        // now the block is full on every day from 12 September to 9 October, but free after
+        $this->assertUnavailable(fn () => $this->bookDays($this->screen, '2026-10-05', '2026-10-18', 1), 'На 5 октября 2026 у стороны A свободно слотов: 0 из 12');
+        self::assertInstanceOf(Booking::class, $this->bookDays($this->screen, '2026-10-10', '2026-10-23', 1));
+    }
+
+    public function testFullPeriodsAreWhenEverySlotIsTaken(): void
+    {
+        $this->screen->setSlotCount(2);
+        $this->em->flush();
+        $this->bookDays($this->screen, '2026-09-12', '2026-09-25', 1);
+        $this->bookDays($this->screen, '2026-09-20', '2026-10-10', 1, 'Второй');
+        $this->bookDays($this->screen, '2026-10-05', '2026-10-20', 1, 'Третий');
+
+        $bookings = $this->em->getRepository(Booking::class)->findBy(['side' => $this->screen]);
+        $periods = BookingManager::fullPeriods($this->screen, $bookings, new \DateTimeImmutable('2026-09-01'), new \DateTimeImmutable('2026-10-31'));
+
+        self::assertSame(
+            [['2026-09-20', '2026-09-25'], ['2026-10-05', '2026-10-10']],
+            array_map(static fn (array $p) => [$p[0]->format('Y-m-d'), $p[1]->format('Y-m-d')], $periods),
+        );
+        // a period cut by the end of the range
+        $cut = BookingManager::fullPeriods($this->screen, $bookings, new \DateTimeImmutable('2026-09-01'), new \DateTimeImmutable('2026-09-22'));
+        self::assertSame(['2026-09-20', '2026-09-22'], [$cut[0][0]->format('Y-m-d'), $cut[0][1]->format('Y-m-d')]);
     }
 
     public function testWholeMonthOnAirtimeCountsEveryDay(): void
     {
-        $this->bookDays($this->screen, '2026-09-25', '2026-09-25', 15);
-        foreach (range(1, 7) as $i) {
-            $this->book($this->screen, '2026-09', clip: 15, client: 'Месяц '.$i);
+        $this->bookDays($this->screen, '2026-09-17', '2026-09-30', 2);
+        foreach (range(1, 5) as $i) {
+            $this->book($this->screen, '2026-09', slots: 2, client: 'Месяц '.$i);
         }
 
-        // the 25th is full, a month-long booking would need it
-        $this->assertUnavailable(fn () => $this->book($this->screen, '2026-09', clip: 5), 'На 25 сентября 2026');
-        self::assertInstanceOf(Booking::class, $this->bookDays($this->screen, '2026-09-26', '2026-09-30', 15));
+        // the 17th–30th are full, a month-long booking would need them
+        $this->assertUnavailable(fn () => $this->book($this->screen, '2026-09', slots: 1), 'На 17 сентября 2026');
+        self::assertInstanceOf(Booking::class, $this->bookDays($this->screen, '2026-10-01', '2026-10-14', 2));
     }
 
     public function testSidesOfOneStructureAreBookedByTheirOwnType(): void
@@ -248,39 +280,39 @@ final class BookingManagerTest extends KernelTestCase
         self::assertFalse($this->billboardA->isAirtime());
         self::assertTrue($this->billboardB->isAirtime());
 
-        // side B sells clips: clients share its loop instead of taking the whole side
-        self::assertSame(15, $this->book($this->billboardB, '2026-09', clip: 15, client: 'Кафе')->getClipDuration());
-        self::assertSame(5, $this->bookDays($this->billboardB, '2026-09-12', '2026-09-18', 5, client: 'Салон')->getClipDuration());
-        // without a clip length a screen side can't be booked (it would take the whole loop)
-        $this->assertUnavailable(fn () => $this->book($this->billboardB, '2026-10', client: 'Без ролика'), 'выберите длину ролика');
+        // side B sells slots: clients share its block instead of taking the whole side
+        self::assertSame(3, $this->book($this->billboardB, '2026-09', slots: 3, client: 'Кафе')->getSlots());
+        self::assertSame(1, $this->bookDays($this->billboardB, '2026-09-12', '2026-09-25', 1, client: 'Салон')->getSlots());
+        // without slots a screen side can't be booked (it would take the whole block)
+        $this->assertUnavailable(fn () => $this->book($this->billboardB, '2026-10', client: 'Без слотов'), 'укажите число слотов');
 
-        // side A is still booked whole for the month, a clip length is ignored
-        $wholeSide = $this->book($this->billboardA, '2026-09', clip: 15);
-        self::assertNull($wholeSide->getClipDuration());
+        // side A is still booked whole for the month, slots are ignored
+        $wholeSide = $this->book($this->billboardA, '2026-09', slots: 3);
+        self::assertNull($wholeSide->getSlots());
         self::assertSame('2026-09-30', $wholeSide->getEndDate()->format('Y-m-d'));
         $this->assertUnavailable(fn () => $this->book($this->billboardA, '2026-09', client: 'Другой'), 'Сторона A уже забронирована');
     }
 
-    private function bookDays(ProductSide $side, string $from, string $to, int $clip, string $client = 'ООО Ромашка'): Booking
+    private function bookDays(ProductSide $side, string $from, string $to, int $slots, string $client = 'ООО Ромашка'): Booking
     {
         $request = new BookingRequest();
         $request->side = $side;
         $request->startDate = new \DateTimeImmutable($from);
         $request->endDate = new \DateTimeImmutable($to);
-        $request->clipDuration = $clip;
+        $request->slots = $slots;
         $request->client = $this->clientAccount($client);
         $request->clientPhone = '+7 900 000-00-00';
 
         return $this->manager->hold($request);
     }
 
-    private function book(ProductSide $side, string $month, int $months = 1, ?int $clip = null, string $client = 'ООО Ромашка'): Booking
+    private function book(ProductSide $side, string $month, int $months = 1, ?int $slots = null, string $client = 'ООО Ромашка'): Booking
     {
         $request = new BookingRequest();
         $request->side = $side;
         $request->startMonth = $month;
         $request->months = $months;
-        $request->clipDuration = $clip;
+        $request->slots = $slots;
         $request->client = $this->clientAccount($client);
         $request->clientPhone = '+7 900 000-00-00';
 

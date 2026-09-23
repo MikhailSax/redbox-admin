@@ -52,7 +52,7 @@ final class BookingControllerTest extends AdminWebTestCase
         self::assertResponseIsSuccessful();
         self::assertSelectorTextContains('h2', 'Занятость на 12 месяцев');
         self::assertCount(2, $crawler->filter('tbody')->first()->filter('tr'));
-        self::assertSelectorNotExists('input[name="booking_form[clipDuration]"]');
+        self::assertSelectorNotExists('input[name="booking_form[slots]"]');
 
         [$values, $uri] = $this->formValues($crawler, 'Забронировать на 24 часа');
         $values['booking_form']['side'] = (string) $this->side($this->billboard, 'B')->getId();
@@ -138,11 +138,11 @@ final class BookingControllerTest extends AdminWebTestCase
     {
         $crawler = $this->client->request('GET', $this->url($this->screen));
         self::assertSelectorTextContains('h2', 'Занятость эфира на 42 дней');
-        self::assertCount(3, $crawler->filter('input[name="booking_form[clipDuration]"]'));
+        self::assertSame('1', $crawler->filter('input[name="booking_form[slots]"]')->attr('value'));
         self::assertSelectorNotExists('select[name="booking_form[startMonth]"]');
-        // dates start as this week
+        // dates start as the shortest placement from today: two weeks
         self::assertSame('2026-09-10', $crawler->filter('input[name="booking_form[startDate]"]')->attr('value'));
-        self::assertSame('2026-09-16', $crawler->filter('input[name="booking_form[endDate]"]')->attr('value'));
+        self::assertSame('2026-09-23', $crawler->filter('input[name="booking_form[endDate]"]')->attr('value'));
 
         [$values, $uri] = $this->formValues($crawler, 'Забронировать на 24 часа');
         $values['booking_form']['startDate'] = '2026-09-12';
@@ -150,28 +150,34 @@ final class BookingControllerTest extends AdminWebTestCase
         $values['booking_form']['client'] = (string) $this->customer->getId();
         $values['booking_form']['clientName'] = 'Кафе';
         $values['booking_form']['clientPhone'] = '123';
-        unset($values['booking_form']['clipDuration']);
+        $values['booking_form']['slots'] = '13';
         $this->submit($uri, $values);
         self::assertResponseStatusCodeSame(422);
-        self::assertSelectorTextContains('#booking_form_clipDuration_error1', 'Выберите длину ролика');
+        self::assertSelectorTextContains('main', 'Слотов — от 1 до 12');
         self::assertSelectorTextContains('main', 'Последний день не может быть раньше первого');
 
-        $values['booking_form']['clipDuration'] = '15';
+        $values['booking_form']['slots'] = '2';
         $values['booking_form']['endDate'] = '2026-09-18';
+        $this->submit($uri, $values);
+        self::assertResponseStatusCodeSame(422);
+        self::assertSelectorTextContains('main', 'Минимальное размещение — 14 дней');
+
+        $values['booking_form']['endDate'] = '2026-09-25';
         $this->submit($uri, $values);
         self::assertResponseRedirects();
         $crawler = $this->client->followRedirect();
 
         $booking = $this->em->getRepository(Booking::class)->findOneBy([]);
-        self::assertSame(7, $booking->getDays());
-        self::assertSelectorTextContains('main', '12–18 сентября 2026');
-        self::assertSelectorTextContains('main', '7 дн. · ролик 15 сек');
-        // the grid counts the clip on each booked day only
+        self::assertSame(14, $booking->getDays());
+        self::assertSame(2, $booking->getSlots());
+        self::assertSelectorTextContains('main', '12–25 сентября 2026');
+        self::assertSelectorTextContains('main', '14 дн. · 2 слота');
+        // the grid counts the slots on each booked day only
         $cells = $crawler->filter('tbody')->first()->filter('tr td');
-        self::assertSame('0%', trim($cells->eq(0)->text())); // 10th
-        self::assertSame('12%', trim($cells->eq(2)->text())); // 12th: 15 of 120 s, rounded down
-        self::assertStringStartsWith('Эфир загружен на 12% (15/120 сек)', $cells->eq(2)->filter('div')->attr('title'));
-        self::assertSame('0%', trim($cells->eq(9)->text())); // 19th
+        self::assertSame('0/12', trim($cells->eq(0)->text())); // 10th
+        self::assertSame('2/12', trim($cells->eq(2)->text())); // 12th
+        self::assertStringStartsWith('Занято слотов: 2 из 12', $cells->eq(2)->filter('div')->attr('title'));
+        self::assertSame('0/12', trim($cells->eq(16)->text())); // 26th
     }
 
     public function testAirtimeCannotStartInThePast(): void
@@ -179,8 +185,8 @@ final class BookingControllerTest extends AdminWebTestCase
         $crawler = $this->client->request('GET', $this->url($this->screen));
         [$values, $uri] = $this->formValues($crawler, 'Забронировать на 24 часа');
         $values['booking_form']['startDate'] = '2026-09-01';
-        $values['booking_form']['endDate'] = '2026-09-12';
-        $values['booking_form']['clipDuration'] = '5';
+        $values['booking_form']['endDate'] = '2026-09-20';
+        $values['booking_form']['slots'] = '1';
         $values['booking_form']['client'] = (string) $this->customer->getId();
         $values['booking_form']['clientName'] = 'Кафе';
         $values['booking_form']['clientPhone'] = '123';
@@ -202,13 +208,14 @@ final class BookingControllerTest extends AdminWebTestCase
         // a days grid for the screen side, a months grid for the static one
         $grids = $crawler->filter('table tbody');
         self::assertSame('Занятость эфира на 42 дней', $crawler->filter('h2')->eq(0)->text());
-        self::assertSame(['B'], $grids->eq(0)->filter('th')->each(static fn ($th) => $th->text()));
+        self::assertSame(['B 12 × 5 сек'], $grids->eq(0)->filter('th')->each(static fn ($th) => $th->text()));
         self::assertSame('Занятость на 12 месяцев', $crawler->filter('h2')->eq(1)->text());
         self::assertSame(['A'], $grids->eq(1)->filter('th')->each(static fn ($th) => $th->text()));
         // both sets of fields; the side options tell the page which set to show
-        self::assertCount(3, $crawler->filter('input[name="booking_form[clipDuration]"]'));
+        self::assertCount(1, $crawler->filter('input[name="booking_form[slots]"]'));
         self::assertCount(1, $crawler->filter('select[name="booking_form[startMonth]"]'));
         self::assertSame('airtime', $crawler->filter('option[value="'.$sideB->getId().'"]')->attr('data-booking-mode'));
+        self::assertSame('Сторона B · 12 слотов по 5 сек', $crawler->filter('option[value="'.$sideB->getId().'"]')->text());
         self::assertSame('side', $crawler->filter('option[value="'.$sideA->getId().'"]')->attr('data-booking-mode'));
 
         [$values, $uri] = $this->formValues($crawler, 'Забронировать на 24 часа');
@@ -216,20 +223,20 @@ final class BookingControllerTest extends AdminWebTestCase
         $values['booking_form']['clientName'] = 'Кафе';
         $values['booking_form']['clientPhone'] = '123';
 
-        // the screen side takes a clip for some days, not the whole side
+        // the screen side takes slots for some days, not the whole side
         $values['booking_form']['side'] = (string) $sideB->getId();
         $values['booking_form']['startDate'] = '2026-09-12';
-        $values['booking_form']['endDate'] = '2026-09-18';
-        $values['booking_form']['clipDuration'] = '15';
+        $values['booking_form']['endDate'] = '2026-09-25';
+        $values['booking_form']['slots'] = '3';
         $this->submit($uri, $values);
         self::assertResponseRedirects();
 
-        // another client's clip still fits in the same days
-        $values['booking_form']['clipDuration'] = '10';
+        // another client's slots still fit in the same days
+        $values['booking_form']['slots'] = '2';
         $this->submit($uri, $values);
         self::assertResponseRedirects();
 
-        // the static side is booked by months: the dates and the clip of the form don't apply to it
+        // the static side is booked by months: the dates and the slots of the form don't apply to it
         $values['booking_form']['side'] = (string) $sideA->getId();
         $values['booking_form']['startMonth'] = '2026-10';
         $values['booking_form']['months'] = '1';
@@ -237,38 +244,38 @@ final class BookingControllerTest extends AdminWebTestCase
         self::assertResponseRedirects();
 
         $bookings = $this->em->getRepository(Booking::class)->findBy([], ['id' => 'ASC']);
-        self::assertSame([15, 10, null], array_map(static fn (Booking $b) => $b->getClipDuration(), $bookings));
+        self::assertSame([3, 2, null], array_map(static fn (Booking $b) => $b->getSlots(), $bookings));
         self::assertSame('2026-09-12', $bookings[0]->getStartDate()->format('Y-m-d'));
         self::assertSame(['2026-10-01', '2026-10-31'], [$bookings[2]->getStartDate()->format('Y-m-d'), $bookings[2]->getEndDate()->format('Y-m-d')]);
 
         $crawler = $this->client->request('GET', $this->url($this->billboard));
-        self::assertSame('20%', trim($crawler->filter('table tbody')->eq(0)->filter('td')->eq(2)->text())); // 15 + 10 s of 120 on the 12th
+        self::assertSame('5/12', trim($crawler->filter('table tbody')->eq(0)->filter('td')->eq(2)->text())); // 3 + 2 slots on the 12th
     }
 
-    public function testScreenLoadIsShownInPercent(): void
+    public function testScreenSlotsAreShown(): void
     {
         $request = new BookingRequest();
         $request->side = $this->side($this->screen, 'A');
         $request->startMonth = '2026-09';
-        $request->clipDuration = 15;
+        $request->slots = 3;
         $request->client = $this->customer;
         $request->clientName = 'Кафе';
         $request->clientPhone = '123';
         static::getContainer()->get(BookingManager::class)->hold($request);
         $this->hold($this->side($this->billboard, 'A'), '2026-09');
 
-        // the list: the screen's side chip shows the load, a whole side doesn't
+        // the list: the screen's side chip shows the slots taken, a whole side doesn't
         $crawler = $this->client->request('GET', '/admin/products');
         $screenRow = $crawler->filter('tbody tr')->reduce(static fn ($row) => str_contains($row->text(), 'Экран на площади'));
-        self::assertSame('A12%', trim($screenRow->filter('span[title^="Сторона A"]')->text())); // side name, then the load (spaced by CSS)
-        self::assertStringContainsString('эфир загружен на 12% (15/120 сек)', $screenRow->filter('span[title^="Сторона A"]')->attr('title'));
+        self::assertSame('A3/12', trim($screenRow->filter('span[title^="Сторона A"]')->text())); // side name, then the slots (spaced by CSS)
+        self::assertStringContainsString('занято слотов: 3 из 12', $screenRow->filter('span[title^="Сторона A"]')->attr('title'));
         $billboardRow = $crawler->filter('tbody tr')->reduce(static fn ($row) => str_contains($row->text(), 'Щит на Ленина'));
-        self::assertStringNotContainsString('%', $billboardRow->filter('span[title^="Сторона A"]')->text());
+        self::assertStringNotContainsString('/', $billboardRow->filter('span[title^="Сторона A"]')->text());
 
-        // the structure card: load and a progress bar
+        // the structure card: slots and a progress bar
         $this->client->request('GET', '/admin/products/'.$this->screen->getId().'/edit');
-        self::assertSelectorTextContains('#product-status', 'эфир загружен на 12% · 15/120 сек');
-        self::assertSelectorExists('#product-status [role=progressbar][aria-valuenow="12"]');
+        self::assertSelectorTextContains('#product-status', 'занято слотов: 3 из 12');
+        self::assertSelectorExists('#product-status [role=progressbar][aria-valuenow="25"]');
     }
 
     public function testPayFromProductPage(): void

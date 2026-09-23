@@ -57,7 +57,7 @@
                     {% for item in plan.items %}
                         {% set product = item.product %}
                         {% set photo = item.side.photos|first ?: product.coverPhoto %}
-                        <tr>
+                        <tr id="item-{{ item.id }}" class="scroll-mt-20">
                             <th scope="row" class="px-4 py-3 font-normal">
                                 <a href="{{ path('admin_product_edit', {id: product.id}) }}" class="group flex items-center gap-3">
                                     {% if photo %}
@@ -66,13 +66,40 @@
                                         <span class="hidden h-10 w-14 shrink-0 place-items-center rounded-md bg-zinc-100 text-zinc-400 2xl:grid">{{ ui.icon('billboard', 'size-4') }}</span>
                                     {% endif %}
                                     <span class="min-w-0">
-                                        <span class="line-clamp-2 min-w-40 font-medium text-heading group-hover:underline">{{ product.name }}</span>
+                                        <span class="line-clamp-2 min-w-40 font-medium text-heading group-hover:underline">{{ item.displayTitle }}</span>
                                         <span class="block text-xs text-body-subtle">
-                                            Сторона {{ item.side.name }}{% if item.clipDuration %} · ролик {{ item.clipDuration }} сек{% endif %}
+                                            Сторона {{ item.side.name }} · {{ item.side.effectiveProductType.name ?? '' }}{% if item.slots %} · {{ item.slots|plural('слот', 'слота', 'слотов') }} из {{ item.side.slotCount }}{% endif %}
                                             {% if not product.own %} · {{ product.owner.name }}{% endif %}
                                         </span>
                                     </span>
                                 </a>
+                                {# What the PDF prints for this item; empty fields fall back to the structure card #}
+                                <details class="mt-2">
+                                    <summary class="inline-flex cursor-pointer select-none items-center gap-1 text-xs font-medium text-body hover:text-heading">
+                                        {{ ui.icon('pencil', 'size-3.5') }} Изменить для КП{% if item.hasOwnTexts %} <span class="promo-badge !h-[18px]">свои тексты</span>{% endif %}
+                                    </summary>
+                                    <form method="post" action="{{ path('admin_media_plan_item_edit', {id: plan.id, item: item.id}) }}" class="mt-2 grid max-w-md gap-2 rounded-lg bg-zinc-50 p-3 ring-1 ring-default">
+                                        <input type="hidden" name="_token" value="{{ token }}">
+                                        <label class="block text-xs text-body">Название в КП
+                                            <input type="text" name="title" value="{{ item.displayTitle }}" maxlength="255" class="input mt-1 h-8 !px-2 text-sm">
+                                        </label>
+                                        <label class="block text-xs text-body">Формат
+                                            <input type="text" name="format" value="{{ item.displayFormat }}" maxlength="255" class="input mt-1 h-8 !px-2 text-sm">
+                                        </label>
+                                        <label class="block text-xs text-body">Описание
+                                            <textarea name="description" rows="2" class="input mt-1 !px-2 text-sm">{{ item.displayDescription }}</textarea>
+                                        </label>
+                                        {% if item.side.airtime %}
+                                            <label class="block text-xs text-body">Слотов (из {{ item.side.slotCount }} по {{ item.side.slotSeconds }} сек)
+                                                <input type="number" name="slots" value="{{ item.slots ?? 1 }}" min="1" max="{{ item.side.slotCount }}" class="input mt-1 h-8 !w-24 !px-2 text-sm tabular-nums">
+                                            </label>
+                                        {% endif %}
+                                        <div class="flex items-center gap-2">
+                                            <button type="submit" class="btn btn-primary btn-sm">Сохранить</button>
+                                            <span class="text-[11px] text-body-subtle">Пустое поле — как в карточке конструкции.</span>
+                                        </div>
+                                    </form>
+                                </details>
                             </th>
                             <td class="px-4 py-3">
                                 {% if item.booking and item.booking.activeAt(now) %}
@@ -155,7 +182,7 @@
             {% if plan.items is not empty %}
                 <form method="post" action="{{ path('admin_media_plan_recalculate', {id: plan.id}) }}" class="mt-4">
                     <input type="hidden" name="_token" value="{{ token }}">
-                    <button type="submit" class="btn btn-secondary btn-sm w-full" title="Применить действующие сейчас акции. Цены, заданные вручную, не меняются.">{{ ui.icon('tag', 'size-4') }} Пересчитать по акциям</button>
+                    <button type="submit" class="btn btn-secondary btn-sm w-full" title="Взять цены из прайса (за 1, 3 или 6 мес. — по сроку) и применить действующие сейчас акции. Цены, заданные вручную, не меняются.">{{ ui.icon('tag', 'size-4') }} Пересчитать по прайсу и акциям</button>
                 </form>
             {% endif %}
 
@@ -308,7 +335,7 @@
                                     {% endfor %}
                                 </p>
                                 <p class="truncate text-xs text-body-subtle">
-                                    {{ product.category.name }} · {{ product.productType.name }}{% if product.district %} · {{ product.district.name|highlight(q) }}{% endif %}
+                                    {{ product.category.name }} · {{ product.typeLabel }}{% if product.district %} · {{ product.district.name|highlight(q) }}{% endif %}
                                     {% if product.price is not null %} · {{ product.price|number_format(0, ',', ' ') }} ₽/мес{% endif %}
                                 </p>
                             </div>
@@ -320,8 +347,8 @@
                                         <input type="hidden" name="_token" value="{{ csrf_token('media-plan-' ~ plan.id) }}">
                                         <input type="hidden" name="sides[]" value="{{ side.id }}">
                                         {% if side.airtime and not in_plan %}
-                                            <select name="clip" class="input h-8 !w-auto !py-0 !pe-7 text-xs" aria-label="Длина ролика">
-                                                {% for clip in [5, 10, 15] %}<option value="{{ clip }}" {{ clip == 15 ? 'selected' }}>{{ clip }}″</option>{% endfor %}
+                                            <select name="slots" class="input h-8 !w-auto !py-0 !pe-7 text-xs" aria-label="Слотов" title="Слотов из {{ side.slotCount }} по {{ side.slotSeconds }} сек">
+                                                {% for n in 1..side.slotCount %}<option value="{{ n }}">{{ n }} сл.</option>{% endfor %}
                                             </select>
                                         {% endif %}
                                         <button type="submit" {% if in_plan %}disabled{% endif %}

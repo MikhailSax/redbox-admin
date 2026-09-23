@@ -7,6 +7,7 @@ use App\Enum\BookingMode;
 
 /**
  * Occupancy of one side for one month.
+ * A whole side is taken by any booking; a screen when every slot of its block is taken on some day.
  */
 final readonly class SideAvailability
 {
@@ -14,38 +15,36 @@ final readonly class SideAvailability
         public int $sideId,
         public string $sideName,
         public bool $airtime,
-        /** Seconds of the loop taken by paid bookings (a whole-side booking counts as the full loop) */
-        public int $paidSeconds,
-        /** Seconds taken by unpaid holds that have not expired yet */
-        public int $holdSeconds,
+        /** Slots of the block taken by paid bookings (a whole-side booking counts as every slot) */
+        public int $paidSlots,
+        /** Slots taken by unpaid holds that have not expired yet */
+        public int $holdSlots,
+        /** Slots in the block; 1 for a whole side */
+        public int $slotCount = 1,
     ) {
     }
 
-    public function usedSeconds(): int
+    public function usedSlots(): int
     {
-        return min(BookingMode::LOOP_SECONDS, $this->paidSeconds + $this->holdSeconds);
+        return min($this->slotCount, $this->paidSlots + $this->holdSlots);
     }
 
-    public function freeSeconds(): int
+    public function freeSlots(): int
     {
-        return BookingMode::LOOP_SECONDS - $this->usedSeconds();
+        return $this->slotCount - $this->usedSlots();
     }
 
-    /** How loaded the screen's loop is, 0..100 (busiest day of the month) */
+    /** How full the screen's block is, 0..100 (busiest day of the month) */
     public function loadPercent(): int
     {
-        return BookingMode::loadPercent($this->usedSeconds());
+        return BookingMode::loadPercent($this->usedSlots(), $this->slotCount);
     }
 
     public function status(): AvailabilityStatus
     {
-        $soldOut = $this->airtime
-            ? $this->freeSeconds() < min(BookingMode::CLIP_DURATIONS) // not even the shortest clip fits
-            : $this->paidSeconds + $this->holdSeconds > 0;
-
         return match (true) {
-            !$soldOut => AvailabilityStatus::Free,
-            $this->holdSeconds > 0 => AvailabilityStatus::Booked,
+            $this->freeSlots() > 0 => AvailabilityStatus::Free,
+            $this->holdSlots > 0 => AvailabilityStatus::Booked,
             default => AvailabilityStatus::Occupied,
         };
     }
