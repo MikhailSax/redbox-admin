@@ -231,6 +231,26 @@ final class ImportAddressProgramCommandTest extends KernelTestCase
         self::assertSame(1, $this->product('ул. Ботаническая, 2')->getSides()->first()->getPhotos()->count());
     }
 
+    public function testPhotoWithoutItsFileIsDownloadedAgain(): void
+    {
+        $this->writeFile(staticPriceA: 28800);
+        $this->tester->execute(['file' => $this->file]);
+
+        // the database was moved to another server without public/uploads
+        $photo = $this->product('ул. Ботаническая, 2')->getSides()->first()->getPhotos()->first();
+        $dir = static::getContainer()->getParameter('app.uploads_dir').'/'.ProductSidePhoto::UPLOAD_FOLDER;
+        unlink($dir.'/'.$photo->getFilename());
+
+        $this->tester->execute(['file' => $this->file]);
+
+        $this->tester->assertCommandIsSuccessful();
+        self::assertStringContainsString('Фото сторон загружено: 1', $this->tester->getDisplay());
+        $photos = $this->product('ул. Ботаническая, 2')->getSides()->first()->getPhotos();
+        self::assertCount(1, $photos);
+        self::assertSame('a.jpg', $photos->first()->getOriginalName());
+        self::assertFileExists($dir.'/'.$photos->first()->getFilename());
+    }
+
     public function testAddressesAreComparedLoosely(): void
     {
         self::assertSame(AddressProgramImporter::addressKey('ул.Ботаническая,2'), AddressProgramImporter::addressKey('ул. Ботаническая, 2'));

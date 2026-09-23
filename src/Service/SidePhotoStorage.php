@@ -34,15 +34,20 @@ class SidePhotoStorage
     /**
      * Copies a file from outside a form (a downloaded photo) into storage and attaches it to the side,
      * unless the side already has a photo with that original name or the same content.
+     * A photo whose file is gone from disk (the database was moved without public/uploads) is replaced.
      *
      * @return ProductSidePhoto|null null when the side already has it
      */
     public function attachCopy(ProductSide $side, File $file, string $originalName): ?ProductSidePhoto
     {
         $hash = md5_file($file->getPathname());
-        foreach ($side->getPhotos() as $existing) {
+        foreach ($side->getPhotos()->toArray() as $existing) {
             $path = $this->uploader->path(ProductSidePhoto::UPLOAD_FOLDER, $existing->getFilename());
-            if ($existing->getOriginalName() === $originalName || (is_file($path) && md5_file($path) === $hash)) {
+            if (!is_file($path)) {
+                $side->removePhoto($existing); // orphan removal deletes the row
+                continue;
+            }
+            if ($existing->getOriginalName() === $originalName || md5_file($path) === $hash) {
                 return null;
             }
         }
