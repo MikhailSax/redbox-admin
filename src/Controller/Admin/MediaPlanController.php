@@ -35,8 +35,6 @@ use Symfony\Component\Security\Http\Attribute\IsCsrfTokenValid;
 #[Route('/admin/media-plans', name: 'admin_media_plan_')]
 final class MediaPlanController extends AbstractController
 {
-    private const PICKER_LIMIT = 12;
-
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly MediaPlanManager $manager,
@@ -76,9 +74,8 @@ final class MediaPlanController extends AbstractController
     #[Route('/{id}', name: 'show', requirements: ['id' => Requirement::DIGITS], methods: ['GET'])]
     public function show(Request $request, MediaPlan $plan, ProductListing $listing, BookingManager $bookings, #[MapQueryParameter] ?string $q = null): Response
     {
-        // Picker: structures matching the search, each side checked for the whole plan period
+        // Picker: every structure matching the search, each side checked for the whole plan period
         $candidates = $listing->all(new ProductListQuery(q: $q))['products'];
-        $candidates = \array_slice($candidates, 0, self::PICKER_LIMIT);
         $sideProblems = [];
         foreach ($candidates as $product) {
             foreach ($product->getSides() as $side) {

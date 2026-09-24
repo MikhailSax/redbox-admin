@@ -100,6 +100,32 @@ final class MediaPlanControllerTest extends AdminWebTestCase
         self::assertCount(2, $this->reload($plan)->getItems());
     }
 
+    public function testPickerListsEveryStructure(): void
+    {
+        $billboard = $this->em->getRepository(Product::class)->find($this->billboard->getId());
+        for ($i = 1; $i <= 14; ++$i) {
+            $this->em->persist((new Product())->setName('Щит №'.$i)->setCategory($billboard->getCategory())->setProductType($billboard->getProductType())
+                ->setDistrict($billboard->getDistrict())->setPrice('20000')->addSide((new ProductSide())->setName('A')));
+        }
+        $this->em->flush();
+        $plan = $this->plan();
+
+        $crawler = $this->client->request('GET', '/admin/media-plans/'.$plan->getId());
+        self::assertCount(16, $crawler->filter('#plan-picker li'));
+        self::assertSelectorTextContains('#plan-picker', 'Найдено конструкций: 16');
+
+        // the live search answers with the picker block only
+        $crawler = $this->client->request('GET', '/admin/media-plans/'.$plan->getId().'?q=Щит+№1', server: ['HTTP_X_LIVE_FILTER' => '1']);
+        self::assertCount(6, $crawler->filter('li')); // №1, №10…№14
+        self::assertStringNotContainsString('page-header', $this->client->getResponse()->getContent());
+
+        // the regions the page swaps after a form is sent without a reload
+        $crawler = $this->client->request('GET', '/admin/media-plans/'.$plan->getId());
+        foreach (['plan-header', 'plan-items', 'services', 'payments'] as $id) {
+            self::assertCount(1, $crawler->filter('[data-ajax-forms] #'.$id.'[data-ajax-region]'), $id);
+        }
+    }
+
     public function testAddFromMapReturnsJson(): void
     {
         $plan = $this->plan();

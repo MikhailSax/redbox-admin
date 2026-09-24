@@ -11,6 +11,7 @@ import './styles/app.css';
 import 'flowbite';
 import './admin/collection.js';
 import './admin/confirm.js';
+import './admin/ajax-forms.js';
 import './admin/gallery.js';
 import './admin/file-preview.js';
 import './admin/password-toggle.js';
