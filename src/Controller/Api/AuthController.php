@@ -78,11 +78,7 @@ final class AuthController extends AbstractController
             ->setEmail($form->email)
             ->setName(trim((string) $form->name))
             ->setPhone($form->phone)
-            ->setClientType(match (\strlen((string) $inn)) {
-                10 => ClientType::Legal,
-                12 => ClientType::Entrepreneur,
-                default => ClientType::Individual,
-            })
+            ->setClientType(ClientType::fromInn($inn))
             ->setCompany($form->company)
             ->setInn($inn)
             ->clearRequisitesOfOtherTypes();

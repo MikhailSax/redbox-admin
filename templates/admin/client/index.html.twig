@@ -62,7 +62,7 @@
                                     </a>
                                 </th>
                                 <td class="px-4 py-3">
-                                    <div class="text-heading">{{ client.email|highlight(q) }}</div>
+                                    <div class="text-heading">{% if client.email %}{{ client.email|highlight(q) }}{% else %}<span class="text-body-subtle" title="Без почты клиент не может войти в личный кабинет">без почты</span>{% endif %}</div>
                                     {% if not client.emailVerified %}<span class="mt-1 inline-flex rounded-md bg-warning-soft px-1.5 py-0.5 text-xs font-medium text-fg-warning ring-1 ring-warning-subtle" title="Зарегистрировался на сайте и не подтвердил почту">почта не подтверждена</span>{% endif %}
                                     {% if client.phone %}<div class="text-xs text-body-subtle">{{ client.phone|highlight(q) }}</div>{% endif %}
                                 </td>

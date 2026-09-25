@@ -15,6 +15,8 @@ use Symfony\Component\Form\Extension\Core\Type\IntegerType;
 use Symfony\Component\Form\Extension\Core\Type\TextareaType;
 use Symfony\Component\Form\Extension\Core\Type\TextType;
 use Symfony\Component\Form\FormBuilderInterface;
+use Symfony\Component\Form\FormEvent;
+use Symfony\Component\Form\FormEvents;
 use Symfony\Component\OptionsResolver\OptionsResolver;
 
 class MediaPlanFormType extends AbstractType
@@ -40,7 +42,18 @@ class MediaPlanFormType extends AbstractType
                 'required' => false,
                 'placeholder' => 'Не выбран',
                 'help' => 'Нужен, чтобы составить график платежей. Клиентов с неподтверждённой почтой в списке нет.',
-            ])
+            ]);
+        NewClientFields::add($builder);
+        // a new client names the plan's client, so "Клиент в PDF" may stay empty (MediaPlan::validateClient())
+        $builder->addEventListener(FormEvents::SUBMIT, static function (FormEvent $event): void {
+            /** @var MediaPlan $plan */
+            $plan = $event->getData();
+            $title = trim((string) $event->getForm()->get('newClient')->getData());
+            if (null === $plan->getClient() && '' !== $title && null === $plan->getClientName()) {
+                $plan->setClientName($title);
+            }
+        });
+        $builder
             ->add('clientName', TextType::class, [
                 'label' => 'Клиент в PDF',
                 'required' => false,

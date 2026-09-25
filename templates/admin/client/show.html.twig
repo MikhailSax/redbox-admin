@@ -38,7 +38,7 @@
             {% if client.id %}
                 <p class="mt-1 text-sm text-body">
                     {% if client.clientType %}<span class="me-1 inline-flex rounded-md bg-zinc-100 px-1.5 py-0.5 text-xs font-medium text-heading ring-1 ring-zinc-200">{{ client.clientType.label }}</span>{% endif %}
-                    {% if client.inn %}ИНН {{ client.inn }} · {% endif %}{% if client.company %}{{ client.name }} · {% endif %}{{ client.email }}{% if client.phone %} · {{ client.phone }}{% endif %}
+                    {{ [client.inn ? 'ИНН ' ~ client.inn : null, client.company ? client.name : null, client.email, client.phone]|filter(v => v)|join(' · ') }}
                     {% if not client.emailVerified %}<span class="ms-1 inline-flex rounded-md bg-warning-soft px-1.5 py-0.5 text-xs font-medium text-fg-warning ring-1 ring-warning-subtle">почта не подтверждена</span>{% endif %}
                 </p>
             {% endif %}

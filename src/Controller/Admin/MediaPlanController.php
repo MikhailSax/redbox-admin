@@ -10,9 +10,12 @@ use App\Entity\MediaPlanServiceLine;
 use App\Entity\ProductSide;
 use App\Entity\User;
 use App\Form\MediaPlanFormType;
+use App\Form\NewClientFields;
 use App\Form\ServiceLineFormType;
 use App\Repository\MediaPlanRepository;
 use App\Service\BookingManager;
+use App\Service\ClientCardException;
+use App\Service\ClientCards;
 use App\Service\MediaPlanManager;
 use App\Service\MediaPlanPdf;
 use App\Service\MonthCalendar;
@@ -23,6 +26,7 @@ use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\Clock\ClockInterface;
 use Symfony\Component\ExpressionLanguage\Expression;
+use Symfony\Component\Form\FormError;
 use Symfony\Component\Form\FormInterface;
 use Symfony\Component\HttpFoundation\HeaderUtils;
 use Symfony\Component\HttpFoundation\Request;
@@ -39,6 +43,7 @@ final class MediaPlanController extends AbstractController
         private readonly EntityManagerInterface $entityManager,
         private readonly MediaPlanManager $manager,
         private readonly ClockInterface $clock,
+        private readonly ClientCards $clientCards,
     ) {
     }
 
@@ -328,6 +333,29 @@ final class MediaPlanController extends AbstractController
     }
 
     /**
+     * Fixes the sides for the client without waiting for the payment calendar: holds become paid bookings,
+     * expired and missing ones are booked again. Marking a payment of the plan paid does the same by itself.
+     */
+    #[Route('/{id}/bookings/confirm', name: 'confirm_bookings', requirements: ['id' => Requirement::DIGITS], methods: ['POST'])]
+    #[IsCsrfTokenValid(new Expression('"media-plan-" ~ args["plan"].getId()'))]
+    public function confirmBookings(MediaPlan $plan): Response
+    {
+        $user = $this->getUser();
+        $result = $this->manager->confirmBookings($plan, $user instanceof User ? $user : null);
+
+        if ($result['confirmed'] + $result['created'] > 0) {
+            $this->addFlash('success', \sprintf('Брони закреплены: %d, создано заново: %d', $result['confirmed'], $result['created']));
+        } elseif ([] === $result['failed']) {
+            $this->addFlash('success', 'Все брони уже закреплены');
+        }
+        foreach ($result['failed'] as $message) {
+            $this->addFlash('error', $message);
+        }
+
+        return $this->redirectToRoute('admin_media_plan_show', ['id' => $plan->getId()], Response::HTTP_SEE_OTHER);
+    }
+
+    /**
      * Payment schedule: the plan total split into one payment per month, added to the payment calendar.
      */
     #[Route('/{id}/payments/schedule', name: 'schedule_payments', requirements: ['id' => Requirement::DIGITS], methods: ['POST'])]
@@ -382,7 +410,7 @@ final class MediaPlanController extends AbstractController
         $termsBefore = $promoTerms($plan);
         $form->handleRequest($request);
 
-        if ($form->isSubmitted() && $form->isValid()) {
+        if ($form->isSubmitted() && $form->isValid() && $this->pickNewClient($form, $plan, $successMessage)) {
             if (null === $plan->getId()) {
                 $user = $this->getUser();
                 $plan->setCreatedBy($user instanceof User ? $user : null);
@@ -398,6 +426,33 @@ final class MediaPlanController extends AbstractController
         }
 
         return $this->render('admin/media_plan/form.html.twig', ['plan' => $plan, 'form' => $form]);
+    }
+
+    /**
+     * "Новый клиент" typed instead of a client from the list: the plan gets that client's card
+     * (an existing one with the same ИНН, email or name, otherwise a new one). False when the card can't be made.
+     */
+    private function pickNewClient(FormInterface $form, MediaPlan $plan, string &$successMessage): bool
+    {
+        $new = NewClientFields::data($form);
+        if (null === $new || null !== $plan->getClient()) {
+            return true;
+        }
+
+        try {
+            [$client, $created] = $this->clientCards->findOrCreate($new['title'], $new['phone'], $new['email'], $new['inn']);
+        } catch (ClientCardException $e) {
+            $form->get('newClient')->addError(new FormError($e->getMessage()));
+
+            return false;
+        }
+        $plan->setClient($client);
+        $plan->setClientContact($plan->getClientContact() ?? (implode(', ', array_filter([$client->getPhone(), $client->getEmail()])) ?: null));
+        $successMessage .= $created
+            ? \sprintf('. Клиент «%s» добавлен в базу клиентов', $client->getClientTitle())
+            : \sprintf('. Клиент «%s» уже был в базе — медиаплан привязан к его карточке', $client->getClientTitle());
+
+        return true;
     }
 
     private function assertItemOf(MediaPlan $plan, MediaPlanItem $item): void

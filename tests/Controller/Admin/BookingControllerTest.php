@@ -11,6 +11,7 @@ use App\Entity\ProductSide;
 use App\Entity\ProductType;
 use App\Entity\User;
 use App\Enum\BookingMode;
+use App\Enum\ClientType;
 use App\Enum\BookingStatus;
 use App\Service\BookingManager;
 use Symfony\Component\Clock\MockClock;
@@ -132,6 +133,32 @@ final class BookingControllerTest extends AdminWebTestCase
         self::assertResponseStatusCodeSame(422);
         self::assertSelectorTextContains('[role=alert]', 'Сторона A уже забронирована: Сентябрь 2026');
         self::assertSame(1, $this->em->getRepository(Booking::class)->count([]));
+    }
+
+    public function testBookingForANewClient(): void
+    {
+        $crawler = $this->client->request('GET', $this->url($this->billboard));
+        [$values, $uri] = $this->formValues($crawler, 'Забронировать на 24 часа');
+        $values['booking_form']['side'] = (string) $this->side($this->billboard, 'A')->getId();
+        $values['booking_form']['startMonth'] = '2026-10';
+        $values['booking_form']['client'] = '';
+
+        // neither a client from the list nor a new one
+        $this->submit($uri, $values);
+        self::assertResponseStatusCodeSame(422);
+        self::assertSelectorTextContains('main', 'Выберите клиента или впишите нового');
+
+        $values['booking_form']['newClient'] = 'Носкова Виктория Анатольевна';
+        $values['booking_form']['newClientPhone'] = '89240000000';
+        $this->submit($uri, $values);
+        self::assertResponseRedirects();
+        $this->client->followRedirect();
+        self::assertAnySelectorTextContains('[role=alert]', 'Клиент «Носкова Виктория Анатольевна» добавлен в базу клиентов');
+
+        $booking = $this->em->getRepository(Booking::class)->findOneBy([]);
+        self::assertSame('Носкова Виктория Анатольевна', $booking->getClient()->getName());
+        self::assertSame(ClientType::Individual, $booking->getClient()->getClientType());
+        self::assertSame('89240000000', $booking->getClientPhone()); // the contact falls back to the new card
     }
 
     public function testAirtimeIsBookedByDays(): void

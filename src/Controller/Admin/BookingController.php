@@ -10,10 +10,13 @@ use App\Entity\User;
 use App\Enum\BookingMode;
 use App\Enum\BookingStatus;
 use App\Form\BookingFormType;
+use App\Form\NewClientFields;
 use App\Repository\BookingRepository;
 use App\Service\Availability\AvailabilityResolver;
 use App\Service\BookingException;
 use App\Service\BookingManager;
+use App\Service\ClientCardException;
+use App\Service\ClientCards;
 use App\Service\MonthCalendar;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\Clock\ClockInterface;
@@ -63,7 +66,7 @@ final class BookingController extends AbstractController
      * Occupancy grid of the product's sides for the next months, its bookings and the "new booking" form.
      */
     #[Route('/admin/products/{id}/bookings', name: 'admin_booking_product', requirements: ['id' => Requirement::DIGITS], methods: ['GET', 'POST'])]
-    public function product(Request $request, Product $product): Response
+    public function product(Request $request, Product $product, ClientCards $clientCards): Response
     {
         $now = $this->clock->now();
         // Each side is booked by its own type: airtime sides by days, the others by months
@@ -88,6 +91,11 @@ final class BookingController extends AbstractController
 
         if ($form->isSubmitted() && $form->isValid()) {
             try {
+                // "Новый клиент" instead of one from the list: its card is saved together with the booking
+                $newClient = null === $bookingRequest->client ? NewClientFields::data($form) : null;
+                if (null !== $newClient) {
+                    [$bookingRequest->client, $created] = $clientCards->findOrCreate($newClient['title'], $newClient['phone'], $newClient['email'], $newClient['inn']);
+                }
                 $user = $this->getUser();
                 $booking = $this->bookingManager->hold($bookingRequest, $user instanceof User ? $user : null);
 
@@ -95,10 +103,15 @@ final class BookingController extends AbstractController
                     'Бронь создана и ждёт оплаты до %s. Без оплаты она снимется автоматически.',
                     $booking->getExpiresAt()->format('d.m.Y H:i'),
                 ));
+                if (null !== $newClient) {
+                    $this->addFlash('success', \sprintf($created ? 'Клиент «%s» добавлен в базу клиентов' : 'Клиент «%s» уже был в базе — бронь на его карточке', $booking->getClientTitle()));
+                }
 
                 return $this->redirectToRoute('admin_booking_product', ['id' => $product->getId()], Response::HTTP_SEE_OTHER);
             } catch (BookingException $e) {
                 $form->addError(new FormError($e->getMessage()));
+            } catch (ClientCardException $e) {
+                $form->get('newClient')->addError(new FormError($e->getMessage()));
             }
         }
 

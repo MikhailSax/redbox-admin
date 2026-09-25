@@ -6,6 +6,8 @@
 {% block content %}
     {% set token = csrf_token('media-plan-' ~ plan.id) %}
     {% set free_items = problems|filter(p => p is null)|length %}
+    {# Items whose side is not fixed yet: no booking, or one still waiting for payment #}
+    {% set unpaid_items = plan.items|filter(i => i.booking is null or i.booking.status.value != 'paid')|length %}
     {# Forms below update the page in place (assets/admin/ajax-forms.js): the [data-ajax-region] blocks are swapped #}
     <div data-ajax-forms>
 
@@ -37,6 +39,14 @@
                       data-confirm-title="Забронировать медиаплан?" data-confirm-button="Забронировать" data-confirm-variant="primary">
                     <input type="hidden" name="_token" value="{{ token }}">
                     <button type="submit" class="btn btn-primary">{{ ui.icon('calendar', 'size-4') }} Забронировать свободные ({{ free_items }})</button>
+                </form>
+            {% endif %}
+            {% if unpaid_items > 0 and plan.items|length > 0 %}
+                <form method="post" action="{{ path('admin_media_plan_confirm_bookings', {id: plan.id}) }}"
+                      data-confirm="Брони {{ unpaid_items }} позиций станут оплаченными и перестанут сниматься через 24 часа. Истёкшие и ещё не созданные брони будут созданы заново."
+                      data-confirm-title="Закрепить брони?" data-confirm-button="Закрепить" data-confirm-variant="primary">
+                    <input type="hidden" name="_token" value="{{ token }}">
+                    <button type="submit" class="btn btn-secondary">{{ ui.icon('check', 'size-4') }} Закрепить брони ({{ unpaid_items }})</button>
                 </form>
             {% endif %}
         </div>

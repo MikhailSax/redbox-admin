@@ -28,6 +28,7 @@
                 {{ form_row(form.clientName) }}
                 {{ form_row(form.clientContact) }}
             </div>
+            {{ include('admin/_new_client_fields.html.twig', {form: form}) }}
             <div class="grid gap-x-6 md:grid-cols-3">
                 {{ form_row(form.startMonth) }}
                 {{ form_row(form.months) }}

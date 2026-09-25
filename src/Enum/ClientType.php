@@ -41,6 +41,16 @@ enum ClientType: string
         };
     }
 
+    /** By the ИНН: 10 digits — a company, 12 — an entrepreneur, none — a private person */
+    public static function fromInn(?string $inn): self
+    {
+        return match (\strlen((string) preg_replace('/\D+/', '', (string) $inn))) {
+            10 => self::Legal,
+            12 => self::Entrepreneur,
+            default => self::Individual,
+        };
+    }
+
     /** Digits in ОГРН (company) or ОГРНИП (entrepreneur) */
     public function ogrnLength(): ?int
     {

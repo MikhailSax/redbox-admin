@@ -1,0 +1,12 @@
+{# "…или новый клиент" (App\Form\NewClientFields) under a client picker; open when something is typed or wrong. Vars: form #}
+{% set typed = form.newClient.vars.value or form.newClient.vars.errors|length %}
+<details class="mb-5 rounded-lg border border-default px-4 py-3" {% if typed %}open{% endif %}>
+    <summary class="cursor-pointer select-none text-sm font-medium text-heading">Клиента нет в списке? Добавить нового</summary>
+    <div class="mt-4 grid gap-x-6 md:grid-cols-2">
+        {{ form_row(form.newClient) }}
+        {{ form_row(form.newClientInn) }}
+        {{ form_row(form.newClientPhone, {row_attr: {class: 'mb-0 md:mb-0'}}) }}
+        {{ form_row(form.newClientEmail, {row_attr: {class: 'mb-0'}}) }}
+    </div>
+    <p class="mt-3 text-xs text-body-subtle">Заполните, если не выбрали клиента из списка. Такой клиент уже есть (по ИНН, почте или названию) — возьмём его карточку, иначе заведём новую.</p>
+</details>

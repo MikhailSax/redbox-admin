@@ -8,6 +8,8 @@ use App\Entity\MediaPlan;
 use App\Entity\User;
 use App\Enum\LeadStatus;
 use App\Repository\LeadRepository;
+use App\Service\ClientCardException;
+use App\Service\ClientCards;
 use App\Service\MediaPlanManager;
 use App\Service\MonthCalendar;
 use Doctrine\ORM\EntityManagerInterface;
@@ -33,6 +35,7 @@ final class LeadController extends AbstractController
         private readonly LeadRepository $leads,
         private readonly MediaPlanManager $mediaPlans,
         private readonly ClockInterface $clock,
+        private readonly ClientCards $clientCards,
     ) {
     }
 
@@ -117,6 +120,21 @@ final class LeadController extends AbstractController
         $client = $lead->getClient()?->isEmailVerified() ? $lead->getClient() : null;
         if (null !== $lead->getClient() && null === $client) {
             $this->addFlash('warning', 'Клиент из заявки не подтвердил почту — медиаплан создан без привязки к его кабинету. Привяжите клиента, когда почта будет подтверждена.');
+        } elseif (null === $lead->getClient()) {
+            // A visitor without an account: their card in the client base (found by ИНН, email or name, or made from the request)
+            try {
+                [$client, $created] = $this->clientCards->findOrCreate(
+                    $lead->getCompanyName() ?? (string) $lead->getContactName(),
+                    $lead->getPhone(),
+                    $lead->getEmail(),
+                    $lead->getInn(),
+                    $lead->getKpp(),
+                    $lead->getContactName(),
+                );
+                $this->addFlash('success', \sprintf($created ? 'Клиент «%s» добавлен в базу клиентов из заявки' : 'Клиент «%s» уже был в базе — медиаплан привязан к его карточке', $client->getClientTitle()));
+            } catch (ClientCardException $e) {
+                $this->addFlash('warning', 'Карточку клиента не удалось завести ('.$e->getMessage().') — медиаплан создан без привязки к клиенту.');
+            }
         }
         $plan = (new MediaPlan())
             ->setTitle(\sprintf('Заявка №%d с сайта', (int) $lead->getId()))

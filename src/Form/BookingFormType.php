@@ -65,8 +65,11 @@ class BookingFormType extends AbstractType
                 'choice_attr' => static fn (User $client): array => ['data-contact' => $client->getName(), 'data-phone' => $client->getPhone() ?? ''],
                 'placeholder' => 'Выберите клиента',
                 'attr' => ['data-booking-client' => ''],
-                'help' => 'Конструкция закрепляется за карточкой клиента. Нет карточки — заведите её в разделе «Клиенты».',
-            ])
+                'required' => false,
+                'help' => 'Конструкция закрепляется за карточкой клиента. Нет в списке — добавьте нового ниже.',
+            ]);
+        NewClientFields::add($builder, mapTitle: true);
+        $builder
             ->add('clientName', TextType::class, [
                 'label' => 'Контактное лицо',
                 'required' => false,

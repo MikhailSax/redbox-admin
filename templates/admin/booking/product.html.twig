@@ -108,6 +108,7 @@
                     <div class="md:w-1/3">{{ form_row(form.slots, airtime_row) }}</div>
                 {% endif %}
                 {{ form_row(form.client) }}
+                {{ include('admin/_new_client_fields.html.twig', {form: form}) }}
                 <div class="grid gap-x-6 md:grid-cols-2">
                     {{ form_row(form.clientName) }}
                     {{ form_row(form.clientPhone) }}

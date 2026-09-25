@@ -16,7 +16,8 @@ use Symfony\Component\OptionsResolver\OptionsResolver;
 use Symfony\Component\Validator\Constraints as Assert;
 
 /**
- * A website client's account: the login (email) and password of the personal account, contacts.
+ * A client card: requisites, contacts and, when the client is to use the personal account, its login (email)
+ * and password. Only the name is required: a private person's full name, an ИП's or a company's name.
  */
 class ClientFormType extends AbstractType
 {
@@ -58,11 +59,14 @@ class ClientFormType extends AbstractType
             ])
             ->add('name', TextType::class, [
                 'label' => 'Контактное лицо / ФИО',
+                'required' => false,
                 'attr' => ['placeholder' => 'Иван Петров'],
+                'help' => 'Для физ. лица — обязательно (ФИО). Для ИП и организации — по желанию.',
             ])
             ->add('email', EmailType::class, [
                 'label' => 'Email',
-                'help' => 'Логин в личном кабинете на сайте.',
+                'required' => false,
+                'help' => 'Необязательно. Это логин в личном кабинете: без почты клиент не сможет в него войти.',
             ])
             ->add('phone', TelType::class, [
                 'label' => 'Телефон',

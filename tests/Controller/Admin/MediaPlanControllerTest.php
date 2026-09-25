@@ -12,7 +12,9 @@ use App\Entity\Product;
 use App\Entity\ProductSide;
 use App\Entity\ProductType;
 use App\Entity\Promotion;
+use App\Entity\User;
 use App\Enum\BookingMode;
+use App\Enum\ClientType;
 use App\Enum\BookingStatus;
 use App\Service\BookingManager;
 use Symfony\Component\Clock\Test\ClockSensitiveTrait;
@@ -48,6 +50,48 @@ final class MediaPlanControllerTest extends AdminWebTestCase
             $this->em->persist($entity);
         }
         $this->em->flush();
+    }
+
+    public function testNewClientIsAddedToTheClientBaseFromThePlan(): void
+    {
+        $crawler = $this->client->request('GET', '/admin/media-plans/new');
+        [$values, $uri] = $this->formValues($crawler, 'Создать и подобрать конструкции');
+        $values['media_plan_form']['title'] = 'Выборы';
+        $values['media_plan_form']['newClient'] = 'СЗ БАРХАН ООО';
+        $values['media_plan_form']['newClientInn'] = '0300010384';
+        $values['media_plan_form']['newClientPhone'] = '+7 900 555-44-33';
+        $this->submit($uri, $values);
+
+        $plan = $this->em->getRepository(MediaPlan::class)->findOneBy(['title' => 'Выборы']);
+        self::assertResponseRedirects('/admin/media-plans/'.$plan->getId());
+        $this->client->followRedirect();
+        self::assertSelectorTextContains('[role=alert]', 'Клиент «СЗ БАРХАН ООО» добавлен в базу клиентов');
+        $client = $plan->getClient();
+        self::assertSame(['СЗ БАРХАН ООО', ClientType::Legal, '0300010384', null], [$client->getCompany(), $client->getClientType(), $client->getInn(), $client->getEmail()]);
+        self::assertSame('СЗ БАРХАН ООО', $plan->getClientName());
+        self::assertSame('+7 900 555-44-33', $plan->getClientContact());
+
+        // the same ИНН again: the card is reused, not doubled
+        $crawler = $this->client->request('GET', '/admin/media-plans/new');
+        [$values, $uri] = $this->formValues($crawler, 'Создать и подобрать конструкции');
+        $values['media_plan_form']['title'] = 'Выборы, второй тур';
+        $values['media_plan_form']['newClient'] = 'Бархан';
+        $values['media_plan_form']['newClientInn'] = '0300 010 384';
+        $this->submit($uri, $values);
+        $this->client->followRedirect();
+        self::assertSelectorTextContains('[role=alert]', 'уже был в базе');
+        self::assertSame(1, $this->em->getRepository(User::class)->count(['inn' => '0300010384']));
+
+        // a wrong ИНН is reported at the field
+        $crawler = $this->client->request('GET', '/admin/media-plans/new');
+        [$values, $uri] = $this->formValues($crawler, 'Создать и подобрать конструкции');
+        $values['media_plan_form']['title'] = 'Ошибка';
+        $values['media_plan_form']['newClient'] = 'ООО Ошибка';
+        $values['media_plan_form']['newClientInn'] = '12345';
+        $this->submit($uri, $values);
+        self::assertResponseStatusCodeSame(422);
+        self::assertSelectorTextContains('main', 'ИНН — 10 цифр у организации или 12 у ИП');
+        self::assertNull($this->em->getRepository(MediaPlan::class)->findOneBy(['title' => 'Ошибка']));
     }
 
     public function testCreatePlan(): void

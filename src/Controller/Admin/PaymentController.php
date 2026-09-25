@@ -9,6 +9,7 @@ use App\Enum\ClientType;
 use App\Enum\PaymentStatus;
 use App\Form\PaymentFormType;
 use App\Repository\PaymentRepository;
+use App\Service\MediaPlanManager;
 use App\Service\MonthCalendar;
 use App\Service\PaymentCalendar;
 use Doctrine\ORM\EntityManagerInterface;
@@ -32,6 +33,7 @@ final class PaymentController extends AbstractController
         private readonly EntityManagerInterface $entityManager,
         private readonly PaymentRepository $payments,
         private readonly ClockInterface $clock,
+        private readonly MediaPlanManager $mediaPlans,
     ) {
     }
 
@@ -107,10 +109,38 @@ final class PaymentController extends AbstractController
         if (!$payment->isPaid()) {
             $payment->markPaid($this->clock->now());
             $this->entityManager->flush();
+            $this->fixPlanBookings($payment);
         }
         $this->addFlash('success', \sprintf('Оплата отмечена: %s', $payment->getClient()->getClientTitle()));
 
         return $this->back($request, $payment);
+    }
+
+    /**
+     * Money for a media plan fixes its sides: holds waiting for payment become paid bookings, and an item whose
+     * 24h hold has expired (or that was never booked) is booked again at once. Without this the holds expire
+     * and the side goes back on sale although the client has paid.
+     */
+    private function fixPlanBookings(Payment $payment): void
+    {
+        $plan = $payment->getMediaPlan();
+        if (null === $plan) {
+            return;
+        }
+
+        $user = $this->getUser();
+        $result = $this->mediaPlans->confirmBookings($plan, $user instanceof User ? $user : null);
+
+        if ($result['confirmed'] + $result['created'] > 0) {
+            $this->addFlash('success', \sprintf(
+                'Брони медиаплана закреплены: %d, создано заново: %d',
+                $result['confirmed'],
+                $result['created'],
+            ));
+        }
+        foreach ($result['failed'] as $message) {
+            $this->addFlash('error', 'Бронь не закреплена — '.$message);
+        }
     }
 
     #[Route('/{id}/unpay', name: 'unpay', requirements: ['id' => Requirement::DIGITS], methods: ['POST'])]

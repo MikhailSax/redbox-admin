@@ -39,9 +39,11 @@ final class BookingRequest
     /** Slots of the screen's block; airtime (video) sides only */
     public ?int $slots = 1;
 
-    /** Whose the booking is; a side is never taken for nobody */
-    #[Assert\NotNull(message: 'Выберите клиента')]
+    /** Whose the booking is; a side is never taken for nobody (see validateClient()) */
     public ?User $client = null;
+
+    /** "Новый клиент" typed in the form instead of picking one: the controller makes the card (ClientCards) */
+    public ?string $newClient = null;
 
     /** Contact person of this booking; the one from the client card when left empty */
     #[Assert\Length(max: 255)]
@@ -95,6 +97,9 @@ final class BookingRequest
     #[Assert\Callback]
     public function validateClient(ExecutionContextInterface $context): void
     {
+        if (null === $this->client && '' === trim((string) $this->newClient)) {
+            $context->buildViolation('Выберите клиента или впишите нового')->atPath('client')->addViolation();
+        }
         if (null !== $this->client && !$this->client->isEmailVerified()) {
             $context->buildViolation(User::UNVERIFIED_MESSAGE)->atPath('client')->addViolation();
         }

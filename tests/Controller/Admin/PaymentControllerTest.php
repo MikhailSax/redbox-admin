@@ -2,6 +2,7 @@
 
 namespace App\Tests\Controller\Admin;
 
+use App\Entity\Booking;
 use App\Entity\Category;
 use App\Entity\District;
 use App\Entity\MediaPlan;
@@ -12,6 +13,7 @@ use App\Entity\Product;
 use App\Entity\ProductSide;
 use App\Entity\ProductType;
 use App\Entity\User;
+use App\Enum\BookingStatus;
 use App\Enum\ClientType;
 use App\Enum\PaymentStatus;
 use App\Service\PaymentException;
@@ -220,6 +222,53 @@ final class PaymentControllerTest extends AdminWebTestCase
             self::assertStringContainsString('уже есть график платежей', $e->getMessage());
         }
         self::assertSame(3, $this->em->getRepository(Payment::class)->count([]));
+    }
+
+    /**
+     * Money for a plan has to fix its sides: a hold left as a hold is dropped after 24 hours and the side goes
+     * back on sale although the client has paid.
+     */
+    public function testPaidMediaPlanPaymentFixesItsBookings(): void
+    {
+        $plan = $this->plan($this->company, months: 1);
+        $payment = $this->payment($this->company, 'Октябрь', '20000', '2026-10-01')->setMediaPlan($plan);
+        $this->em->flush();
+
+        $crawler = $this->client->request('GET', '/admin/payments?month=2026-10');
+        $this->submitPostForm($crawler, '#list form[action="/admin/payments/'.$payment->getId().'/pay"]');
+        $this->client->followRedirect();
+        self::assertSelectorTextContains('[role=alert]', 'Брони медиаплана закреплены: 0, создано заново: 1');
+
+        // The plan had no bookings at all, so the side is booked and paid in one go
+        $this->em->clear();
+        $bookings = $this->em->getRepository(Booking::class)->findAll();
+        self::assertCount(1, $bookings);
+        self::assertSame(BookingStatus::Paid, $bookings[0]->getStatus());
+        self::assertNull($bookings[0]->getExpiresAt());
+        self::assertSame(['2026-10-01', '2026-10-31'], [$bookings[0]->getStartDate()->format('Y-m-d'), $bookings[0]->getEndDate()->format('Y-m-d')]);
+    }
+
+    /** A hold the plan made earlier is confirmed, not booked a second time */
+    public function testPaymentConfirmsTheHoldTheMediaPlanAlreadyMade(): void
+    {
+        $plan = $this->plan($this->company, months: 1);
+        $payment = $this->payment($this->company, 'Октябрь', '20000', '2026-10-01')->setMediaPlan($plan);
+        $this->em->flush();
+
+        $crawler = $this->client->request('GET', '/admin/media-plans/'.$plan->getId());
+        $this->submitPostForm($crawler, 'form[action$="/book"]');
+        $this->client->followRedirect();
+        self::assertSame(BookingStatus::Hold, $this->em->getRepository(Booking::class)->findAll()[0]->getStatus());
+
+        $crawler = $this->client->request('GET', '/admin/payments?month=2026-10');
+        $this->submitPostForm($crawler, '#list form[action="/admin/payments/'.$payment->getId().'/pay"]');
+        $this->client->followRedirect();
+        self::assertSelectorTextContains('[role=alert]', 'Брони медиаплана закреплены: 1, создано заново: 0');
+
+        $this->em->clear();
+        $bookings = $this->em->getRepository(Booking::class)->findAll();
+        self::assertCount(1, $bookings);
+        self::assertSame(BookingStatus::Paid, $bookings[0]->getStatus());
     }
 
     public function testDashboardListsUrgentPayments(): void

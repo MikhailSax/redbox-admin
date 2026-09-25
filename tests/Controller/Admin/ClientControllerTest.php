@@ -61,6 +61,38 @@ final class ClientControllerTest extends AdminWebTestCase
         self::assertResponseStatusCodeSame(404);
     }
 
+    public function testClientCardNeedsNeitherEmailNorPhone(): void
+    {
+        $crawler = $this->client->request('GET', '/admin/clients/new');
+        [$values, $uri] = $this->formValues($crawler, 'Добавить клиента');
+        $values['client_form']['clientType'] = 'legal';
+        $values['client_form']['company'] = 'ТЦ ВОСТОК ООО';
+        $values['client_form']['inn'] = '0323340212';
+        $values['client_form']['name'] = '';
+        $values['client_form']['email'] = '';
+        $values['client_form']['phone'] = '';
+        $this->submit($uri, $values);
+
+        $client = $this->em->getRepository(User::class)->findOneBy(['inn' => '0323340212']);
+        self::assertResponseRedirects('/admin/clients/'.$client->getId());
+        self::assertNull($client->getEmail());
+        self::assertNull($client->getName());
+        self::assertSame('ТЦ ВОСТОК ООО', $client->getDisplayName());
+        self::assertTrue($client->isEmailVerified()); // made by a manager: can be picked for plans and bookings right away
+
+        $this->client->request('GET', '/admin/clients?q=восток', server: ['HTTP_X_LIVE_FILTER' => '1']);
+        self::assertSelectorTextContains('tbody', 'без почты');
+
+        // a private person still needs a full name
+        $crawler = $this->client->request('GET', '/admin/clients/new');
+        [$values, $uri] = $this->formValues($crawler, 'Добавить клиента');
+        $values['client_form']['name'] = '';
+        $values['client_form']['email'] = '';
+        $this->submit($uri, $values);
+        self::assertResponseStatusCodeSame(422);
+        self::assertSelectorTextContains('main', 'Укажите ФИО');
+    }
+
     public function testRequisitesDependOnTheClientType(): void
     {
         $crawler = $this->client->request('GET', '/admin/clients/new');

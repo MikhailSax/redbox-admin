@@ -7,6 +7,7 @@ use App\Entity\MediaPlan;
 use App\Entity\MediaPlanItem;
 use App\Entity\ProductSide;
 use App\Entity\User;
+use App\Enum\BookingStatus;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Clock\ClockInterface;
 
@@ -166,18 +167,8 @@ class MediaPlanManager
                 continue;
             }
 
-            $request = new BookingRequest();
-            $request->side = $item->getSide();
-            $request->startMonth = $plan->getStartMonth()->format('Y-m');
-            $request->months = $plan->getMonths();
-            $request->slots = $item->getSlots();
-            $request->client = $client;
-            $request->clientName = (string) $plan->getClientName();
-            $request->clientPhone = $plan->getClientContact() ?: '—';
-            $request->comment = \sprintf('Медиаплан «%s»', $plan->getTitle());
-
             try {
-                $item->setBooking($this->bookingManager->hold($request, $by));
+                $item->setBooking($this->bookingManager->hold($this->bookingRequest($plan, $item, $client), $by));
                 ++$booked;
             } catch (BookingException $e) {
                 $failed[] = \sprintf('%s: %s', $item->getProduct()?->getName(), $e->getMessage());
@@ -188,5 +179,68 @@ class MediaPlanManager
         $this->entityManager->flush();
 
         return ['booked' => $booked, 'failed' => $failed];
+    }
+
+    /**
+     * Money came in, so the sides stop waiting: every hold of the plan becomes a paid booking. An item whose hold
+     * has expired — or that was never booked — is booked again and paid at once; a side taken meanwhile is reported.
+     * Called when a payment of the plan is marked paid, and by the "Закрепить брони" button on the plan.
+     *
+     * @return array{confirmed: int, created: int, failed: list<string>}
+     */
+    public function confirmBookings(MediaPlan $plan, ?User $by): array
+    {
+        $client = $plan->getClient();
+        if (null === $client) {
+            return ['confirmed' => 0, 'created' => 0, 'failed' => ['Выберите клиента в параметрах медиаплана — бронь закрепляется за карточкой клиента.']];
+        }
+
+        $now = $this->clock->now();
+        $confirmed = 0;
+        $created = 0;
+        $failed = [];
+
+        foreach ($plan->getItems() as $item) {
+            $booking = $item->getBooking();
+            if (BookingStatus::Paid === $booking?->getStatus()) {
+                continue;
+            }
+
+            try {
+                if (null !== $booking && BookingStatus::Hold === $booking->getStatus() && !$booking->isHoldOverdue($now)) {
+                    $this->bookingManager->markPaid($booking);
+                    ++$confirmed;
+                    continue;
+                }
+
+                $fresh = $this->bookingManager->hold($this->bookingRequest($plan, $item, $client), $by);
+                $this->bookingManager->markPaid($fresh);
+                $item->setBooking($fresh);
+                ++$created;
+            } catch (BookingException $e) {
+                $failed[] = \sprintf('%s: %s', $item->getProduct()?->getName(), $e->getMessage());
+            }
+        }
+
+        $plan->touch();
+        $this->entityManager->flush();
+
+        return ['confirmed' => $confirmed, 'created' => $created, 'failed' => $failed];
+    }
+
+    /** One item of the plan as a booking request: the plan's months, client and contacts */
+    private function bookingRequest(MediaPlan $plan, MediaPlanItem $item, User $client): BookingRequest
+    {
+        $request = new BookingRequest();
+        $request->side = $item->getSide();
+        $request->startMonth = $plan->getStartMonth()->format('Y-m');
+        $request->months = $plan->getMonths();
+        $request->slots = $item->getSlots();
+        $request->client = $client;
+        $request->clientName = (string) $plan->getClientName();
+        $request->clientPhone = $plan->getClientContact() ?: '—';
+        $request->comment = \sprintf('Медиаплан «%s»', $plan->getTitle());
+
+        return $request;
     }
 }

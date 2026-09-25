@@ -46,14 +46,17 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\Column]
     private ?int $id = null;
 
-    #[ORM\Column(length: 180)]
-    #[Assert\NotBlank]
-    #[Assert\Email]
+    /**
+     * The login. Staff always have one; a client card made by a manager may have none (then the client
+     * can't sign in to the personal account until one is added).
+     */
+    #[ORM\Column(length: 180, nullable: true)]
+    #[Assert\Email(message: 'Неверный email')]
     #[Assert\Length(max: 180)]
     private ?string $email = null;
 
-    #[ORM\Column(length: 100)]
-    #[Assert\NotBlank]
+    /** Staff: the person; clients: the contact person, or the full name of a private person */
+    #[ORM\Column(length: 100, nullable: true)]
     #[Assert\Length(max: 100)]
     private ?string $name = null;
 
@@ -109,7 +112,7 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
 
     public function __toString(): string
     {
-        return (string) $this->name;
+        return $this->isClient() ? $this->getClientTitle() : (string) $this->name;
     }
 
     public function getEmailVerifiedAt(): ?\DateTimeImmutable
@@ -149,7 +152,8 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
 
     public function setEmail(?string $email): static
     {
-        $this->email = null !== $email ? mb_strtolower(trim($email)) : null;
+        $email = null !== $email ? mb_strtolower(trim($email)) : null;
+        $this->email = '' !== $email ? $email : null;
 
         return $this;
     }
@@ -161,7 +165,8 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
 
     public function setName(?string $name): static
     {
-        $this->name = $name;
+        $name = null !== $name ? trim($name) : null;
+        $this->name = '' !== $name ? $name : null;
 
         return $this;
     }
@@ -173,7 +178,8 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
      */
     public function getUserIdentifier(): string
     {
-        return (string) $this->email;
+        // a client card without an email never signs in; the identifier still has to be non-empty
+        return $this->email ?? 'user-'.$this->id;
     }
 
     /**
@@ -250,7 +256,7 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     /** "ООО «Ромашка» (Иван Петров)" for clients, the name otherwise */
     public function getDisplayName(): string
     {
-        return null !== $this->company ? \sprintf('%s (%s)', $this->company, $this->name) : (string) $this->name;
+        return null !== $this->company && null !== $this->name ? \sprintf('%s (%s)', $this->company, $this->name) : $this->getClientTitle();
     }
 
     /** The organisation for ИП and companies, the person's name for a private person */
@@ -334,6 +340,21 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
         return $this;
     }
 
+    /** Staff sign in with the email; a client card may have neither email nor contact person (see validateRequisites()) */
+    #[Assert\Callback]
+    public function validateStaff(ExecutionContextInterface $context): void
+    {
+        if ($this->isClient()) {
+            return;
+        }
+        if (null === $this->email) {
+            $context->buildViolation('Укажите email')->atPath('email')->addViolation();
+        }
+        if (null === $this->name) {
+            $context->buildViolation('Укажите имя')->atPath('name')->addViolation();
+        }
+    }
+
     #[Assert\Callback]
     public function validateRequisites(ExecutionContextInterface $context): void
     {
@@ -346,6 +367,10 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
             return;
         }
         if (!$this->clientType->hasRequisites()) {
+            if (null === $this->name) {
+                $context->buildViolation('Укажите ФИО')->atPath('name')->addViolation();
+            }
+
             return;
         }
 
