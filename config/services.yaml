@@ -18,6 +18,11 @@ parameters:
     # Where an empty map opens: "lat,lng,zoom" (Ulan-Ude)
     app.map.default_view: '51.8335,107.5841,12'
 
+    # GRP of media plans: contacts per 100 residents of the city. Rosstat, population of Улан-Удэ on 1 January 2025
+    # (all ages); put the 18+ population here when research data give it
+    app.reach.city: 'Улан-Удэ'
+    app.reach.population: 435067
+
 when@test:
     parameters:
         app.uploads_dir: '%kernel.project_dir%/var/test/uploads'

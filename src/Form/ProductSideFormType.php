@@ -96,6 +96,12 @@ class ProductSideFormType extends AbstractType
                 'empty_data' => (string) BookingMode::DEFAULT_SLOT_COUNT,
                 'help' => 'Экран занят, когда разобраны все.',
             ])
+            ->add('dailyOts', IntegerType::class, [
+                'label' => 'OTS в сутки',
+                'required' => false,
+                'attr' => ['min' => 0, 'placeholder' => 'например, 45000'],
+                'help' => 'Сколько раз в сутки сторону видят (по замерам трафика). По нему в медиаплане считаются контакты и стоимость тысячи контактов.',
+            ])
             ->add('description', TextareaType::class, [
                 'label' => 'Описание стороны',
                 'required' => false,

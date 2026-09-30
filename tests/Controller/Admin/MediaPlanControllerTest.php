@@ -17,6 +17,7 @@ use App\Enum\BookingMode;
 use App\Enum\ClientType;
 use App\Enum\BookingStatus;
 use App\Service\BookingManager;
+use App\Service\CityAudience;
 use Symfony\Component\Clock\Test\ClockSensitiveTrait;
 
 final class MediaPlanControllerTest extends AdminWebTestCase
@@ -227,6 +228,41 @@ final class MediaPlanControllerTest extends AdminWebTestCase
         $crawler = $this->client->request('GET', '/admin/media-plans/'.$plan->getId());
         self::assertSelectorTextContains('main aside', '83 300 ₽');
         self::assertCount(2, $crawler->filter('#services tbody tr'));
+    }
+
+    public function testReachAndCostPerThousandFromTheSidesOts(): void
+    {
+        [$sideA, $sideB] = $this->billboard->getSides()->getValues();
+        $sideA->setDailyOts(10000);
+        $this->screen->getSides()->first()->setDailyOts(12000); // 12 slots in the block
+        $this->em->flush();
+        $plan = $this->plan(months: 2, discount: 10); // September and October: 61 days
+        $this->addSides($plan, [$sideA, $sideB]);
+        $this->addSides($plan, [$this->screen->getSides()->first()], slots: 2);
+
+        $plan = $this->reload($plan);
+        [$a, $b, $screen] = $plan->getItems()->getValues();
+        self::assertSame(61, $plan->getDays());
+        self::assertSame(610000, $a->getContacts());
+        self::assertNull($b->getContacts()); // no OTS: left out of the reach
+        self::assertSame(122000, $screen->getContacts()); // 2 slots of 12: a sixth of the screen's contacts
+        self::assertSame(732000, $plan->getContacts());
+        self::assertSame(1, $plan->getItemsWithoutOts());
+        // (40 000 + 20 000) × 2 months − 10% = 108 000 ₽ per 732 000 contacts; the side without OTS is not in the cost
+        self::assertSame(20000.0, $screen->getMonthlyPrice());
+        self::assertSame(147.54, $plan->getCostPerThousand());
+
+        $this->client->request('GET', '/admin/media-plans/'.$plan->getId());
+        self::assertSelectorTextContains('main aside', '732 000');
+        self::assertSelectorTextContains('main aside', '147,54 ₽');
+        self::assertSelectorTextContains('main aside', 'Без OTS: 1 сторона');
+        // GRP against the 435 067 residents of Улан-Удэ: 12 000 contacts a day = 2,76; 732 000 over the period = 168,25
+        $audience = static::getContainer()->get(CityAudience::class);
+        self::assertSame([2.76, 168.25], [$audience->grp($plan->getContacts(), $plan->getDays()), $audience->grp($plan->getContacts())]);
+        self::assertMatchesRegularExpression('/GRP в сутки\s*2,8\s/u', $this->client->getCrawler()->filter('main aside')->text());
+        self::assertMatchesRegularExpression('/GRP за период\s*168,3\s/u', $this->client->getCrawler()->filter('main aside')->text());
+        self::assertAnySelectorTextContains('main table td', '610 000 контактов');
+        self::assertAnySelectorTextContains('main table td', 'нет OTS');
     }
 
     public function testUpdateAndRemoveServiceLine(): void

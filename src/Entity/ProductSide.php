@@ -64,6 +64,14 @@ class ProductSide
     #[Assert\Length(max: 100)]
     private ?string $printNote = null;
 
+    /**
+     * OTS (opportunities to see): how many times a day the side is seen, by traffic counts or research data;
+     * null = not known. The reach of media plans is counted from it.
+     */
+    #[ORM\Column(nullable: true)]
+    #[Assert\PositiveOrZero(message: 'OTS не может быть отрицательным')]
+    private ?int $dailyOts = null;
+
     /** Video screens: length of one slot, seconds (BookingMode::SLOT_DURATIONS) */
     #[ORM\Column(options: ['default' => BookingMode::DEFAULT_SLOT_SECONDS])]
     #[Assert\Choice(choices: BookingMode::SLOT_DURATIONS, message: 'Слот — 5 или 10 секунд')]
@@ -235,6 +243,31 @@ class ProductSide
         $this->printNote = '' !== $printNote ? $printNote : null;
 
         return $this;
+    }
+
+    public function getDailyOts(): ?int
+    {
+        return $this->dailyOts;
+    }
+
+    public function setDailyOts(?int $dailyOts): static
+    {
+        $this->dailyOts = $dailyOts;
+
+        return $this;
+    }
+
+    /**
+     * Contacts a day with one client's advertising: the side's whole OTS; on a screen the share of the time
+     * the client's $slots are on (1 slot of 12 is shown 1/12 of the time). Null when the OTS is not known.
+     */
+    public function getDailyContacts(?int $slots): ?float
+    {
+        if (null === $this->dailyOts) {
+            return null;
+        }
+
+        return $this->isAirtime() ? $this->dailyOts * min($slots ?? 1, $this->slotCount) / max(1, $this->slotCount) : (float) $this->dailyOts;
     }
 
     public function getSlotSeconds(): int

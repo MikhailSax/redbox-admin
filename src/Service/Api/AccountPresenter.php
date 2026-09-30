@@ -14,6 +14,7 @@ use App\Entity\PhotoReportPhoto;
 use App\Entity\User;
 use App\Enum\BookingStatus;
 use App\Helpers\ProductHelper;
+use App\Service\CityAudience;
 use Symfony\Component\Clock\ClockInterface;
 
 /**
@@ -24,6 +25,7 @@ class AccountPresenter
 {
     public function __construct(
         private readonly ClockInterface $clock,
+        private readonly CityAudience $audience,
     ) {
     }
 
@@ -82,6 +84,11 @@ class AccountPresenter
             'placementTotal' => $plan->getPlacementTotal(),
             'servicesTotal' => $plan->getServicesTotal(),
             'total' => $plan->getTotal(),
+            // reach from the sides' OTS: contacts over the period and the cost of a thousand of them
+            'contacts' => $plan->getContacts(),
+            'costPerThousand' => $plan->getCostPerThousand(),
+            // contacts per 100 residents of the city: a day on average and over the period
+            'grp' => $plan->getContacts() > 0 ? ['daily' => $this->audience->grp($plan->getContacts(), $plan->getDays()), 'total' => $this->audience->grp($plan->getContacts())] : null,
             'createdAt' => $plan->getCreatedAt()?->format(\DATE_ATOM),
         ];
     }
@@ -187,6 +194,7 @@ class AccountPresenter
             'monthlyPrice' => $item->getMonthlyPrice(),
             'basePrice' => $item->getBasePrice(),
             'promotion' => $item->hasPromotionPrice() ? $item->getPromotionTitle() : null,
+            'contacts' => $item->getContacts(),
             'booking' => null !== $bookingStatus ? [
                 'status' => $bookingStatus->value,
                 'statusLabel' => $bookingStatus->label(),

@@ -82,6 +82,7 @@
                         {% if item.displayFormat %}<tr><td class="k">Формат</td><td>{{ item.displayFormat }}</td></tr>{% endif %}
                         <tr><td class="k">Сторона</td><td>{{ item.side.name }}{% if item.slots %} · {{ item.slots|plural('слот', 'слота', 'слотов') }} по {{ item.side.slotSeconds }} сек, блок {{ item.side.blockSeconds }} сек{% endif %}</td></tr>
                         {% if product.district %}<tr><td class="k">Район</td><td>{{ product.district.name }}</td></tr>{% endif %}
+                        {% if item.contacts is not null %}<tr><td class="k">Контакты</td><td>{{ item.contacts|number_format(0, ',', ' ') }} за период</td></tr>{% endif %}
                         {% if product.latitude and product.longitude %}<tr><td class="k">Координаты</td><td>{{ product.latitude|number_format(5, '.', '') }}, {{ product.longitude|number_format(5, '.', '') }}</td></tr>{% endif %}
                         {% if item.displayDescription %}<tr><td class="k">Описание</td><td style="white-space: pre-line">{{ item.displayDescription }}</td></tr>{% endif %}
                     </table>
@@ -127,6 +128,17 @@
         {% endif %}
         <tr class="grand"><td>Итого</td><td class="r">{{ plan.total|number_format(0, ',', ' ') }} ₽</td></tr>
     </table>
+
+    {% if plan.contacts > 0 %}
+        <table class="totals">
+            <tr><td>Контакты за период{% if plan.itemsWithoutOts > 0 %}*{% endif %}</td><td class="r">{{ plan.contacts|number_format(0, ',', ' ') }}</td></tr>
+            <tr><td>Стоимость 1000 контактов (CPT)</td><td class="r">{{ plan.costPerThousand|number_format(2, ',', ' ') }} ₽</td></tr>
+            <tr><td>GRP в сутки</td><td class="r">{{ grp(plan.contacts, plan.days)|number_format(1, ',', ' ') }}</td></tr>
+            <tr><td>GRP за период</td><td class="r">{{ grp(plan.contacts)|number_format(1, ',', ' ') }}</td></tr>
+        </table>
+        <div class="small muted" style="text-align: right">GRP — контакты на 100 жителей: {{ grp_base() }}</div>
+        {% if plan.itemsWithoutOts > 0 %}<div class="small muted" style="text-align: right">* без {{ plan.itemsWithoutOts|plural('стороны', 'сторон', 'сторон') }}, для которых нет данных о трафике</div>{% endif %}
+    {% endif %}
 
     <div class="note small">
         {% if plan.comment %}<div style="margin-bottom: 2mm; white-space: pre-line">{{ plan.comment }}</div>{% endif %}

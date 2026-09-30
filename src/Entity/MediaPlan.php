@@ -217,6 +217,14 @@ class MediaPlan
         return null !== $this->startMonth ? MonthCalendar::lastDay($this->getEndMonth()) : null;
     }
 
+    /** Days of placement: the months from the start month, 30 a month while it isn't chosen */
+    public function getDays(): int
+    {
+        $end = $this->getEndDate();
+
+        return null !== $this->startMonth && null !== $end ? MonthCalendar::days($this->startMonth, $end) : $this->months * 30;
+    }
+
     public function getMonths(): int
     {
         return $this->months;
@@ -401,6 +409,37 @@ class MediaPlan
     public function getServicesCost(): float
     {
         return array_sum($this->serviceLines->map(static fn (MediaPlanServiceLine $line) => $line->getCost())->toArray());
+    }
+
+    /*
+     * Reach: contacts with the advertising over the period, from the sides' OTS (sides without one are left out).
+     */
+
+    /** Contacts of the sides with a known OTS */
+    public function getContacts(): int
+    {
+        return array_sum($this->items->map(static fn (MediaPlanItem $item) => $item->getContacts() ?? 0)->toArray());
+    }
+
+    /** Sides without an OTS: the reach doesn't count them */
+    public function getItemsWithoutOts(): int
+    {
+        return $this->items->filter(static fn (MediaPlanItem $item) => null === $item->getContacts())->count();
+    }
+
+    /**
+     * CPT, cost per thousand contacts: placement after the plan discount of the sides with a known OTS
+     * per 1000 of their contacts; null when no side has one.
+     */
+    public function getCostPerThousand(): ?float
+    {
+        $contacts = $this->getContacts();
+        if ($contacts <= 0) {
+            return null;
+        }
+        $cost = array_sum($this->items->map(fn (MediaPlanItem $item) => null !== $item->getContacts() ? $item->getMonthlyPrice() * $this->months : 0.0)->toArray());
+
+        return round($cost * (100 - $this->discountPercent) / 100 / $contacts * 1000, 2);
     }
 
     public function getMargin(): float

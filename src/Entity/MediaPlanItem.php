@@ -271,6 +271,17 @@ class MediaPlanItem
         return (float) $product->getPurchasePrice() * ($this->slots ?? 1);
     }
 
+    /**
+     * Contacts with the advertising over the plan's period (ProductSide::getDailyContacts() × days);
+     * null when the side's OTS is not known.
+     */
+    public function getContacts(): ?int
+    {
+        $daily = $this->side->getDailyContacts($this->slots);
+
+        return null !== $daily && null !== $this->plan ? (int) round($daily * $this->plan->getDays()) : null;
+    }
+
     public function getBooking(): ?Booking
     {
         return $this->booking;

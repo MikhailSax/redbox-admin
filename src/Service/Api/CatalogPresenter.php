@@ -12,6 +12,7 @@ use App\Repository\BookingRepository;
 use App\Service\Availability\ProductAvailability;
 use App\Service\Availability\SideAvailability;
 use App\Service\BookingManager;
+use App\Service\CityAudience;
 use App\Service\PromotionResolver;
 use Symfony\Component\Asset\Packages;
 use Symfony\Component\Clock\ClockInterface;
@@ -31,6 +32,7 @@ class CatalogPresenter
         private readonly Packages $assets,
         private readonly UrlGeneratorInterface $urls,
         private readonly ClockInterface $clock,
+        private readonly CityAudience $audience,
     ) {
     }
 
@@ -134,6 +136,9 @@ class CatalogPresenter
                 'threeMonths' => self::amount($side->getPrice3Months()),
                 'sixMonths' => self::amount($side->getPrice6Months()),
             ], static fn (?float $value) => null !== $value) ?: null,
+            // contacts a day with the side (for a screen, with the whole block)
+            'ots' => $side->getDailyOts(),
+            'grp' => null !== $side->getDailyOts() ? $this->audience->grp($side->getDailyOts()) : null,
             'print' => null !== $side->getPrintPrice() ? array_filter(['price' => (float) $side->getPrintPrice(), 'note' => $side->getPrintNote()], static fn (mixed $value) => null !== $value) : null,
             // a screen is free while it has a free slot; the slots themselves are not shown
             'status' => $state?->status()->value,

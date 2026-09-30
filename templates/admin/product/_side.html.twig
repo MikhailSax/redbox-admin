@@ -37,6 +37,9 @@
         {{ form_row(side_form.printPrice) }}
         {{ form_row(side_form.printNote) }}
     </div>
+    <div class="grid gap-x-6 md:grid-cols-[12rem_1fr]">
+        {{ form_row(side_form.dailyOts) }}
+    </div>
     {{ form_row(side_form.description) }}
 
     {% if photos is not empty %}

@@ -145,7 +145,12 @@
                                     </div>
                                 {% endif %}
                             </td>
-                            <td class="px-4 py-3 text-right font-medium text-heading tabular-nums whitespace-nowrap">{{ (item.monthlyPrice * plan.months)|number_format(0, ',', ' ') }}&nbsp;₽</td>
+                            <td class="px-4 py-3 text-right font-medium text-heading tabular-nums whitespace-nowrap">
+                                {{ (item.monthlyPrice * plan.months)|number_format(0, ',', ' ') }}&nbsp;₽
+                                <div class="mt-0.5 text-[11px] font-normal text-body-subtle" title="Контакты за {{ plan.days }} дн.{{ item.side.airtime ? ', доля слотов в блоке' : '' }}">
+                                    {% if item.contacts is not null %}{{ item.contacts|number_format(0, ',', ' ') }} контактов{% else %}нет OTS{% endif %}
+                                </div>
+                            </td>
                             <td class="px-2 py-3">
                                 <form method="post" action="{{ path('admin_media_plan_remove_item', {id: plan.id, item: item.id}) }}"
                                       data-confirm="«{{ product.name }}», сторона {{ item.side.name }} будет убрана из медиаплана." data-confirm-title="Убрать позицию?" data-confirm-button="Убрать">
@@ -183,6 +188,22 @@
                 <div class="flex justify-between gap-3"><dt class="text-body">Услуги</dt><dd class="shrink-0 whitespace-nowrap tabular-nums text-heading">{{ plan.servicesTotal|number_format(0, ',', ' ') }} ₽</dd></div>
                 <div class="flex items-baseline justify-between border-t border-default pt-3"><dt class="font-medium text-heading">К оплате</dt><dd class="text-2xl font-semibold tracking-tight text-heading tabular-nums">{{ plan.total|number_format(0, ',', ' ') }} ₽</dd></div>
             </dl>
+
+            {% if plan.items is not empty %}
+                <dl class="mt-4 space-y-2.5 border-t border-default pt-4 text-sm">
+                    <div class="flex justify-between gap-3"><dt class="text-body" title="Сколько раз рекламу увидят за {{ plan.days }} дн., по OTS сторон">Контакты</dt><dd class="font-medium text-heading tabular-nums">{{ plan.contacts|number_format(0, ',', ' ') }}</dd></div>
+                    {% if plan.costPerThousand is not null %}
+                        <div class="flex justify-between gap-3"><dt class="text-body" title="Стоимость размещения со скидкой на 1000 контактов">CPT, 1000 контактов</dt><dd class="font-medium text-heading tabular-nums">{{ plan.costPerThousand|number_format(2, ',', ' ') }} ₽</dd></div>
+                    {% endif %}
+                    {% if plan.contacts > 0 %}
+                        <div class="flex justify-between gap-3"><dt class="text-body" title="Контакты за сутки на 100 жителей ({{ grp_base() }})">GRP в сутки</dt><dd class="font-medium text-heading tabular-nums">{{ grp(plan.contacts, plan.days)|number_format(1, ',', ' ') }}</dd></div>
+                        <div class="flex justify-between gap-3"><dt class="text-body" title="Контакты за {{ plan.days }} дн. на 100 жителей ({{ grp_base() }})">GRP за период</dt><dd class="font-medium text-heading tabular-nums">{{ grp(plan.contacts)|number_format(1, ',', ' ') }}</dd></div>
+                    {% endif %}
+                    {% if plan.itemsWithoutOts > 0 %}
+                        <p class="text-xs text-fg-warning">{{ ui.icon('warning', 'size-3.5 inline') }} Без OTS: {{ plan.itemsWithoutOts|plural('сторона', 'стороны', 'сторон') }} — не входят в охват. Заполните OTS в карточке конструкции.</p>
+                    {% endif %}
+                </dl>
+            {% endif %}
 
             <div class="mt-5 rounded-lg bg-zinc-50 p-3 text-sm ring-1 ring-default">
                 <p class="mb-2 text-xs font-medium uppercase tracking-wide text-body-subtle">Для вас, не попадает в PDF</p>
