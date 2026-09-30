@@ -171,6 +171,7 @@ final class ApiCatalogTest extends AdminWebTestCase
             'kpp' => '030001001',
             'payment' => 'postpay',
             'comment' => 'Нужен монтаж',
+            'agree' => true,
             'items' => [
                 ['sideId' => $side->getId(), 'from' => '2026-10-01', 'to' => '2026-10-31'],
                 ['sideId' => $screenSide->getId(), 'from' => '2026-10-05', 'to' => '2026-10-18', 'clip' => 10], // an old site's clip is ignored
@@ -197,27 +198,32 @@ final class ApiCatalogTest extends AdminWebTestCase
     public function testOrderValidation(): void
     {
         $side = $this->billboard->getSides()->first();
-        $valid = ['contactName' => 'Иван', 'phone' => '+7 900 111-22-33', 'items' => [['sideId' => $side->getId(), 'from' => '2026-10-01', 'to' => '2026-10-31']]];
+        $valid = ['contactName' => 'Иван', 'phone' => '+7 900 111-22-33', 'agree' => true, 'items' => [['sideId' => $side->getId(), 'from' => '2026-10-01', 'to' => '2026-10-31']]];
 
-        $noContacts = $this->post('/api/v1/orders', ['items' => $valid['items']]);
+        $noContacts = $this->post('/api/v1/orders', ['agree' => true, 'items' => $valid['items']]);
         self::assertSame(422, $noContacts['status']);
         self::assertSame('validation_failed', $noContacts['body']['error']);
         self::assertSame(['contactName', 'phone'], array_column($noContacts['body']['violations'], 'field'));
 
-        $empty = $this->post('/api/v1/orders', ['contactName' => 'Иван', 'phone' => '+7 900', 'items' => []]);
+        $empty = $this->post('/api/v1/orders', ['contactName' => 'Иван', 'phone' => '+7 900', 'agree' => true, 'items' => []]);
         self::assertSame(422, $empty['status']);
         self::assertStringContainsString('хотя бы одну конструкцию', $empty['body']['violations'][0]['message']);
+
+        // personal data are taken only with the visitor's consent
+        $noConsent = $this->post('/api/v1/orders', ['agree' => false] + $valid);
+        self::assertSame(422, $noConsent['status']);
+        self::assertSame(['agree'], array_column($noConsent['body']['violations'], 'field'));
 
         // a bot fills every field it finds, including the hidden one
         $bot = $this->post('/api/v1/orders', $valid + ['website' => 'http://spam.example']);
         self::assertSame(422, $bot['status']);
 
-        $gone = $this->post('/api/v1/orders', ['contactName' => 'Иван', 'phone' => '+7 900', 'items' => [['sideId' => 999999, 'from' => '2026-10-01', 'to' => '2026-10-31']]]);
+        $gone = $this->post('/api/v1/orders', ['contactName' => 'Иван', 'phone' => '+7 900', 'agree' => true, 'items' => [['sideId' => 999999, 'from' => '2026-10-01', 'to' => '2026-10-31']]]);
         self::assertSame(422, $gone['status']);
         self::assertSame('unknown_sides', $gone['body']['error']);
 
         // placement is two weeks at least
-        $short = $this->post('/api/v1/orders', ['contactName' => 'Иван', 'phone' => '+7 900', 'items' => [['sideId' => $side->getId(), 'from' => '2026-10-01', 'to' => '2026-10-13']]]);
+        $short = $this->post('/api/v1/orders', ['contactName' => 'Иван', 'phone' => '+7 900', 'agree' => true, 'items' => [['sideId' => $side->getId(), 'from' => '2026-10-01', 'to' => '2026-10-13']]]);
         self::assertSame(422, $short['status']);
         self::assertSame('Минимальное размещение — 14 дней', $short['body']['violations'][0]['message']);
 

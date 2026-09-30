@@ -182,7 +182,7 @@ final class ApiAccountTest extends AdminWebTestCase
         $token = $this->signIn('anna@citypark.ru');
 
         $response = $this->call('POST', '/api/v1/orders', [
-            'contactName' => 'Анна', 'phone' => '+7 983 000-00-00',
+            'contactName' => 'Анна', 'phone' => '+7 983 000-00-00', 'agree' => true,
             'items' => [['sideId' => $side->getId(), 'from' => '2026-12-01', 'to' => '2026-12-31']],
         ], $token);
 

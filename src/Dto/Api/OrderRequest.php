@@ -2,6 +2,7 @@
 
 namespace App\Dto\Api;
 
+use App\Validator\SmartCaptcha;
 use Symfony\Component\Validator\Constraints as Assert;
 
 /**
@@ -44,6 +45,14 @@ final class OrderRequest
      */
     #[Assert\Blank]
     public ?string $website = null;
+
+    /** Consent to the processing of personal data (152-ФЗ), ticked by the visitor */
+    #[Assert\IsTrue(message: 'Нужно согласие на обработку персональных данных')]
+    public bool $agree = false;
+
+    /** Token of Yandex SmartCaptcha from the form */
+    #[SmartCaptcha]
+    public ?string $captchaToken = null;
 
     /**
      * @var list<OrderItemRequest>

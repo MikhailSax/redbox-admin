@@ -2,6 +2,7 @@
 
 namespace App\Dto\Api;
 
+use App\Validator\SmartCaptcha;
 use Symfony\Component\Validator\Constraints as Assert;
 
 /**
@@ -35,10 +36,14 @@ final class RegisterRequest
     #[Assert\Regex('/^\s*(\d\s*){10}((\d\s*){2})?$/', message: 'ИНН — 10 цифр у организации или 12 у ИП')]
     public ?string $inn = null;
 
-    #[Assert\IsTrue(message: 'Нужно согласие на обработку данных')]
+    #[Assert\IsTrue(message: 'Нужно согласие на обработку персональных данных')]
     public bool $agree = false;
 
     /** Honeypot, see OrderRequest */
     #[Assert\Blank]
     public ?string $website = null;
+
+    /** Token of Yandex SmartCaptcha from the form */
+    #[SmartCaptcha]
+    public ?string $captchaToken = null;
 }
