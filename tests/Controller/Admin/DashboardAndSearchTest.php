@@ -9,6 +9,7 @@ use App\Entity\Product;
 use App\Entity\ProductSide;
 use App\Entity\ProductType;
 use App\Entity\User;
+use App\Enum\BookingMode;
 use App\Service\BookingManager;
 use Symfony\Component\Clock\Test\ClockSensitiveTrait;
 
@@ -29,38 +30,65 @@ final class DashboardAndSearchTest extends AdminWebTestCase
         $category = (new Category())->setName('Билборд 6х3');
         $district = (new District())->setName('Центральный');
         $static = (new ProductType())->setName('Статика');
+        $video = (new ProductType())->setName('Видеоэкран')->setBookingMode(BookingMode::Airtime);
         $this->billboard = $this->product('Щит на Ленина', $category, $static, $district, ['A', 'B']);
-        $this->screen = $this->product('Экран у вокзала', $category, $static, $district, ['A']);
+        $this->screen = $this->product('Экран у вокзала', $category, $video, $district, ['A']);
 
-        foreach ([$category, $district, $static, $this->billboard, $this->screen] as $entity) {
+        foreach ([$category, $district, $static, $video, $this->billboard, $this->screen] as $entity) {
             $this->em->persist($entity);
         }
         $this->em->flush();
     }
 
-    public function testDashboardShowsKpisForecastAndHolds(): void
+    public function testDashboardShowsBillboardsAndScreensApart(): void
     {
         $manager = static::getContainer()->get(BookingManager::class);
         $manager->markPaid($this->hold($this->billboard, 'A', 'Оплатил'));
         $this->hold($this->billboard, 'B', 'ООО Ромашка');
+        // the screen's block is 12 slots × 5 s: 3 slots paid and 3 on hold fill half of it
+        $manager->markPaid($this->hold($this->screen, 'A', 'Кафе', slots: 3));
+        $this->hold($this->screen, 'A', 'Кафе', slots: 3);
 
         $crawler = $this->client->request('GET', '/admin');
         self::assertResponseIsSuccessful();
         self::assertSelectorTextContains('h1', 'Добрый день');
 
-        // 2 structures: billboard fully taken with a hold on B → booked; screen free. The total itself is not shown.
-        $kpis = $crawler->filter('main a.card')->each(fn ($card) => preg_replace('/\s+/', ' ', trim($card->text())));
-        self::assertCount(3, $kpis);
-        self::assertStringContainsString('Свободны 1 50%', $kpis[0]);
-        self::assertStringContainsString('Забронированы 1 50%', $kpis[1]);
-        self::assertStringContainsString('Заняты 0', $kpis[2]);
-        self::assertSelectorTextNotContains('main', 'Конструкций');
+        // Billboards: sides only, the screen is not among them; September is sold out
+        $billboards = preg_replace('/\s+/', ' ', $crawler->filter('#dashboard-billboards')->text());
+        self::assertStringContainsString('2 стороны', $billboards);
+        self::assertStringContainsString('Свободны 0 0%', $billboards);
+        self::assertStringContainsString('Забронированы 1 50%', $billboards);
+        self::assertStringContainsString('Заняты 1 50%', $billboards);
+        self::assertStringContainsString('100%', $billboards);
 
-        // September: 2 of 3 sides sold
-        self::assertSelectorTextContains('main', '67%');
-        // The hold is listed with its pay button
+        // Screens: loaded by the seconds of airtime sold
+        $screens = preg_replace('/\s+/', ' ', $crawler->filter('#dashboard-screens')->text());
+        self::assertStringContainsString('1 экран', $screens);
+        self::assertStringContainsString('Загрузка 50%', $screens);
+        self::assertStringContainsString('Занято 25%', $screens);
+        self::assertStringContainsString('Бронь 25%', $screens);
+
+        // ...and each screen with its own load
+        $rows = $crawler->filter('#dashboard-screen-load li');
+        self::assertCount(1, $rows);
+        self::assertStringContainsString('Экран у вокзала', $rows->text());
+        self::assertStringContainsString('6 из 12 слотов', $rows->text());
+        self::assertStringContainsString('50%', $rows->text());
+
+        // The holds are listed with their pay buttons
         self::assertSelectorTextContains('main', 'ООО Ромашка');
-        self::assertCount(1, $crawler->filter('main form[action$="/pay"] input[name="return"][value="dashboard"]'));
+        self::assertCount(2, $crawler->filter('main form[action$="/pay"] input[name="return"][value="dashboard"]'));
+    }
+
+    public function testDashboardWithoutScreens(): void
+    {
+        $this->em->remove($this->screen);
+        $this->em->flush();
+
+        $crawler = $this->client->request('GET', '/admin');
+        self::assertResponseIsSuccessful();
+        self::assertStringContainsString('0 экранов', $crawler->filter('#dashboard-screens')->text());
+        self::assertSelectorTextContains('#dashboard-screen-load', 'Видеоэкранов нет');
     }
 
     public function testSidebarShowsHoldsButNotTheStructureCount(): void
@@ -165,7 +193,7 @@ final class DashboardAndSearchTest extends AdminWebTestCase
         return $product;
     }
 
-    private function hold(Product $product, string $side, string $client): \App\Entity\Booking
+    private function hold(Product $product, string $side, string $client, int $slots = 1): \App\Entity\Booking
     {
         $request = new BookingRequest();
         $request->side = $product->getSides()->filter(fn (ProductSide $s) => $s->getName() === $side)->first();
@@ -173,6 +201,7 @@ final class DashboardAndSearchTest extends AdminWebTestCase
         $request->client = $this->customer;
         $request->clientName = $client;
         $request->clientPhone = '+7 900 000-00-00';
+        $request->slots = $slots;
 
         return static::getContainer()->get(BookingManager::class)->hold($request);
     }
