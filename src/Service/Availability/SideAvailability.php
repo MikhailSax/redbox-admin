@@ -7,7 +7,8 @@ use App\Enum\BookingMode;
 
 /**
  * Occupancy of one side for one month.
- * A whole side is taken by any booking; a screen when every slot of its block is taken on some day.
+ * A whole side is taken by any booking; a screen when all the time of its block is taken on some day
+ * (counted in seconds: half a 10-second slot sold leaves the other half free).
  */
 final readonly class SideAvailability
 {
@@ -15,36 +16,55 @@ final readonly class SideAvailability
         public int $sideId,
         public string $sideName,
         public bool $airtime,
-        /** Slots of the block taken by paid bookings (a whole-side booking counts as every slot) */
-        public int $paidSlots,
-        /** Slots taken by unpaid holds that have not expired yet */
-        public int $holdSlots,
+        /** Seconds of the block taken by confirmed bookings (a whole-side booking counts as the whole block) */
+        public int $confirmedSeconds,
+        /** Seconds taken by holds that are neither confirmed nor expired yet */
+        public int $holdSeconds,
         /** Slots in the block; 1 for a whole side */
         public int $slotCount = 1,
+        /** Length of a slot; 1 for a whole side */
+        public int $slotSeconds = 1,
     ) {
     }
 
-    public function usedSlots(): int
+    public function blockSeconds(): int
     {
-        return min($this->slotCount, $this->paidSlots + $this->holdSlots);
+        return $this->slotCount * $this->slotSeconds;
     }
 
-    public function freeSlots(): int
+    public function usedSeconds(): int
     {
-        return $this->slotCount - $this->usedSlots();
+        return min($this->blockSeconds(), $this->confirmedSeconds + $this->holdSeconds);
+    }
+
+    public function freeSeconds(): int
+    {
+        return $this->blockSeconds() - $this->usedSeconds();
+    }
+
+    /** "7", "7,5": slots taken, half slots included */
+    public function usedSlotsLabel(): string
+    {
+        return BookingMode::slotsLabel($this->usedSeconds(), $this->slotSeconds);
+    }
+
+    /** "4,5": slots left to sell */
+    public function freeSlotsLabel(): string
+    {
+        return BookingMode::slotsLabel($this->freeSeconds(), $this->slotSeconds);
     }
 
     /** How full the screen's block is, 0..100 (busiest day of the month) */
     public function loadPercent(): int
     {
-        return BookingMode::loadPercent($this->usedSlots(), $this->slotCount);
+        return BookingMode::loadPercent($this->usedSeconds(), $this->blockSeconds());
     }
 
     public function status(): AvailabilityStatus
     {
         return match (true) {
-            $this->freeSlots() > 0 => AvailabilityStatus::Free,
-            $this->holdSlots > 0 => AvailabilityStatus::Booked,
+            $this->freeSeconds() > 0 => AvailabilityStatus::Free,
+            $this->holdSeconds > 0 => AvailabilityStatus::Booked,
             default => AvailabilityStatus::Occupied,
         };
     }

@@ -22,6 +22,7 @@ use Symfony\Component\HttpKernel\Attribute\MapQueryParameter;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Routing\Requirement\Requirement;
 use Symfony\Component\Security\Http\Attribute\IsCsrfTokenValid;
+use Symfony\Component\Security\Http\Attribute\IsGranted;
 
 /**
  * Requests from the website: the manager's inbox. A request blocks nothing until it is turned
@@ -161,6 +162,7 @@ final class LeadController extends AbstractController
 
     #[Route('/{id}/delete', name: 'delete', requirements: ['id' => Requirement::DIGITS], methods: ['POST'])]
     #[IsCsrfTokenValid(new Expression('"delete-lead-" ~ args["lead"].getId()'))]
+    #[IsGranted(User::ROLE_SUPER_MANAGER)]
     public function delete(Lead $lead): Response
     {
         $this->entityManager->remove($lead);

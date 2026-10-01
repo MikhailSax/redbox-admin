@@ -7,6 +7,8 @@
 {% import 'admin/_icons.html.twig' as ui %}
 {% set current_route = app.request.attributes.get('_route', '') %}
 {% set counters = admin_counters() %}
+{# Agents: clients, media plans, requests and the catalogue (read-only); the rest is for managers #}
+{% set is_manager = is_granted('ROLE_SUPER_MANAGER') %}
 
 {% macro nav_item(label, href, icon, active, badge = null, badge_tone = 'neutral') %}
     {% import 'admin/_icons.html.twig' as ui %}
@@ -43,27 +45,35 @@
         <div>
             {{ _self.section('Работа') }}
             <ul class="space-y-0.5">
-                {{ _self.nav_item('Обзор', path('admin_dashboard'), 'dashboard', current_route == 'admin_dashboard') }}
+                {% if is_manager %}
+                    {{ _self.nav_item('Обзор', path('admin_dashboard'), 'dashboard', current_route == 'admin_dashboard') }}
+                {% endif %}
                 {{ _self.nav_item('Конструкции', path('admin_product_index'), 'billboard', (current_route starts with 'admin_product_' and not (current_route starts with 'admin_product_type_')) or current_route == 'admin_booking_product') }}
                 {{ _self.nav_item('Карта', path('admin_map'), 'map', current_route == 'admin_map') }}
-                {{ _self.nav_item('Брони', path('admin_booking_index'), 'calendar', current_route == 'admin_booking_index', counters.holds ?: null, 'warning') }}
-                {{ _self.nav_item('Платежи', path('admin_payment_index'), 'banknotes', current_route starts with 'admin_payment_', counters.overduePayments ?: null, 'danger') }}
+                {% if is_manager %}
+                    {{ _self.nav_item('Брони', path('admin_booking_index'), 'calendar', current_route == 'admin_booking_index', counters.holds ?: null, 'warning') }}
+                    {{ _self.nav_item('Платежи', path('admin_payment_index'), 'banknotes', current_route starts with 'admin_payment_', counters.overduePayments ?: null, 'danger') }}
+                {% endif %}
                 {{ _self.nav_item('Медиапланы', path('admin_media_plan_index'), 'document', current_route starts with 'admin_media_plan_') }}
                 {{ _self.nav_item('Заявки', path('admin_lead_index'), 'inbox', current_route starts with 'admin_lead_', counters.leads ?: null, 'warning') }}
                 {{ _self.nav_item('Клиенты', path('admin_client_index'), 'client', current_route starts with 'admin_client_') }}
-                {{ _self.nav_item('Акции', path('admin_promotion_index'), 'percent', current_route starts with 'admin_promotion_') }}
-                {{ _self.nav_item('Партнёры', path('admin_partner_index'), 'briefcase', current_route starts with 'admin_partner_') }}
+                {% if is_manager %}
+                    {{ _self.nav_item('Акции', path('admin_promotion_index'), 'percent', current_route starts with 'admin_promotion_') }}
+                    {{ _self.nav_item('Партнёры', path('admin_partner_index'), 'briefcase', current_route starts with 'admin_partner_') }}
+                {% endif %}
             </ul>
         </div>
-        <div>
-            {{ _self.section('Справочники') }}
-            <ul class="space-y-0.5">
-                {{ _self.nav_item('Категории', path('admin_category_index'), 'tag', current_route starts with 'admin_category_') }}
-                {{ _self.nav_item('Типы', path('admin_product_type_index'), 'stack', current_route starts with 'admin_product_type_') }}
-                {{ _self.nav_item('Районы', path('admin_district_index'), 'pin', current_route starts with 'admin_district_') }}
-                {{ _self.nav_item('Услуги', path('admin_service_index'), 'tag', current_route starts with 'admin_service_') }}
-            </ul>
-        </div>
+        {% if is_manager %}
+            <div>
+                {{ _self.section('Справочники') }}
+                <ul class="space-y-0.5">
+                    {{ _self.nav_item('Категории', path('admin_category_index'), 'tag', current_route starts with 'admin_category_') }}
+                    {{ _self.nav_item('Типы', path('admin_product_type_index'), 'stack', current_route starts with 'admin_product_type_') }}
+                    {{ _self.nav_item('Районы', path('admin_district_index'), 'pin', current_route starts with 'admin_district_') }}
+                    {{ _self.nav_item('Услуги', path('admin_service_index'), 'tag', current_route starts with 'admin_service_') }}
+                </ul>
+            </div>
+        {% endif %}
         {% if is_granted('ROLE_ADMIN') %}
             <div>
                 {{ _self.section('Администрирование') }}

@@ -13,8 +13,10 @@ use Doctrine\ORM\Mapping as ORM;
  * Whole sides (static, prismatron) are booked for whole calendar months; airtime (video) sides for any days
  * (two weeks at least), $slots slots of the screen's block.
  *
- * Created as a 24h hold via BookingManager; a hold that is not paid in time
+ * Created as a 24h hold via BookingManager; a hold that is not confirmed in time
  * stops blocking the side at $expiresAt and is later marked Expired.
+ * A confirmed booking holds the side for good; whether the client has paid is tracked apart ($paidAt),
+ * since post-paying clients get their booking confirmed before they pay.
  */
 #[ORM\Entity(repositoryClass: BookingRepository::class)]
 #[ORM\HasLifecycleCallbacks]
@@ -46,13 +48,24 @@ class Booking
     #[ORM\Column(nullable: true)]
     private ?int $slots;
 
+    /**
+     * Seconds of every taken slot the client gets: 5 of a 10-second slot (the other half goes to someone else)
+     * or the whole slot; null = the whole slot (see ProductSide::secondsTakenBy()).
+     */
+    #[ORM\Column(nullable: true)]
+    private ?int $slotSeconds = null;
+
     #[ORM\Column(length: 20, enumType: BookingStatus::class)]
     private BookingStatus $status = BookingStatus::Hold;
 
-    /** When an unpaid hold stops blocking the side; null once paid */
+    /** When an unconfirmed hold stops blocking the side; null once confirmed */
     #[ORM\Column(nullable: true)]
     private ?\DateTimeImmutable $expiresAt = null;
 
+    #[ORM\Column(nullable: true)]
+    private ?\DateTimeImmutable $confirmedAt = null;
+
+    /** When the client paid; null = not paid yet (a post-paying client's confirmed booking stays unpaid for a while) */
     #[ORM\Column(nullable: true)]
     private ?\DateTimeImmutable $paidAt = null;
 
@@ -88,6 +101,7 @@ class Booking
         string $clientPhone,
         ?string $comment = null,
         ?User $createdBy = null,
+        ?int $slotSeconds = null,
     ) {
         $this->side = $side;
         $this->startDate = $startDate->setTime(0, 0);
@@ -98,6 +112,7 @@ class Booking
         $this->clientPhone = $clientPhone;
         $this->comment = $comment;
         $this->createdBy = $createdBy;
+        $this->slotSeconds = null !== $slots ? $slotSeconds : null;
     }
 
     public function getId(): ?int
@@ -159,6 +174,11 @@ class Booking
         return $this->slots;
     }
 
+    public function getSlotSeconds(): ?int
+    {
+        return $this->slotSeconds;
+    }
+
     public function getStatus(): BookingStatus
     {
         return $this->status;
@@ -178,7 +198,7 @@ class Booking
      */
     public function isActiveAt(\DateTimeInterface $now): bool
     {
-        return BookingStatus::Paid === $this->status
+        return BookingStatus::Confirmed === $this->status
             || (BookingStatus::Hold === $this->status && !$this->isHoldOverdue($now));
     }
 
@@ -193,11 +213,31 @@ class Booking
         $this->expiresAt = $until;
     }
 
+    /** The side is the client's for good: no longer released automatically, paid or not */
+    public function confirm(\DateTimeImmutable $at): void
+    {
+        $this->status = BookingStatus::Confirmed;
+        $this->confirmedAt ??= $at;
+        $this->expiresAt = null;
+    }
+
+    /** Money came in; a hold paid for is confirmed at once */
     public function markPaid(\DateTimeImmutable $at): void
     {
-        $this->status = BookingStatus::Paid;
+        if (BookingStatus::Hold === $this->status) {
+            $this->confirm($at);
+        }
         $this->paidAt = $at;
-        $this->expiresAt = null;
+    }
+
+    public function markUnpaid(): void
+    {
+        $this->paidAt = null;
+    }
+
+    public function isPaid(): bool
+    {
+        return null !== $this->paidAt;
     }
 
     public function cancel(): void
@@ -214,6 +254,11 @@ class Booking
     public function getExpiresAt(): ?\DateTimeImmutable
     {
         return $this->expiresAt;
+    }
+
+    public function getConfirmedAt(): ?\DateTimeImmutable
+    {
+        return $this->confirmedAt;
     }
 
     public function getPaidAt(): ?\DateTimeImmutable

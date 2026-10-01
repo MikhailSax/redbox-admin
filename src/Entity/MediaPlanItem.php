@@ -31,6 +31,10 @@ class MediaPlanItem
     #[ORM\Column(nullable: true)]
     private ?int $slots;
 
+    /** Seconds of each slot the client gets: 5 of a 10-second slot, or null for the whole slot (see Booking::$slotSeconds) */
+    #[ORM\Column(nullable: true)]
+    private ?int $slotSeconds = null;
+
     /** Selling price per month for this side (all its slots), rubles */
     #[ORM\Column(type: Types::DECIMAL, precision: 12, scale: 2)]
     private string $monthlyPrice;
@@ -177,6 +181,25 @@ class MediaPlanItem
         return $this;
     }
 
+    public function getSlotSeconds(): ?int
+    {
+        return $this->slotSeconds;
+    }
+
+    /** null, or the whole slot, both mean the whole slot */
+    public function setSlotSeconds(?int $slotSeconds): static
+    {
+        $this->slotSeconds = null !== $slotSeconds && null !== $this->slots && $this->side->secondsPerSlot($slotSeconds) < $this->side->getSlotSeconds() ? $slotSeconds : null;
+
+        return $this;
+    }
+
+    /** Share of each slot the client gets: 1, or 0.5 for 5 seconds of a 10-second slot */
+    public function getSlotShare(): float
+    {
+        return null !== $this->slots ? $this->side->secondsPerSlot($this->slotSeconds) / max(1, $this->side->getSlotSeconds()) : 1.0;
+    }
+
     /** List price per month set anew (the price list, the slots or the term changed); promotions are applied on top */
     public function setBasePrice(string $basePrice): static
     {
@@ -268,7 +291,7 @@ class MediaPlanItem
             return 0.0;
         }
 
-        return (float) $product->getPurchasePrice() * ($this->slots ?? 1);
+        return (float) $product->getPurchasePrice() * ($this->slots ?? 1) * $this->getSlotShare();
     }
 
     /**
@@ -277,7 +300,7 @@ class MediaPlanItem
      */
     public function getContacts(): ?int
     {
-        $daily = $this->side->getDailyContacts($this->slots);
+        $daily = $this->side->getDailyContacts($this->slots, $this->slotSeconds);
 
         return null !== $daily && null !== $this->plan ? (int) round($daily * $this->plan->getDays()) : null;
     }

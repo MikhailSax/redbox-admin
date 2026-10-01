@@ -35,6 +35,7 @@ use Symfony\Component\HttpKernel\Attribute\MapQueryParameter;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Routing\Requirement\Requirement;
 use Symfony\Component\Security\Http\Attribute\IsCsrfTokenValid;
+use Symfony\Component\Security\Http\Attribute\IsGranted;
 
 #[Route('/admin/media-plans', name: 'admin_media_plan_')]
 final class MediaPlanController extends AbstractController
@@ -205,10 +206,11 @@ final class MediaPlanController extends AbstractController
         $payload = $request->getPayload();
         // getInt() rejects an empty string with a 400; empty or missing slots just mean "default"
         $slots = (int) $payload->getString('slots') ?: null;
+        $slotSeconds = (int) $payload->getString('slotSeconds') ?: null;
         $added = 0;
         foreach ($payload->all('sides') as $sideId) {
             $side = $this->entityManager->find(ProductSide::class, (int) $sideId);
-            if (null !== $side && null !== $this->manager->addSide($plan, $side, $slots)) {
+            if (null !== $side && null !== $this->manager->addSide($plan, $side, $slots, $slotSeconds)) {
                 ++$added;
             }
         }
@@ -260,8 +262,10 @@ final class MediaPlanController extends AbstractController
         $item->setTexts($title, $format, $payload->getString('description'));
 
         $slots = (int) $payload->getString('slots');
-        if ($item->getSide()->isAirtime() && $slots > 0 && $slots !== $item->getSlots()) {
-            $this->manager->changeSlots($item, $slots);
+        $slotSeconds = (int) $payload->getString('slotSeconds') ?: null;
+        if ($item->getSide()->isAirtime() && $slots > 0
+            && ($slots !== $item->getSlots() || $item->getSide()->secondsPerSlot($slotSeconds) !== $item->getSide()->secondsPerSlot($item->getSlotSeconds()))) {
+            $this->manager->changeSlots($item, $slots, $slotSeconds);
         }
 
         $plan->touch();
@@ -314,13 +318,14 @@ final class MediaPlanController extends AbstractController
 
     #[Route('/{id}/book', name: 'book', requirements: ['id' => Requirement::DIGITS], methods: ['POST'])]
     #[IsCsrfTokenValid(new Expression('"media-plan-" ~ args["plan"].getId()'))]
+    #[IsGranted(User::ROLE_SUPER_MANAGER)]
     public function book(MediaPlan $plan): Response
     {
         $user = $this->getUser();
         $result = $this->manager->bookAll($plan, $user instanceof User ? $user : null);
 
         if ($result['booked'] > 0) {
-            $this->addFlash('success', \sprintf('Создано броней: %d. Они ждут оплаты 24 часа.', $result['booked']));
+            $this->addFlash('success', \sprintf('Создано броней: %d. Они ждут подтверждения 24 часа.', $result['booked']));
         }
         foreach ($result['failed'] as $message) {
             $this->addFlash('error', $message);
@@ -333,20 +338,21 @@ final class MediaPlanController extends AbstractController
     }
 
     /**
-     * Fixes the sides for the client without waiting for the payment calendar: holds become paid bookings,
+     * Fixes the sides for the client without waiting for the payment calendar: holds become confirmed bookings,
      * expired and missing ones are booked again. Marking a payment of the plan paid does the same by itself.
      */
     #[Route('/{id}/bookings/confirm', name: 'confirm_bookings', requirements: ['id' => Requirement::DIGITS], methods: ['POST'])]
     #[IsCsrfTokenValid(new Expression('"media-plan-" ~ args["plan"].getId()'))]
+    #[IsGranted(User::ROLE_SUPER_MANAGER)]
     public function confirmBookings(MediaPlan $plan): Response
     {
         $user = $this->getUser();
         $result = $this->manager->confirmBookings($plan, $user instanceof User ? $user : null);
 
         if ($result['confirmed'] + $result['created'] > 0) {
-            $this->addFlash('success', \sprintf('Брони закреплены: %d, создано заново: %d', $result['confirmed'], $result['created']));
+            $this->addFlash('success', \sprintf('Брони подтверждены: %d, создано заново: %d', $result['confirmed'], $result['created']));
         } elseif ([] === $result['failed']) {
-            $this->addFlash('success', 'Все брони уже закреплены');
+            $this->addFlash('success', 'Все брони уже подтверждены');
         }
         foreach ($result['failed'] as $message) {
             $this->addFlash('error', $message);
@@ -360,6 +366,7 @@ final class MediaPlanController extends AbstractController
      */
     #[Route('/{id}/payments/schedule', name: 'schedule_payments', requirements: ['id' => Requirement::DIGITS], methods: ['POST'])]
     #[IsCsrfTokenValid(new Expression('"media-plan-" ~ args["plan"].getId()'))]
+    #[IsGranted(User::ROLE_SUPER_MANAGER)]
     public function schedulePayments(MediaPlan $plan, PaymentScheduler $scheduler): Response
     {
         try {
@@ -388,6 +395,7 @@ final class MediaPlanController extends AbstractController
 
     #[Route('/{id}/delete', name: 'delete', requirements: ['id' => Requirement::DIGITS], methods: ['POST'])]
     #[IsCsrfTokenValid(new Expression('"delete-media-plan-" ~ args["plan"].getId()'))]
+    #[IsGranted(User::ROLE_SUPER_MANAGER)]
     public function delete(MediaPlan $plan): Response
     {
         // Bookings made from the plan stay; only the plan and its items go

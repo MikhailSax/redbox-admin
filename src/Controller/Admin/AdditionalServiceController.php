@@ -3,6 +3,7 @@
 namespace App\Controller\Admin;
 
 use App\Entity\AdditionalService;
+use App\Entity\User;
 use App\Form\AdditionalServiceFormType;
 use App\Repository\AdditionalServiceRepository;
 use Doctrine\ORM\EntityManagerInterface;
@@ -13,8 +14,10 @@ use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Routing\Requirement\Requirement;
 use Symfony\Component\Security\Http\Attribute\IsCsrfTokenValid;
+use Symfony\Component\Security\Http\Attribute\IsGranted;
 
 #[Route('/admin/services', name: 'admin_service_')]
+#[IsGranted(User::ROLE_SUPER_MANAGER)]
 final class AdditionalServiceController extends AbstractController
 {
     public function __construct(

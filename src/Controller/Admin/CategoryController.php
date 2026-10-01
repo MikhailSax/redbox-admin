@@ -3,6 +3,7 @@
 namespace App\Controller\Admin;
 
 use App\Entity\Category;
+use App\Entity\User;
 use App\Form\CategoryFormType;
 use App\Repository\CategoryRepository;
 use App\Repository\ProductRepository;
@@ -16,8 +17,10 @@ use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Routing\Requirement\Requirement;
 use Symfony\Component\Security\Http\Attribute\IsCsrfTokenValid;
+use Symfony\Component\Security\Http\Attribute\IsGranted;
 
 #[Route('/admin/categories', name: 'admin_category_')]
+#[IsGranted(User::ROLE_SUPER_MANAGER)]
 final class CategoryController extends AbstractController
 {
     public function __construct(

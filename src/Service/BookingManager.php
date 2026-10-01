@@ -20,10 +20,14 @@ use Symfony\Component\Lock\LockFactory;
  *  - the side's type decides (sides of one structure may differ: a screen and a static poster);
  *  - whole sides: a side is booked for whole months, one active booking at a time;
  *  - airtime sides (video): sold by days; the screen's block has a number of slots (ProductSide::$slotCount,
- *    12 by default) and a booking takes one or more of them on every day; the screen is taken when every slot is;
+ *    12 by default) and a booking takes one or more of them on every day, each whole or in part (5 seconds of
+ *    a 10-second slot, the other 5 go to another client). The load is counted in seconds of the block:
+ *    a slot is taken when all its time is, the screen when the whole block is;
  *  - nothing is placed for less than two weeks (BookingMode::MIN_DAYS);
- *  - a new booking is a hold that blocks the slot for 24 hours; unpaid holds stop
- *    blocking at the deadline and are marked Expired by the scheduled cleanup.
+ *  - a new booking is a hold that blocks the slot for 24 hours; holds not confirmed by then stop
+ *    blocking at the deadline and are marked Expired by the scheduled cleanup;
+ *  - a confirmed booking keeps the side whether it's paid or not (post-paying clients pay later):
+ *    payment is a mark of its own (markPaid() / markUnpaid()).
  */
 class BookingManager
 {
@@ -50,6 +54,7 @@ class BookingManager
         }
         [$start, $end] = $request->period();
         $slots = $this->isAirtime($side) ? $request->slots : null;
+        $seconds = null !== $slots ? $side->secondsPerSlot($request->slotSeconds) : null;
         if ($this->isAirtime($side) && (null === $slots || $slots < 1 || $slots > $side->getSlotCount())) {
             // e.g. a media plan item added before the side became a screen: without slots it would take the whole block
             throw new BookingException(\sprintf('Сторона %s продаётся эфиром — укажите число слотов: от 1 до %d.', $side->getName(), $side->getSlotCount()));
@@ -67,9 +72,9 @@ class BookingManager
             if ($request->isByDays() && $start < $now->setTime(0, 0)) {
                 throw new BookingException('Первый день брони уже прошёл — выберите сегодня или позже.');
             }
-            $this->assertAvailable($side, $start, $end, $slots, $now);
+            $this->assertAvailable($side, $start, $end, $slots, $seconds, $now);
 
-            $booking = new Booking($side, $start, $end, $slots, $request->client, $request->contactName(), $request->contactPhone(), $request->comment, $createdBy);
+            $booking = new Booking($side, $start, $end, $slots, $request->client, $request->contactName(), $request->contactPhone(), $request->comment, $createdBy, $seconds);
             $booking->hold($now->modify(self::HOLD_TTL));
 
             $this->entityManager->persist($booking);
@@ -82,20 +87,65 @@ class BookingManager
     }
 
     /**
+     * The hold becomes the client's for good, paid or not (post-paying clients pay later).
+     *
+     * @throws BookingException
+     */
+    public function confirm(Booking $booking): void
+    {
+        $now = $this->clock->now();
+        $this->assertHoldLive($booking, $now);
+        if (BookingStatus::Hold !== $booking->getStatus()) {
+            throw new BookingException('Подтвердить можно только бронь, которая ждёт подтверждения.');
+        }
+
+        $booking->confirm($now);
+        $this->entityManager->flush();
+    }
+
+    /**
+     * Marks the booking paid; a hold paid for is confirmed at the same time.
+     *
      * @throws BookingException
      */
     public function markPaid(Booking $booking): void
     {
         $now = $this->clock->now();
-        if ($booking->isHoldOverdue($now)) {
-            throw new BookingException('Срок брони истёк — место могли занять. Создайте новую бронь.');
+        $this->assertHoldLive($booking, $now);
+        if (!$booking->isActiveAt($now)) {
+            throw new BookingException('Эта бронь уже не действует.');
         }
-        if (BookingStatus::Hold !== $booking->getStatus()) {
-            throw new BookingException('Оплатить можно только бронь, которая ждёт оплаты.');
+        if ($booking->isPaid()) {
+            throw new BookingException('Бронь уже отмечена оплаченной.');
         }
 
         $booking->markPaid($now);
         $this->entityManager->flush();
+    }
+
+    /**
+     * Takes the payment mark back (marked by mistake); the booking stays confirmed.
+     *
+     * @throws BookingException
+     */
+    public function markUnpaid(Booking $booking): void
+    {
+        if (!$booking->isPaid()) {
+            throw new BookingException('Бронь и так не оплачена.');
+        }
+
+        $booking->markUnpaid();
+        $this->entityManager->flush();
+    }
+
+    /**
+     * @throws BookingException
+     */
+    private function assertHoldLive(Booking $booking, \DateTimeImmutable $now): void
+    {
+        if ($booking->isHoldOverdue($now)) {
+            throw new BookingException('Срок брони истёк — место могли занять. Создайте новую бронь.');
+        }
     }
 
     /**
@@ -112,7 +162,7 @@ class BookingManager
     }
 
     /**
-     * Marks unpaid holds past their deadline as Expired. Run every few minutes by the scheduler.
+     * Marks unconfirmed holds past their deadline as Expired. Run every few minutes by the scheduler.
      *
      * @return int number of expired holds
      */
@@ -129,7 +179,7 @@ class BookingManager
 
     /**
      * Occupancy of each side of the product per column (a month or a day of the grid).
-     * "used" is the slots of the block taken on the busiest day of the column.
+     * "used" is the seconds of the block taken on the busiest day of the column.
      *
      * @param array<string, array{0: \DateTimeImmutable, 1: \DateTimeImmutable}> $columns key => [first day, last day]
      *
@@ -162,7 +212,7 @@ class BookingManager
     }
 
     /**
-     * The busiest day of [$from, $to]: slots of the block taken by $bookings on it
+     * The busiest day of [$from, $to]: seconds of the block taken by $bookings on it
      * (a whole-side booking takes the whole block).
      *
      * @param list<Booking> $bookings
@@ -182,7 +232,7 @@ class BookingManager
     }
 
     /**
-     * Periods within [$from, $to] when every slot of the side is taken: what a client sees as "busy".
+     * Periods within [$from, $to] when the side's whole block is taken: what a client sees as "busy".
      *
      * @param list<Booking> $bookings active bookings of the side
      *
@@ -194,7 +244,7 @@ class BookingManager
         $start = null;
         foreach (self::load($bookings, $from, $to) as $day => $used) {
             $day = new \DateTimeImmutable($day);
-            if ($used >= $side->getSlotCount()) {
+            if ($used >= $side->getBlockSeconds()) {
                 $start ??= $day;
             } elseif (null !== $start) {
                 $periods[] = [$start, $day->modify('-1 day')];
@@ -207,17 +257,18 @@ class BookingManager
     }
 
     /**
-     * Slots taken from each day on where the load changes: +slots on the first day, -slots the day after the last one.
+     * Seconds of the block taken from each day on where the load changes: +seconds on the first day,
+     * -seconds the day after the last one.
      *
      * @param list<Booking> $bookings
      *
-     * @return array<string, int> "Y-m-d" => slots taken from that day on, in date order
+     * @return array<string, int> "Y-m-d" => seconds taken from that day on, in date order
      */
     private static function load(array $bookings, \DateTimeImmutable $from, \DateTimeImmutable $to): array
     {
         $changes = [];
         foreach ($bookings as $booking) {
-            $slots = $booking->getSide()->slotsTakenBy($booking);
+            $slots = $booking->getSide()->secondsTakenBy($booking);
             $start = max($booking->getStartDate(), $from)->format('Y-m-d');
             $end = min($booking->getEndDate(), $to)->modify('+1 day')->format('Y-m-d');
             if ($start < $end) {
@@ -240,10 +291,11 @@ class BookingManager
      * Why the side can't be booked for the days [$start, $end] right now, or null when it can.
      * A read-only check (no lock): the real booking re-checks under the lock.
      */
-    public function availabilityProblem(ProductSide $side, \DateTimeImmutable $start, \DateTimeImmutable $end, ?int $slots): ?string
+    public function availabilityProblem(ProductSide $side, \DateTimeImmutable $start, \DateTimeImmutable $end, ?int $slots, ?int $slotSeconds = null): ?string
     {
         try {
-            $this->assertAvailable($side, $start, $end, $this->isAirtime($side) ? max(1, (int) $slots) : null, $this->clock->now());
+            $airtime = $this->isAirtime($side);
+            $this->assertAvailable($side, $start, $end, $airtime ? max(1, (int) $slots) : null, $airtime ? $side->secondsPerSlot($slotSeconds) : null, $this->clock->now());
 
             return null;
         } catch (BookingException $e) {
@@ -259,7 +311,7 @@ class BookingManager
     /**
      * @throws BookingException
      */
-    private function assertAvailable(ProductSide $side, \DateTimeImmutable $start, \DateTimeImmutable $end, ?int $slots, \DateTimeImmutable $now): void
+    private function assertAvailable(ProductSide $side, \DateTimeImmutable $start, \DateTimeImmutable $end, ?int $slots, ?int $slotSeconds, \DateTimeImmutable $now): void
     {
         $existing = $this->bookings->findActiveOverlapping($side, $start, $end, $now);
 
@@ -272,13 +324,17 @@ class BookingManager
             return;
         }
 
-        // Every day of the period must have room for the slots; checking the busiest one is enough.
+        // Every day of the period must have room for the airtime; checking the busiest one is enough.
         // A whole-side booking on an airtime side (e.g. type switched later) takes the whole block.
         $peak = self::peak($existing, $start, $end);
-        if ($peak['used'] + $slots > $side->getSlotCount()) {
+        $needed = $side->airtimeSeconds($slots, $slotSeconds);
+        if ($peak['used'] + $needed > $side->getBlockSeconds()) {
+            $free = max(0, $side->getBlockSeconds() - $peak['used']);
             throw new BookingException(\sprintf(
-                'На %s у стороны %s свободно слотов: %d из %d, а нужно %d.',
-                MonthCalendar::periodLabel($peak['day'], $peak['day']), $side->getName(), max(0, $side->getSlotCount() - $peak['used']), $side->getSlotCount(), $slots,
+                'На %s у стороны %s свободно слотов: %s из %d, а нужно %s (свободно %d из %d сек эфира).',
+                MonthCalendar::periodLabel($peak['day'], $peak['day']), $side->getName(),
+                BookingMode::slotsLabel($free, $side->getSlotSeconds()), $side->getSlotCount(),
+                BookingMode::slotsLabel($needed, $side->getSlotSeconds()), $free, $side->getBlockSeconds(),
             ));
         }
     }

@@ -3,6 +3,7 @@
 namespace App\Controller\Admin;
 
 use App\Entity\Promotion;
+use App\Entity\User;
 use App\Form\PromotionFormType;
 use App\Repository\PromotionRepository;
 use Doctrine\ORM\EntityManagerInterface;
@@ -15,12 +16,14 @@ use Symfony\Component\HttpKernel\Attribute\MapQueryParameter;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Routing\Requirement\Requirement;
 use Symfony\Component\Security\Http\Attribute\IsCsrfTokenValid;
+use Symfony\Component\Security\Http\Attribute\IsGranted;
 
 /**
  * Promotions: discounts on structures (all, by category or one by one), optionally with a promo code,
  * for a first order only or from N months. Applied in media plans by MediaPlanManager.
  */
 #[Route('/admin/promotions', name: 'admin_promotion_')]
+#[IsGranted(User::ROLE_SUPER_MANAGER)]
 final class PromotionController extends AbstractController
 {
     public const STATES = [

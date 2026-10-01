@@ -134,8 +134,27 @@ class BookingFormType extends AbstractType
                 'label' => 'Слотов',
                 'required' => !$mixed,
                 'attr' => ['min' => 1, 'max' => [] !== $slotCounts ? max($slotCounts) : BookingMode::DEFAULT_SLOT_COUNT],
-                'help' => 'Сколько слотов блока берёт клиент — обычно 1. Экран занят, когда разобраны все слоты.',
+                'help' => 'Сколько слотов блока берёт клиент — обычно 1. Экран занят, когда выкуплено всё время блока.',
             ]);
+
+            // A 10-second slot is sold whole or by halves: two clients of 5 seconds share it
+            $durations = [];
+            foreach ($product->getSides() as $side) {
+                if ($side->isAirtime()) {
+                    $durations = array_merge($durations, $side->getSlotSecondsChoices());
+                }
+            }
+            $durations = array_values(array_unique($durations));
+            rsort($durations);
+            if (\count($durations) > 1) {
+                $builder->add('slotSeconds', ChoiceType::class, [
+                    'label' => 'Секунд в каждом слоте',
+                    'choices' => array_combine(array_map(static fn (int $s) => $s.' сек', $durations), $durations),
+                    'placeholder' => 'Весь слот',
+                    'required' => false,
+                    'help' => 'Слот 10 сек можно продать целиком или половину — 5 сек; вторая половина остаётся свободной для другого клиента.',
+                ]);
+            }
         }
     }
 

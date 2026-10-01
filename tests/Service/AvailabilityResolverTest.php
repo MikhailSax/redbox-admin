@@ -127,7 +127,8 @@ final class AvailabilityResolverTest extends KernelTestCase
         $this->book($this->screen, 'A', slots: 1); // 11 of 12 taken
 
         $side = $this->resolve($this->screen)->sides[0];
-        self::assertSame(11, $side->usedSlots());
+        self::assertSame('11', $side->usedSlotsLabel());
+        self::assertSame(5, $side->freeSeconds());
         self::assertSame(12, $side->slotCount);
         self::assertSame(91, $side->loadPercent()); // rounded down: 100% only when every slot is taken
         self::assertSame(AvailabilityStatus::Free, $side->status());
@@ -136,8 +137,43 @@ final class AvailabilityResolverTest extends KernelTestCase
         self::assertSame(AvailabilityStatus::Booked, $this->resolve($this->screen)->status());
 
         $this->clock->modify('+25 hours'); // the holds (2 slots) expire
-        self::assertSame(10, $this->resolve($this->screen)->sides[0]->usedSlots());
+        self::assertSame('10', $this->resolve($this->screen)->sides[0]->usedSlotsLabel());
         self::assertSame(AvailabilityStatus::Free, $this->resolve($this->screen)->status());
+    }
+
+    public function testConfirmedUnpaidBookingOccupiesTheSide(): void
+    {
+        // post-paying clients: confirmed, the money comes later
+        foreach (['A', 'B'] as $side) {
+            $this->bookings->confirm($this->book($this->billboard, $side));
+        }
+
+        $this->clock->modify('+3 days');
+        self::assertSame(AvailabilityStatus::Occupied, $this->resolve($this->billboard)->status());
+    }
+
+    public function testHalfSlotLeavesTheOtherHalfForSale(): void
+    {
+        $screenSide = $this->screen->getSides()->first();
+        $screenSide->setSlotSeconds(10)->setSlotCount(1); // one 10-second slot
+        static::getContainer()->get(EntityManagerInterface::class)->flush();
+
+        $request = new BookingRequest();
+        $request->side = $screenSide;
+        $request->startMonth = '2026-09';
+        $request->slots = 1;
+        $request->slotSeconds = 5;
+        $request->client = $this->client;
+        $this->pay($this->bookings->hold($request));
+
+        $side = $this->resolve($this->screen)->sides[0];
+        self::assertSame('0,5', $side->usedSlotsLabel());
+        self::assertSame(5, $side->freeSeconds());
+        self::assertSame(50, $side->loadPercent());
+        self::assertSame(AvailabilityStatus::Free, $side->status());
+
+        $this->pay($this->bookings->hold($request)); // the other half
+        self::assertSame(AvailabilityStatus::Occupied, $this->resolve($this->screen)->status());
     }
 
     public function testAirtimeStatusUsesTheBusiestDayFromToday(): void
@@ -147,13 +183,13 @@ final class AvailabilityResolverTest extends KernelTestCase
             $this->pay($this->bookDays('2026-09-13', '2026-09-26', 1));
         }
         self::assertSame(AvailabilityStatus::Occupied, $this->resolve($this->screen)->status());
-        self::assertSame(12, $this->resolve($this->screen)->sides[0]->usedSlots());
+        self::assertSame('12', $this->resolve($this->screen)->sides[0]->usedSlotsLabel());
         self::assertSame(100, $this->resolve($this->screen)->sides[0]->loadPercent());
 
         // after the 26th the rest of September is free again
         $this->clock->modify('2026-09-27 09:00');
         self::assertSame(AvailabilityStatus::Free, $this->resolve($this->screen)->status());
-        self::assertSame(0, $this->resolve($this->screen)->sides[0]->usedSlots());
+        self::assertSame('0', $this->resolve($this->screen)->sides[0]->usedSlotsLabel());
     }
 
     public function testEachSideUsesItsOwnType(): void
@@ -170,7 +206,7 @@ final class AvailabilityResolverTest extends KernelTestCase
         self::assertFalse($sideA->airtime);
         self::assertSame(AvailabilityStatus::Occupied, $sideA->status());
         self::assertTrue($sideB->airtime);
-        self::assertSame(3, $sideB->usedSlots());
+        self::assertSame('3', $sideB->usedSlotsLabel());
         self::assertSame(25, $sideB->loadPercent());
         self::assertSame(AvailabilityStatus::Free, $sideB->status()); // the rest of the block is still for sale
         self::assertSame(AvailabilityStatus::Free, $this->resolve($this->billboard)->status());
@@ -195,8 +231,8 @@ final class AvailabilityResolverTest extends KernelTestCase
         $all = $this->resolver->forProducts([$this->screen->getId(), $this->billboard->getId()], new \DateTimeImmutable(self::SEPTEMBER));
 
         self::assertSame([$this->screen->getId(), $this->billboard->getId()], array_keys($all));
-        self::assertSame(3, $all[$this->screen->getId()]->sides[0]->paidSlots);
-        self::assertSame(0, $all[$this->billboard->getId()]->sides[0]->paidSlots);
+        self::assertSame(15, $all[$this->screen->getId()]->sides[0]->confirmedSeconds); // 3 slots × 5 s
+        self::assertSame(0, $all[$this->billboard->getId()]->sides[0]->confirmedSeconds);
     }
 
     private function resolve(Product $product, string $month = self::SEPTEMBER): \App\Service\Availability\ProductAvailability

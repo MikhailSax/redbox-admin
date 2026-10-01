@@ -99,6 +99,7 @@ final class ClientController extends AbstractController
 
     #[Route('/{id}/delete', name: 'delete', requirements: ['id' => Requirement::DIGITS], methods: ['POST'])]
     #[IsCsrfTokenValid(new Expression('"delete-client-" ~ args["client"].getId()'))]
+    #[IsGranted(User::ROLE_SUPER_MANAGER)]
     public function delete(User $client): Response
     {
         $this->assertClient($client);
@@ -118,6 +119,7 @@ final class ClientController extends AbstractController
      */
     #[Route('/{id}/verify-email', name: 'verify_email', requirements: ['id' => Requirement::DIGITS], methods: ['POST'])]
     #[IsCsrfTokenValid(new Expression('"verify-email-" ~ args["client"].getId()'))]
+    #[IsGranted(User::ROLE_SUPER_MANAGER)]
     public function verifyEmail(User $client): Response
     {
         $this->assertClient($client);
@@ -131,6 +133,7 @@ final class ClientController extends AbstractController
     /* ---------- Documents ---------- */
 
     #[Route('/{id}/documents', name: 'upload_documents', requirements: ['id' => Requirement::DIGITS], methods: ['POST'])]
+    #[IsGranted(User::ROLE_SUPER_MANAGER)]
     public function uploadDocuments(Request $request, User $client): Response
     {
         $this->assertClient($client);
@@ -171,6 +174,7 @@ final class ClientController extends AbstractController
 
     #[Route('/documents/{document}/delete', name: 'delete_document', requirements: ['document' => Requirement::DIGITS], methods: ['POST'])]
     #[IsCsrfTokenValid(new Expression('"delete-document-" ~ args["document"].getId()'))]
+    #[IsGranted(User::ROLE_SUPER_MANAGER)]
     public function deleteDocument(ClientDocument $document): Response
     {
         $client = $document->getClient();
@@ -185,6 +189,7 @@ final class ClientController extends AbstractController
     /* ---------- Photo reports ---------- */
 
     #[Route('/{id}/reports', name: 'create_report', requirements: ['id' => Requirement::DIGITS], methods: ['POST'])]
+    #[IsGranted(User::ROLE_SUPER_MANAGER)]
     public function createReport(Request $request, User $client): Response
     {
         $this->assertClient($client);
@@ -216,6 +221,7 @@ final class ClientController extends AbstractController
 
     #[Route('/reports/{report}/delete', name: 'delete_report', requirements: ['report' => Requirement::DIGITS], methods: ['POST'])]
     #[IsCsrfTokenValid(new Expression('"delete-report-" ~ args["report"].getId()'))]
+    #[IsGranted(User::ROLE_SUPER_MANAGER)]
     public function deleteReport(PhotoReport $report): Response
     {
         $client = $report->getClient();

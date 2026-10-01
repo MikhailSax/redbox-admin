@@ -43,9 +43,11 @@ class GlobalSearch
     }
 
     /**
+     * @param bool $includeManagement bookings, partners, promotions and dictionaries: not for agents
+     *
      * @return list<Group> non-empty groups only
      */
-    public function search(string $term, bool $includeUsers): array
+    public function search(string $term, bool $includeUsers, bool $includeManagement = true): array
     {
         $term = trim($term);
         if (mb_strlen($term) < self::MIN_LENGTH) {
@@ -54,13 +56,15 @@ class GlobalSearch
 
         $groups = [
             ['title' => 'Конструкции', 'items' => $this->products($term)],
-            ['title' => 'Брони и клиенты', 'items' => $this->bookings($term)],
+            ['title' => 'Брони и клиенты', 'items' => $includeManagement ? $this->bookings($term) : []],
             ['title' => 'Заявки', 'items' => $this->leads($term)],
             ['title' => 'Клиенты', 'items' => $this->clients($term)],
-            ['title' => 'Партнёры', 'items' => $this->partners($term)],
-            ['title' => 'Акции', 'items' => $this->promotions($term)],
-            ['title' => 'Справочники', 'items' => $this->dictionaries($term)],
         ];
+        if ($includeManagement) {
+            $groups[] = ['title' => 'Партнёры', 'items' => $this->partners($term)];
+            $groups[] = ['title' => 'Акции', 'items' => $this->promotions($term)];
+            $groups[] = ['title' => 'Справочники', 'items' => $this->dictionaries($term)];
+        }
         if ($includeUsers) {
             $groups[] = ['title' => 'Пользователи', 'items' => $this->users($term)];
         }

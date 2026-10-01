@@ -7,7 +7,7 @@
     <div class="page-header">
         <div>
             <h1 class="page-title">Брони</h1>
-            <p class="page-subtitle">Неоплаченная бронь держит место 24 часа, затем снимается автоматически</p>
+            <p class="page-subtitle">Неподтверждённая бронь держит место 24 часа, затем снимается автоматически. Постоплатникам бронь подтверждают, а оплату отмечают позже</p>
         </div>
     </div>
 
@@ -17,7 +17,7 @@
             {{ ui.icon('search') }}
             <input type="search" name="q" value="{{ q }}" class="input" autocomplete="off" placeholder="Клиент, телефон или конструкция…">
         </label>
-        <input type="hidden" name="status" value="{{ filter ? filter.value : '' }}">
+        <input type="hidden" name="status" value="{{ unpaid ? 'unpaid' : (filter ? filter.value : '') }}">
     </form>
 
     <div id="booking-results">
@@ -29,8 +29,10 @@
                 {% set chip = 'inline-flex h-8 items-center rounded-full border px-3 text-sm font-medium transition-colors' %}
                 {% for tab in [{value: null, label: 'Все'}]|merge(enum_cases('App\\Enum\\BookingStatus')|map(s => {value: s, label: s.label})) %}
                     <a href="{{ path('admin_booking_index', tab.value ? base|merge({status: tab.value.value}) : base) }}" data-live-link
-                       class="{{ chip }} {{ tab.value == filter ? 'border-zinc-900 bg-zinc-900 text-white' : 'border-default bg-white text-body hover:text-heading' }}">{{ tab.label }}</a>
+                       class="{{ chip }} {{ tab.value == filter and not unpaid ? 'border-zinc-900 bg-zinc-900 text-white' : 'border-default bg-white text-body hover:text-heading' }}">{{ tab.label }}</a>
                 {% endfor %}
+                <a href="{{ path('admin_booking_index', base|merge({status: 'unpaid'})) }}" data-live-link title="Подтверждённые брони постоплатников, по которым ещё нет оплаты"
+                   class="{{ chip }} {{ unpaid ? 'border-zinc-900 bg-zinc-900 text-white' : 'border-default bg-white text-body hover:text-heading' }}">Подтверждены, не оплачены</a>
             </div>
 
             <div class="table-card">
@@ -65,7 +67,7 @@
                             <tr>
                                 <td colspan="6" class="px-4 py-16 text-center">
                                     <span class="mx-auto mb-3 grid size-12 place-items-center rounded-full bg-zinc-100 text-zinc-400">{{ ui.icon('calendar') }}</span>
-                                    <p class="font-medium text-heading">{{ q or filter ? 'Ничего не найдено' : 'Броней пока нет' }}</p>
+                                    <p class="font-medium text-heading">{{ q or filter or unpaid ? 'Ничего не найдено' : 'Броней пока нет' }}</p>
                                     <p class="mt-1 text-sm text-body">Забронировать конструкцию можно из её карточки — вкладка «Бронирование».</p>
                                 </td>
                             </tr>

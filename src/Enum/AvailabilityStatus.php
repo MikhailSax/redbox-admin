@@ -9,9 +9,9 @@ enum AvailabilityStatus: string
 {
     /** Can still be sold: no booking, or airtime left in the loop */
     case Free = 'free';
-    /** Nothing left to sell, but at least part of it is an unpaid 24h hold */
+    /** Nothing left to sell, but at least part of it is an unconfirmed 24h hold */
     case Booked = 'booked';
-    /** Nothing left to sell, everything is paid */
+    /** Nothing left to sell, everything is confirmed (paid or not) */
     case Occupied = 'occupied';
 
     public function label(): string

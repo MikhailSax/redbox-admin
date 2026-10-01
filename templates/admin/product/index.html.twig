@@ -9,7 +9,9 @@
             <h1 class="page-title">Конструкции</h1>
             <p class="page-subtitle">Свои и партнёрские рекламные конструкции и их занятость</p>
         </div>
-        <a href="{{ path('admin_product_new') }}" class="btn btn-primary">{{ ui.icon('plus', 'size-4') }} Добавить</a>
+        {% if is_granted('ROLE_SUPER_MANAGER') %}
+            <a href="{{ path('admin_product_new') }}" class="btn btn-primary">{{ ui.icon('plus', 'size-4') }} Добавить</a>
+        {% endif %}
     </div>
 
     {# Filters apply as you type / choose (assets/admin/live-filter.js); without JS the form still submits normally #}
@@ -140,8 +142,8 @@
                                         {% for side in item.sides %}
                                             {% set side_status = side.status %}
                                             <span class="inline-flex h-6 min-w-6 items-center justify-center rounded-md border px-1.5 text-xs font-medium {{ tones[side_status.value] }}"
-                                                  title="Сторона {{ side.sideName }}: {{ side_status.label|lower }}{{ side.airtime ? ', занято слотов: ' ~ side.usedSlots ~ ' из ' ~ side.slotCount : '' }}">
-                                                {{ side.sideName }}{% if side.airtime %}<span class="ms-1 opacity-70 tabular-nums">{{ side.usedSlots }}/{{ side.slotCount }}</span>{% endif %}
+                                                  title="Сторона {{ side.sideName }}: {{ side_status.label|lower }}{{ side.airtime ? ', занято слотов: ' ~ side.usedSlotsLabel ~ ' из ' ~ side.slotCount ~ ', свободно ' ~ side.freeSeconds ~ ' сек' : '' }}">
+                                                {{ side.sideName }}{% if side.airtime %}<span class="ms-1 opacity-70 tabular-nums">{{ side.usedSlotsLabel }}/{{ side.slotCount }}</span>{% endif %}
                                             </span>
                                         {% else %}
                                             <span class="text-body-subtle">—</span>
@@ -160,14 +162,17 @@
                                 </td>
                                 <td class="px-4 py-3">
                                     <div class="flex justify-end gap-1">
-                                        <a href="{{ path('admin_booking_product', {id: product.id}) }}" class="btn btn-ghost btn-sm">Брони</a>
+                                        {% set can_manage = is_granted('ROLE_SUPER_MANAGER') %}
+                                        <a href="{{ path('admin_booking_product', {id: product.id}) }}" class="btn btn-ghost btn-sm">{{ can_manage ? 'Брони' : 'Занятость' }}</a>
                                         <a href="{{ path('admin_product_edit', {id: product.id}) }}" class="btn btn-secondary btn-sm">Открыть</a>
-                                        <form method="post" action="{{ path('admin_product_delete', {id: product.id}) }}"
-                                              data-confirm="Конструкция «{{ product.name }}» будет удалена вместе со сторонами и фотографиями."
-                                              data-confirm-title="Удалить конструкцию?">
-                                            <input type="hidden" name="_token" value="{{ csrf_token('delete-product-' ~ product.id) }}">
-                                            <button type="submit" class="btn btn-ghost btn-sm text-fg-danger hover:bg-danger-soft hover:text-fg-danger-strong">Удалить</button>
-                                        </form>
+                                        {% if can_manage %}
+                                            <form method="post" action="{{ path('admin_product_delete', {id: product.id}) }}"
+                                                  data-confirm="Конструкция «{{ product.name }}» будет удалена вместе со сторонами и фотографиями."
+                                                  data-confirm-title="Удалить конструкцию?">
+                                                <input type="hidden" name="_token" value="{{ csrf_token('delete-product-' ~ product.id) }}">
+                                                <button type="submit" class="btn btn-ghost btn-sm text-fg-danger hover:bg-danger-soft hover:text-fg-danger-strong">Удалить</button>
+                                            </form>
+                                        {% endif %}
                                     </div>
                                 </td>
                             </tr>
@@ -180,7 +185,9 @@
                                         <p class="mt-1 text-sm text-body">Попробуйте изменить запрос или <a href="{{ path('admin_product_index') }}" class="font-medium text-heading underline">сбросить фильтры</a></p>
                                     {% else %}
                                         <p class="font-medium text-heading">Конструкций пока нет</p>
-                                        <p class="mt-1 text-sm text-body"><a href="{{ path('admin_product_new') }}" class="font-medium text-heading underline">Добавьте первую</a></p>
+                                        {% if is_granted('ROLE_SUPER_MANAGER') %}
+                                            <p class="mt-1 text-sm text-body"><a href="{{ path('admin_product_new') }}" class="font-medium text-heading underline">Добавьте первую</a></p>
+                                        {% endif %}
                                     {% endif %}
                                 </td>
                             </tr>

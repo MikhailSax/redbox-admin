@@ -68,10 +68,12 @@ security:
             # https://symfony.com/doc/current/security/impersonating_user.html
             # switch_user: true
 
-    # Admin > super manager: an admin can do everything a super manager can
+    # Admin > super manager > agent: each can do everything the next one can
     role_hierarchy:
         ROLE_ADMIN: [ROLE_SUPER_MANAGER]
-        ROLE_SUPER_MANAGER: [ROLE_USER]
+        ROLE_SUPER_MANAGER: [ROLE_AGENT]
+        # agent: clients, media plans, website requests; structures read-only (see User::ROLE_AGENT)
+        ROLE_AGENT: [ROLE_USER]
         # website client: documents and photo reports in the personal account
         ROLE_CLIENT: [ROLE_USER]
 
@@ -81,7 +83,8 @@ security:
         - { path: ^/api/v1/me, roles: ROLE_CLIENT }
         - { path: ^/api/, roles: PUBLIC_ACCESS }
         - { path: ^/admin/users, roles: ROLE_ADMIN }
-        - { path: ^/admin, roles: ROLE_SUPER_MANAGER }
+        # the rest of the CRM is narrowed for agents by #[IsGranted('ROLE_SUPER_MANAGER')] on controllers and actions
+        - { path: ^/admin, roles: ROLE_AGENT }
 
 when@test:
     security:

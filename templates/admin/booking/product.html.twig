@@ -21,8 +21,8 @@
             <h2 class="text-lg font-semibold text-heading">{{ grid_airtime ? 'Занятость эфира на ' ~ group.columns|length ~ ' дней' : 'Занятость на 12 месяцев' }}</h2>
             <div class="flex flex-wrap gap-3 text-xs text-body">
                 <span class="inline-flex items-center gap-1.5"><span class="w-3 h-3 rounded-xs bg-success-soft border border-success-subtle"></span>Свободно</span>
-                <span class="inline-flex items-center gap-1.5"><span class="w-3 h-3 rounded-xs bg-warning-soft border border-warning-subtle"></span>{{ grid_airtime ? 'Частично занято' : 'Ждёт оплаты' }}</span>
-                <span class="inline-flex items-center gap-1.5"><span class="w-3 h-3 rounded-xs bg-danger-soft border border-danger-subtle"></span>{{ grid_airtime ? 'Все слоты заняты' : 'Оплачено' }}</span>
+                <span class="inline-flex items-center gap-1.5"><span class="w-3 h-3 rounded-xs bg-warning-soft border border-warning-subtle"></span>{{ grid_airtime ? 'Частично занято' : 'Ждёт подтверждения' }}</span>
+                <span class="inline-flex items-center gap-1.5"><span class="w-3 h-3 rounded-xs bg-danger-soft border border-danger-subtle"></span>{{ grid_airtime ? 'Весь блок занят' : 'Подтверждена' }}</span>
             </div>
         </div>
         <div class="overflow-x-auto border-t border-default">
@@ -47,20 +47,22 @@
                             </th>
                             {% for key, column in group.columns %}
                                 {% set cell = group.cells[side.id][key] %}
-                                {% set clients = cell.bookings|map(b => b.clientTitle ~ (b.slots ? ' (слотов: ' ~ b.slots ~ ')' : '') ~ ' — ' ~ b.statusAt(now).label)|join("\n") %}
+                                {% set clients = cell.bookings|map(b => b.clientTitle ~ (b.slots ? ' (' ~ airtime_label(b) ~ ')' : '') ~ ' — ' ~ b.statusAt(now).label)|join("\n") %}
                                 <td class="p-1">
                                     {% if grid_airtime %}
-                                        {% set percent = min(100, (cell.used * 100 / side.slotCount)|round(0, 'floor')) %}
-                                        <div class="rounded-sm border px-1.5 py-1 text-center {{ cell.used >= side.slotCount ? 'bg-danger-soft border-danger-subtle text-fg-danger-strong' : (cell.used > 0 ? 'bg-warning-soft border-warning-subtle text-fg-warning' : 'bg-success-soft border-success-subtle text-fg-success-strong') }}"
-                                             title="Занято слотов: {{ min(cell.used, side.slotCount) }} из {{ side.slotCount }}{{ clients ? "\n" ~ clients }}">
-                                            <div class="text-xs font-medium whitespace-nowrap tabular-nums">{{ min(cell.used, side.slotCount) }}/{{ side.slotCount }}</div>
+                                        {# cell.used is seconds of the block: half a 10-second slot sold leaves the other half free #}
+                                        {% set used = min(cell.used, side.blockSeconds) %}
+                                        {% set percent = (used * 100 / side.blockSeconds)|round(0, 'floor') %}
+                                        <div class="rounded-sm border px-1.5 py-1 text-center {{ used >= side.blockSeconds ? 'bg-danger-soft border-danger-subtle text-fg-danger-strong' : (used > 0 ? 'bg-warning-soft border-warning-subtle text-fg-warning' : 'bg-success-soft border-success-subtle text-fg-success-strong') }}"
+                                             title="Занято слотов: {{ slots_label(used, side.slotSeconds) }} из {{ side.slotCount }} ({{ used }} из {{ side.blockSeconds }} сек){{ clients ? "\n" ~ clients }}">
+                                            <div class="text-xs font-medium whitespace-nowrap tabular-nums">{{ slots_label(used, side.slotSeconds) }}/{{ side.slotCount }}</div>
                                             <div class="mt-1 h-1 rounded-full bg-neutral-tertiary-medium overflow-hidden"><div class="h-full bg-current" style="width: {{ percent }}%"></div></div>
                                         </div>
                                     {% else %}
                                         {% set booking = cell.bookings|first %}
                                         {% if booking %}
-                                            {% set paid = booking.status.value == 'paid' %}
-                                            <div class="rounded-sm border px-1.5 py-1 text-center text-xs font-medium truncate max-w-28 {{ paid ? 'bg-danger-soft border-danger-subtle text-fg-danger-strong' : 'bg-warning-soft border-warning-subtle text-fg-warning' }}" title="{{ clients }}">
+                                            {% set confirmed = booking.status.value == 'confirmed' %}
+                                            <div class="rounded-sm border px-1.5 py-1 text-center text-xs font-medium truncate max-w-28 {{ confirmed ? 'bg-danger-soft border-danger-subtle text-fg-danger-strong' : 'bg-warning-soft border-warning-subtle text-fg-warning' }}" title="{{ clients }}">
                                                 {{ booking.clientTitle }}
                                             </div>
                                         {% else %}
@@ -79,6 +81,8 @@
     </div>
     {% endfor %}
 
+    {# Agents only look at the occupancy: booking is for managers #}
+    {% if is_granted('ROLE_SUPER_MANAGER') %}
     <div class="grid gap-6 lg:grid-cols-3 mb-6">
         {# New booking #}
         <div class="card lg:col-span-2">
@@ -105,7 +109,12 @@
                     {% endif %}
                 </div>
                 {% if form.slots is defined %}
-                    <div class="md:w-1/3">{{ form_row(form.slots, airtime_row) }}</div>
+                    <div class="grid gap-x-6 md:grid-cols-3">
+                        {{ form_row(form.slots, airtime_row) }}
+                        {% if form.slotSeconds is defined %}
+                            <div class="md:col-span-2">{{ form_row(form.slotSeconds, airtime_row) }}</div>
+                        {% endif %}
+                    </div>
                 {% endif %}
                 {{ form_row(form.client) }}
                 {{ include('admin/_new_client_fields.html.twig', {form: form}) }}
@@ -121,15 +130,15 @@
         <div class="card">
             <h2 class="text-lg font-semibold text-heading mb-3">Как работает бронь</h2>
             <ul class="space-y-3 text-sm text-body list-disc ps-5">
-                <li>Новая бронь держит место <b class="text-heading">24 часа</b>. Если за это время не отметить оплату, бронь снимается автоматически и место освобождается.</li>
+                <li>Новая бронь держит место <b class="text-heading">24 часа</b>. Если за это время её не подтвердить и не отметить оплату, бронь снимается автоматически и место освобождается.</li>
                 {% if airtime %}
                     <li>Эфир продаётся <b class="text-heading">по дням</b>: с любого дня по любой, включительно, но не меньше <b class="text-heading">{{ minDays }} дней</b>.</li>
-                    <li>Блок экрана делится на <b class="text-heading">слоты</b> (обычно 12 по 5 сек). Клиент берёт один или несколько слотов; экран занят, когда разобраны все. В сетке — сколько слотов занято в этот день.</li>
+                    <li>Блок экрана делится на <b class="text-heading">слоты</b>. Клиент берёт один или несколько слотов — целиком или по 5 сек из слота в 10 сек (вторая половина остаётся свободной). Слот занят, когда выкуплено всё его время, экран — когда весь блок. В сетке — сколько слотов занято в этот день.</li>
                 {% endif %}
                 {% if whole %}
                     <li>{{ mixed ? 'Статичная сторона' : 'Сторона' }} бронируется целиком на календарный месяц — одному клиенту.</li>
                 {% endif %}
-                <li>После оплаты нажмите «Оплачено» — бронь закрепится.</li>
+                <li>«Подтвердить» закрепляет бронь без оплаты — для постоплатников; оплату отметьте «Оплачено», когда придут деньги. «Оплачено» у неподтверждённой брони сразу и подтверждает её.</li>
             </ul>
         </div>
     </div>
@@ -166,4 +175,5 @@
             </tbody>
         </table>
     </div>
+    {% endif %}
 {% endblock %}

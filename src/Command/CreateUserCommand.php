@@ -22,6 +22,7 @@ final class CreateUserCommand
     private const ROLES = [
         'admin' => User::ROLE_ADMIN,
         'super-manager' => User::ROLE_SUPER_MANAGER,
+        'agent' => User::ROLE_AGENT,
     ];
 
     public function __construct(
@@ -35,7 +36,7 @@ final class CreateUserCommand
         SymfonyStyle $io,
         #[Argument('Email (логин)')] string $email,
         #[Argument('Имя для отображения')] string $name,
-        #[Option('Роль: admin или super-manager', suggestedValues: ['admin', 'super-manager'])] string $role = 'admin',
+        #[Option('Роль: admin, super-manager или agent', suggestedValues: ['admin', 'super-manager', 'agent'])] string $role = 'admin',
         #[Option('Пароль; если не указан, будет запрошен')] ?string $password = null,
     ): int {
         if (!isset(self::ROLES[$role])) {

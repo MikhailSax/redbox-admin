@@ -5,6 +5,7 @@ namespace App\Controller\Admin;
 use App\Dto\ProductListQuery;
 use App\Entity\Product;
 use App\Entity\Promotion;
+use App\Entity\User;
 use App\Repository\CategoryRepository;
 use App\Repository\MediaPlanRepository;
 use App\Repository\PartnerRepository;
@@ -75,7 +76,8 @@ final class MapController extends AbstractController
                     'status' => $side->status()->value,
                     'label' => $side->status()->label(),
                     'airtime' => $side->airtime,
-                    'used' => $side->usedSlots(),
+                    'used' => $side->usedSlotsLabel(),
+                    'freeSeconds' => $side->freeSeconds(),
                     'slots' => $side->slotCount,
                 ], $item->sides),
                 'meta' => implode(' · ', array_filter([$product->getCategory()?->getName(), $product->getTypeLabel(), $product->getDistrict()?->getName()])),
@@ -92,6 +94,8 @@ final class MapController extends AbstractController
         }
 
         return $this->json([
+            // agents look at the occupancy, booking is for managers
+            'canBook' => $this->isGranted(User::ROLE_SUPER_MANAGER),
             'month' => MonthCalendar::label($month),
             'statusCounts' => $statusCounts,
             'points' => $points,

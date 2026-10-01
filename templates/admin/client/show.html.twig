@@ -7,7 +7,9 @@
 #}
 {% set heading = client.id ? (client.company ?? client.name) : 'Новый клиент' %}
 {% set tabs = {profile: {label: 'Профиль'}} %}
-{% if client.id %}
+{# Agents keep the client's card; bookings, payments, documents and photo reports are for managers #}
+{% set is_manager = is_granted('ROLE_SUPER_MANAGER') %}
+{% if client.id and is_manager %}
     {% set overdue_count = payments|filter(p => p.statusAt(now).value == 'overdue')|length %}
     {% set tabs = tabs|merge({
         bookings: {label: 'Брони', counter: bookings|length ?: null},
@@ -43,7 +45,7 @@
                 </p>
             {% endif %}
         </div>
-        {% if client.id %}
+        {% if client.id and is_manager %}
             {{ include('admin/_delete_form.html.twig', {
                 action: path('admin_client_delete', {id: client.id}),
                 token_id: 'delete-client-' ~ client.id,
@@ -63,11 +65,13 @@
                 <p class="font-semibold text-heading">Почта не подтверждена</p>
                 <p class="text-body">Клиент зарегистрировался на сайте и ещё не открыл ссылку из письма. Пока почта не подтверждена, документы, фотоотчёты, медиапланы и платежи к этому аккаунту не привязываются — адрес мог указать кто угодно.</p>
             </div>
-            <form method="post" action="{{ path('admin_client_verify_email', {id: client.id}) }}"
-                  data-confirm="Подтвердить почту {{ client.email }}? Делайте это, только если сверили адрес с клиентом — по телефону или лично." data-confirm-title="Подтвердить почту вручную?">
-                <input type="hidden" name="_token" value="{{ csrf_token('verify-email-' ~ client.id) }}">
-                <button type="submit" class="btn btn-secondary btn-sm">{{ ui.icon('check', 'size-4') }} Подтвердить вручную</button>
-            </form>
+            {% if is_manager %}
+                <form method="post" action="{{ path('admin_client_verify_email', {id: client.id}) }}"
+                      data-confirm="Подтвердить почту {{ client.email }}? Делайте это, только если сверили адрес с клиентом — по телефону или лично." data-confirm-title="Подтвердить почту вручную?">
+                    <input type="hidden" name="_token" value="{{ csrf_token('verify-email-' ~ client.id) }}">
+                    <button type="submit" class="btn btn-secondary btn-sm">{{ ui.icon('check', 'size-4') }} Подтвердить вручную</button>
+                </form>
+            {% endif %}
         </div>
     {% endif %}
 
@@ -131,7 +135,7 @@
         {{ form_end(form) }}
     </div>
 
-    {% if client.id %}
+    {% if client.id and is_manager %}
         {# Bookings: the structures this client holds #}
         <div {{ _self.panel_attrs('bookings', initialTab) }}>
             <div class="table-card">

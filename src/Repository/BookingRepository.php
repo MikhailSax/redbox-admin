@@ -22,7 +22,7 @@ class BookingRepository extends ServiceEntityRepository
     }
 
     /**
-     * Bookings that block the side at $now (paid, or on hold and not yet overdue)
+     * Bookings that block the side at $now (confirmed, or on hold and not yet overdue)
      * and share a day with [$start, $end].
      *
      * @return list<Booking>
@@ -92,7 +92,7 @@ class BookingRepository extends ServiceEntityRepository
             ->getResult();
     }
 
-    /** Sides the client holds right now (paid, or on hold and not yet overdue) */
+    /** Sides the client holds right now (confirmed, or on hold and not yet overdue) */
     public function countActiveForClient(User $client, \DateTimeImmutable $now): int
     {
         return (int) $this->active($this->createQueryBuilder('b'), $now)
@@ -105,11 +105,11 @@ class BookingRepository extends ServiceEntityRepository
 
     /**
      * Newest first; $status = null means every status. $search matches the client (card or typed-in
-     * contact), the phone or the structure name.
+     * contact), the phone or the structure name. $unpaid: only confirmed bookings not paid yet (post-paying clients).
      *
      * @return list<Booking>
      */
-    public function findForList(?BookingStatus $status, ?string $search = null, int $limit = 200): array
+    public function findForList(?BookingStatus $status, ?string $search = null, int $limit = 200, bool $unpaid = false): array
     {
         $qb = $this->createQueryBuilder('b')
             ->addSelect('s', 'p', 'c')
@@ -119,6 +119,10 @@ class BookingRepository extends ServiceEntityRepository
             ->orderBy('b.createdAt', 'DESC')
             ->setMaxResults($limit);
 
+        if ($unpaid) {
+            $qb->andWhere('b.paidAt IS NULL');
+            $status = BookingStatus::Confirmed;
+        }
         if (null !== $status) {
             $qb->andWhere('b.status = :status')->setParameter('status', $status);
         }
@@ -132,7 +136,7 @@ class BookingRepository extends ServiceEntityRepository
     }
 
     /**
-     * Unpaid holds that still block their slot, the ones expiring first on top.
+     * Unconfirmed holds that still block their slot, the ones expiring first on top.
      *
      * @return list<Booking>
      */
@@ -192,7 +196,7 @@ class BookingRepository extends ServiceEntityRepository
     }
 
     /**
-     * Holds whose payment deadline has passed but are still marked as Hold.
+     * Holds whose confirmation deadline has passed but are still marked as Hold.
      *
      * @return list<Booking>
      */
@@ -210,8 +214,8 @@ class BookingRepository extends ServiceEntityRepository
     private function active(QueryBuilder $qb, \DateTimeImmutable $now): QueryBuilder
     {
         return $qb
-            ->andWhere('(b.status = :paid OR (b.status = :hold AND b.expiresAt > :now))')
-            ->setParameter('paid', BookingStatus::Paid)
+            ->andWhere('(b.status = :confirmed OR (b.status = :hold AND b.expiresAt > :now))')
+            ->setParameter('confirmed', BookingStatus::Confirmed)
             ->setParameter('hold', BookingStatus::Hold)
             ->setParameter('now', $now);
     }

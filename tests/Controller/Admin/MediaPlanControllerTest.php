@@ -413,6 +413,33 @@ final class MediaPlanControllerTest extends AdminWebTestCase
         self::assertSame('Экран у вокзала', $item->getDisplayTitle());
     }
 
+    public function testHalfOfATenSecondSlotCostsHalfTheSlot(): void
+    {
+        $side = $this->screen->getSides()->first()->setSlotSeconds(10);
+        $this->em->flush();
+        $plan = $this->plan();
+
+        $crawler = $this->client->request('GET', '/admin/media-plans/'.$plan->getId());
+        $token = $crawler->filter('form[action$="/items"] input[name="_token"]')->attr('value');
+        self::assertCount(1, $crawler->filter('#plan-picker select[name="slotSeconds"]'));
+        $this->client->request('POST', '/admin/media-plans/'.$plan->getId().'/items', ['_token' => $token, 'sides' => [$side->getId()], 'slots' => '2', 'slotSeconds' => '5']);
+
+        $item = $this->reload($plan)->getItems()->first();
+        self::assertSame(5, $item->getSlotSeconds());
+        self::assertSame(10000.0, $item->getMonthlyPrice()); // 2 × half of 10 000 ₽
+
+        $this->client->request('GET', '/admin/media-plans/'.$plan->getId());
+        self::assertSelectorTextContains('#item-'.$item->getId(), '2 слота по 5 сек из 12');
+
+        // back to whole slots: the price follows
+        $crawler = $this->client->request('GET', '/admin/media-plans/'.$plan->getId());
+        $form = $crawler->filter('form[action$="/items/'.$item->getId().'/edit"]');
+        $this->client->request('POST', $form->attr('action'), ['_token' => $form->filter('input[name="_token"]')->attr('value'), 'title' => '', 'format' => '', 'description' => '', 'slots' => '2', 'slotSeconds' => '10']);
+        $item = $this->reload($plan)->getItems()->first();
+        self::assertNull($item->getSlotSeconds());
+        self::assertSame(20000.0, $item->getMonthlyPrice());
+    }
+
     public function testLongerPlansTakeTheSidePriceForTheTerm(): void
     {
         $side = $this->billboard->getSides()->first()->setPrice3Months('36000')->setPrice6Months('34000');

@@ -6,6 +6,7 @@ use App\Dto\ProductListQuery;
 use App\Entity\Product;
 use App\Entity\ProductSide;
 use App\Entity\ProductSidePhoto;
+use App\Entity\User;
 use App\Form\ProductFormType;
 use App\Repository\BookingRepository;
 use App\Repository\CategoryRepository;
@@ -27,6 +28,7 @@ use Symfony\Component\HttpKernel\Attribute\MapQueryString;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Routing\Requirement\Requirement;
 use Symfony\Component\Security\Http\Attribute\IsCsrfTokenValid;
+use Symfony\Component\Security\Http\Attribute\IsGranted;
 
 #[Route('/admin/products', name: 'admin_product_')]
 final class ProductController extends AbstractController
@@ -77,6 +79,7 @@ final class ProductController extends AbstractController
     }
 
     #[Route('/new', name: 'new', methods: ['GET', 'POST'])]
+    #[IsGranted(User::ROLE_SUPER_MANAGER)]
     public function new(Request $request): Response
     {
         $product = new Product();
@@ -87,14 +90,23 @@ final class ProductController extends AbstractController
         return $this->handleForm($request, $product, 'admin/product/new.html.twig', 'Конструкция создана');
     }
 
+    /**
+     * The structure's card; agents see it read-only (the form disabled, nothing to save).
+     */
     #[Route('/{id}/edit', name: 'edit', requirements: ['id' => Requirement::DIGITS], methods: ['GET', 'POST'])]
     public function edit(Request $request, Product $product): Response
     {
-        return $this->handleForm($request, $product, 'admin/product/edit.html.twig', 'Изменения сохранены');
+        $readonly = !$this->isGranted(User::ROLE_SUPER_MANAGER);
+        if ($readonly && $request->isMethod('POST')) {
+            throw $this->createAccessDeniedException('Агент не может изменять конструкции.');
+        }
+
+        return $this->handleForm($request, $product, 'admin/product/edit.html.twig', 'Изменения сохранены', $readonly);
     }
 
     #[Route('/{id}/delete', name: 'delete', requirements: ['id' => Requirement::DIGITS], methods: ['POST'])]
     #[IsCsrfTokenValid(new Expression('"delete-product-" ~ args["product"].getId()'))]
+    #[IsGranted(User::ROLE_SUPER_MANAGER)]
     public function delete(Product $product): Response
     {
         $active = $this->bookings->countActiveForProduct($product, $this->clock->now());
@@ -114,6 +126,7 @@ final class ProductController extends AbstractController
 
     #[Route('/{id}/photos/{photo}/delete', name: 'photo_delete', requirements: ['id' => Requirement::DIGITS, 'photo' => Requirement::DIGITS], methods: ['POST'])]
     #[IsCsrfTokenValid(new Expression('"delete-photo-" ~ args["photo"].getId()'))]
+    #[IsGranted(User::ROLE_SUPER_MANAGER)]
     public function deletePhoto(Product $product, ProductSidePhoto $photo): Response
     {
         $side = $photo->getSide();
@@ -129,10 +142,10 @@ final class ProductController extends AbstractController
         return $this->redirectToRoute('admin_product_edit', ['id' => $product->getId(), '_fragment' => 'sides'], Response::HTTP_SEE_OTHER);
     }
 
-    private function handleForm(Request $request, Product $product, string $template, string $successMessage): Response
+    private function handleForm(Request $request, Product $product, string $template, string $successMessage, bool $readonly = false): Response
     {
         $originalSides = $product->getSides()->toArray();
-        $form = $this->createForm(ProductFormType::class, $product);
+        $form = $this->createForm(ProductFormType::class, $product, ['disabled' => $readonly]);
         $form->handleRequest($request);
 
         if ($form->isSubmitted() && $form->isValid()) {
@@ -186,6 +199,7 @@ final class ProductController extends AbstractController
         return $this->render($template, [
             'product' => $product,
             'form' => $form,
+            'readonly' => $readonly,
             'tabErrors' => $tabErrors,
             'initialTab' => $tabErrors[0] ?? 'main',
             'availability' => null !== $product->getId() ? $this->availability->forProduct($product->getId(), $now) : null,

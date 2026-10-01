@@ -220,14 +220,14 @@ class AccountPresenter
                 $statuses[] = $booking->getStatusAt($now);
             }
         }
-        $booked = array_filter($statuses, static fn (BookingStatus $s) => BookingStatus::Hold === $s || BookingStatus::Paid === $s);
+        $booked = array_filter($statuses, static fn (BookingStatus $s) => BookingStatus::Hold === $s || BookingStatus::Confirmed === $s);
 
         return match (true) {
             null !== $plan->getEndDate() && $plan->getEndDate() < $today => ['finished', 'Завершена'],
             [] === $booked => ['proposal', 'Предложение'],
-            \in_array(BookingStatus::Hold, $booked, true) => ['hold', 'Бронь, ждёт оплаты'],
+            \in_array(BookingStatus::Hold, $booked, true) => ['hold', 'Бронь, ждёт подтверждения'],
             null !== $plan->getStartMonth() && $plan->getStartMonth() <= $today => ['live', 'В эфире'],
-            default => ['scheduled', 'Оплачена, ждёт старта'],
+            default => ['scheduled', 'Подтверждена, ждёт старта'],
         };
     }
 }

@@ -27,11 +27,34 @@ enum BookingMode: string
     public const MIN_DAYS = 14;
 
     /**
-     * Share of the block taken by $usedSlots, 0..100. Rounded down, so 100% means "not a slot left".
+     * Share of the block taken by $used, 0..100 (slots or seconds, the same unit as $capacity).
+     * Rounded down, so 100% means "nothing left".
      */
-    public static function loadPercent(int $usedSlots, int $slotCount): int
+    public static function loadPercent(int $used, int $capacity): int
     {
-        return $slotCount > 0 ? (int) floor(min($slotCount, max(0, $usedSlots)) * 100 / $slotCount) : 100;
+        return $capacity > 0 ? (int) floor(min($capacity, max(0, $used)) * 100 / $capacity) : 100;
+    }
+
+    /**
+     * Parts of a $slotSeconds slot a client may buy: the slot itself and every shorter slot length it splits into
+     * (10 s → 10 or 5 s; 5 s → 5 s).
+     *
+     * @return list<int> longest first
+     */
+    public static function secondsChoices(int $slotSeconds): array
+    {
+        $choices = array_values(array_filter(self::SLOT_DURATIONS, static fn (int $s) => $s <= $slotSeconds && 0 === $slotSeconds % $s));
+        rsort($choices);
+
+        return [] !== $choices ? $choices : [$slotSeconds];
+    }
+
+    /** "7", "7,5": slots taken, half slots included */
+    public static function slotsLabel(int $seconds, int $slotSeconds): string
+    {
+        $slots = $seconds / max(1, $slotSeconds);
+
+        return rtrim(rtrim(number_format($slots, 1, ',', ''), '0'), ',');
     }
 
     public function isAirtime(): bool

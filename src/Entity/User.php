@@ -13,7 +13,7 @@ use Symfony\Component\Validator\Context\ExecutionContextInterface;
 
 /**
  * A user with exactly one role (see role_hierarchy in security.yaml):
- * staff (admin, super manager) work in the CRM; clients get documents and photo reports
+ * staff (admin, super manager, agent) work in the CRM; clients get documents and photo reports
  * for their personal account on the website and can't sign in to the CRM (StaffOnlyUserChecker).
  */
 #[ORM\Entity(repositoryClass: UserRepository::class)]
@@ -29,6 +29,12 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     /** Manages structures and dictionaries */
     public const ROLE_SUPER_MANAGER = 'ROLE_SUPER_MANAGER';
 
+    /**
+     * Sells: adds clients, fills media plans, works the website's requests, sees the catalogue of structures
+     * and their occupancy, but changes no structure and makes no bookings or payments.
+     */
+    public const ROLE_AGENT = 'ROLE_AGENT';
+
     /** A client of the website: its documents and photo reports; no CRM access */
     public const ROLE_CLIENT = 'ROLE_CLIENT';
 
@@ -39,6 +45,7 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     public const ROLE_LABELS = [
         self::ROLE_ADMIN => 'Администратор',
         self::ROLE_SUPER_MANAGER => 'Супер менеджер',
+        self::ROLE_AGENT => 'Агент',
     ];
 
     #[ORM\Id]
@@ -205,7 +212,7 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     }
 
     /**
-     * The single assigned role (ROLE_ADMIN, ROLE_SUPER_MANAGER or ROLE_CLIENT).
+     * The single assigned role (ROLE_ADMIN, ROLE_SUPER_MANAGER, ROLE_AGENT or ROLE_CLIENT).
      */
     public function getRole(): ?string
     {

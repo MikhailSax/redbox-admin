@@ -28,6 +28,7 @@ use Symfony\Component\HttpKernel\Attribute\MapQueryParameter;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Routing\Requirement\Requirement;
 use Symfony\Component\Security\Http\Attribute\IsCsrfTokenValid;
+use Symfony\Component\Security\Http\Attribute\IsGranted;
 
 final class BookingController extends AbstractController
 {
@@ -45,12 +46,16 @@ final class BookingController extends AbstractController
     }
 
     #[Route('/admin/bookings', name: 'admin_booking_index', methods: ['GET'])]
+    #[IsGranted(User::ROLE_SUPER_MANAGER)]
     public function index(Request $request, #[MapQueryParameter] ?string $status = null, #[MapQueryParameter] ?string $q = null): Response
     {
-        $filter = null !== $status ? BookingStatus::tryFrom($status) : null;
+        // "unpaid" is not a status: confirmed bookings of post-paying clients still waiting for the money
+        $unpaid = 'unpaid' === $status;
+        $filter = null !== $status && !$unpaid ? BookingStatus::tryFrom($status) : null;
         $params = [
-            'bookings' => $this->bookings->findForList($filter, $q),
+            'bookings' => $this->bookings->findForList($filter, $q, unpaid: $unpaid),
             'filter' => $filter,
+            'unpaid' => $unpaid,
             'q' => $q,
             'now' => $this->clock->now(),
         ];
@@ -64,10 +69,14 @@ final class BookingController extends AbstractController
 
     /**
      * Occupancy grid of the product's sides for the next months, its bookings and the "new booking" form.
+     * Agents see the grid only: they make no bookings.
      */
     #[Route('/admin/products/{id}/bookings', name: 'admin_booking_product', requirements: ['id' => Requirement::DIGITS], methods: ['GET', 'POST'])]
     public function product(Request $request, Product $product, ClientCards $clientCards): Response
     {
+        if ($request->isMethod('POST')) {
+            $this->denyAccessUnlessGranted(User::ROLE_SUPER_MANAGER);
+        }
         $now = $this->clock->now();
         // Each side is booked by its own type: airtime sides by days, the others by months
         $airtime = $product->hasAirtimeSides();
@@ -100,7 +109,7 @@ final class BookingController extends AbstractController
                 $booking = $this->bookingManager->hold($bookingRequest, $user instanceof User ? $user : null);
 
                 $this->addFlash('success', \sprintf(
-                    'Бронь создана и ждёт оплаты до %s. Без оплаты она снимется автоматически.',
+                    'Бронь создана и ждёт подтверждения до %s. Без подтверждения или оплаты она снимется автоматически.',
                     $booking->getExpiresAt()->format('d.m.Y H:i'),
                 ));
                 if (null !== $newClient) {
@@ -142,15 +151,36 @@ final class BookingController extends AbstractController
         ]);
     }
 
+    /** Post-paying clients: the side is theirs before the money comes */
+    #[Route('/admin/bookings/{id}/confirm', name: 'admin_booking_confirm', requirements: ['id' => Requirement::DIGITS], methods: ['POST'])]
+    #[IsCsrfTokenValid(new Expression('"confirm-booking-" ~ args["booking"].getId()'))]
+    #[IsGranted(User::ROLE_SUPER_MANAGER)]
+    public function confirm(Request $request, Booking $booking): Response
+    {
+        return $this->apply($request, $booking, fn () => $this->bookingManager->confirm($booking), 'Бронь подтверждена и больше не снимется автоматически. Оплату отметьте, когда придут деньги.');
+    }
+
     #[Route('/admin/bookings/{id}/pay', name: 'admin_booking_pay', requirements: ['id' => Requirement::DIGITS], methods: ['POST'])]
     #[IsCsrfTokenValid(new Expression('"pay-booking-" ~ args["booking"].getId()'))]
+    #[IsGranted(User::ROLE_SUPER_MANAGER)]
     public function pay(Request $request, Booking $booking): Response
     {
-        return $this->apply($request, $booking, fn () => $this->bookingManager->markPaid($booking), 'Оплата отмечена, бронь закреплена');
+        $wasHold = BookingStatus::Hold === $booking->getStatus();
+
+        return $this->apply($request, $booking, fn () => $this->bookingManager->markPaid($booking), $wasHold ? 'Оплата отмечена, бронь подтверждена' : 'Оплата отмечена');
+    }
+
+    #[Route('/admin/bookings/{id}/unpay', name: 'admin_booking_unpay', requirements: ['id' => Requirement::DIGITS], methods: ['POST'])]
+    #[IsCsrfTokenValid(new Expression('"unpay-booking-" ~ args["booking"].getId()'))]
+    #[IsGranted(User::ROLE_SUPER_MANAGER)]
+    public function unpay(Request $request, Booking $booking): Response
+    {
+        return $this->apply($request, $booking, fn () => $this->bookingManager->markUnpaid($booking), 'Отметка об оплате снята, бронь остаётся подтверждённой');
     }
 
     #[Route('/admin/bookings/{id}/cancel', name: 'admin_booking_cancel', requirements: ['id' => Requirement::DIGITS], methods: ['POST'])]
     #[IsCsrfTokenValid(new Expression('"cancel-booking-" ~ args["booking"].getId()'))]
+    #[IsGranted(User::ROLE_SUPER_MANAGER)]
     public function cancel(Request $request, Booking $booking): Response
     {
         return $this->apply($request, $booking, fn () => $this->bookingManager->cancel($booking), 'Бронь отменена, место освобождено');

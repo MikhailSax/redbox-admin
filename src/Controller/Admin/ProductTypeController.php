@@ -3,6 +3,7 @@
 namespace App\Controller\Admin;
 
 use App\Entity\ProductType;
+use App\Entity\User;
 use App\Form\ProductTypeFormType;
 use App\Repository\ProductRepository;
 use App\Repository\ProductSideRepository;
@@ -15,8 +16,10 @@ use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Routing\Requirement\Requirement;
 use Symfony\Component\Security\Http\Attribute\IsCsrfTokenValid;
+use Symfony\Component\Security\Http\Attribute\IsGranted;
 
 #[Route('/admin/types', name: 'admin_product_type_')]
+#[IsGranted(User::ROLE_SUPER_MANAGER)]
 final class ProductTypeController extends AbstractController
 {
     public function __construct(

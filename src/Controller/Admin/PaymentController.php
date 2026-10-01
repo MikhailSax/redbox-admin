@@ -22,11 +22,13 @@ use Symfony\Component\HttpKernel\Attribute\MapQueryParameter;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Routing\Requirement\Requirement;
 use Symfony\Component\Security\Http\Attribute\IsCsrfTokenValid;
+use Symfony\Component\Security\Http\Attribute\IsGranted;
 
 /**
  * Payment calendar: when and which client has to pay, what is overdue, what came in.
  */
 #[Route('/admin/payments', name: 'admin_payment_')]
+#[IsGranted(User::ROLE_SUPER_MANAGER)]
 final class PaymentController extends AbstractController
 {
     public function __construct(
@@ -117,9 +119,10 @@ final class PaymentController extends AbstractController
     }
 
     /**
-     * Money for a media plan fixes its sides: holds waiting for payment become paid bookings, and an item whose
-     * 24h hold has expired (or that was never booked) is booked again at once. Without this the holds expire
-     * and the side goes back on sale although the client has paid.
+     * Money for a media plan fixes its sides: holds become confirmed bookings, and an item whose 24h hold has
+     * expired (or that was never booked) is booked again at once. Without this the holds expire and the side goes
+     * back on sale although the client has paid. Once every scheduled payment of the plan is paid,
+     * its bookings are marked paid as well.
      */
     private function fixPlanBookings(Payment $payment): void
     {
@@ -129,17 +132,19 @@ final class PaymentController extends AbstractController
         }
 
         $user = $this->getUser();
-        $result = $this->mediaPlans->confirmBookings($plan, $user instanceof User ? $user : null);
+        $payments = $plan->getPayments();
+        $paidInFull = !$payments->isEmpty() && $payments->forAll(static fn (int $i, Payment $p) => $p->isPaid());
+        $result = $this->mediaPlans->confirmBookings($plan, $user instanceof User ? $user : null, $paidInFull);
 
         if ($result['confirmed'] + $result['created'] > 0) {
             $this->addFlash('success', \sprintf(
-                'Брони медиаплана закреплены: %d, создано заново: %d',
+                'Брони медиаплана подтверждены: %d, создано заново: %d',
                 $result['confirmed'],
                 $result['created'],
             ));
         }
         foreach ($result['failed'] as $message) {
-            $this->addFlash('error', 'Бронь не закреплена — '.$message);
+            $this->addFlash('error', 'Бронь не подтверждена — '.$message);
         }
     }
 

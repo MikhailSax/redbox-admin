@@ -1,7 +1,8 @@
 {#
     Product card form split into tab panels (one <form>, so saving keeps every tab's changes).
-    Vars: form, product, initialTab, button_label, availability?
+    Vars: form, product, initialTab, button_label, availability?, readonly? (agents: the form is disabled, nothing to save)
 #}
+{% set readonly = readonly|default(false) %}
 {% form_theme form 'admin/form/theme.html.twig' %}
 
 {% macro panel_attrs(id, initialTab) %}id="tab-{{ id }}" data-tab-panel="{{ id }}" role="tabpanel"{% if id != initialTab %} class="hidden"{% endif %}{% endmacro %}
@@ -74,8 +75,10 @@
 
             <div {{ _self.panel_attrs('sides', initialTab) }}>
                 <div class="flex items-center justify-between mb-4">
-                    <p class="text-sm text-body">Бронируется каждая сторона отдельно. Фото загружаются после сохранения формы.</p>
-                    <button type="button" class="btn btn-secondary shrink-0" data-collection-add="product-sides">+ Добавить сторону</button>
+                    <p class="text-sm text-body">Бронируется каждая сторона отдельно.{% if not readonly %} Фото загружаются после сохранения формы.{% endif %}</p>
+                    {% if not readonly %}
+                        <button type="button" class="btn btn-secondary shrink-0" data-collection-add="product-sides">+ Добавить сторону</button>
+                    {% endif %}
                 </div>
 
                 {% if form.sides.vars.errors|length %}
@@ -88,7 +91,7 @@
                      data-index="{{ form.sides|length > 0 ? form.sides|last.vars.name + 1 : 0 }}"
                      data-prototype="{{ include('admin/product/_side.html.twig', {side_form: form.sides.vars.prototype})|e('html_attr') }}">
                     {% for side_form in form.sides %}
-                        {{ include('admin/product/_side.html.twig', {side_form: side_form}) }}
+                        {{ include('admin/product/_side.html.twig', {side_form: side_form, readonly: readonly}) }}
                     {% endfor %}
                 </div>
                 {% do form.sides.setRendered() %}
@@ -104,7 +107,11 @@
 
             {# Sticky save bar: always visible, whichever tab is open #}
             <div class="sticky bottom-0 z-10 mt-6 py-3 bg-neutral-secondary-soft/95 backdrop-blur border-t border-default flex flex-wrap items-center gap-3">
-                <button type="submit" class="btn btn-primary">{{ button_label }}</button>
+                {% if readonly %}
+                    <span class="text-sm text-body">Карточка только для просмотра: изменять конструкции может менеджер.</span>
+                {% else %}
+                    <button type="submit" class="btn btn-primary">{{ button_label }}</button>
+                {% endif %}
                 <a href="{{ path('admin_product_index') }}" class="btn btn-secondary">К списку</a>
             </div>
         </div>
@@ -119,7 +126,7 @@
 {{ form_end(form) }}
 
 {# Standalone forms for photo deletion, targeted by the buttons in the photo tables #}
-{% if product.id %}
+{% if product.id and not readonly %}
     {% for side in product.sides %}
         {% for photo in side.photos|filter(p => p.id) %}
             <form id="delete-photo-{{ photo.id }}" method="post" hidden

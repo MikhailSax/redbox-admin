@@ -19,7 +19,7 @@ final class SearchController extends AbstractController
     {
         return $this->json([
             'query' => $q,
-            'groups' => $search->search($q, $this->isGranted(User::ROLE_ADMIN)),
+            'groups' => $search->search($q, $this->isGranted(User::ROLE_ADMIN), $this->isGranted(User::ROLE_SUPER_MANAGER)),
         ]);
     }
 }

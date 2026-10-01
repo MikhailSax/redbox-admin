@@ -237,13 +237,14 @@ final class PaymentControllerTest extends AdminWebTestCase
         $crawler = $this->client->request('GET', '/admin/payments?month=2026-10');
         $this->submitPostForm($crawler, '#list form[action="/admin/payments/'.$payment->getId().'/pay"]');
         $this->client->followRedirect();
-        self::assertSelectorTextContains('[role=alert]', 'Брони медиаплана закреплены: 0, создано заново: 1');
+        self::assertSelectorTextContains('[role=alert]', 'Брони медиаплана подтверждены: 0, создано заново: 1');
 
-        // The plan had no bookings at all, so the side is booked and paid in one go
+        // The plan had no bookings at all, so the side is booked, confirmed and paid in one go
         $this->em->clear();
         $bookings = $this->em->getRepository(Booking::class)->findAll();
         self::assertCount(1, $bookings);
-        self::assertSame(BookingStatus::Paid, $bookings[0]->getStatus());
+        self::assertSame(BookingStatus::Confirmed, $bookings[0]->getStatus());
+        self::assertTrue($bookings[0]->isPaid()); // the plan's only payment: paid in full
         self::assertNull($bookings[0]->getExpiresAt());
         self::assertSame(['2026-10-01', '2026-10-31'], [$bookings[0]->getStartDate()->format('Y-m-d'), $bookings[0]->getEndDate()->format('Y-m-d')]);
     }
@@ -263,12 +264,13 @@ final class PaymentControllerTest extends AdminWebTestCase
         $crawler = $this->client->request('GET', '/admin/payments?month=2026-10');
         $this->submitPostForm($crawler, '#list form[action="/admin/payments/'.$payment->getId().'/pay"]');
         $this->client->followRedirect();
-        self::assertSelectorTextContains('[role=alert]', 'Брони медиаплана закреплены: 1, создано заново: 0');
+        self::assertSelectorTextContains('[role=alert]', 'Брони медиаплана подтверждены: 1, создано заново: 0');
 
         $this->em->clear();
         $bookings = $this->em->getRepository(Booking::class)->findAll();
         self::assertCount(1, $bookings);
-        self::assertSame(BookingStatus::Paid, $bookings[0]->getStatus());
+        self::assertSame(BookingStatus::Confirmed, $bookings[0]->getStatus());
+        self::assertTrue($bookings[0]->isPaid()); // the plan's only payment: paid in full
     }
 
     public function testDashboardListsUrgentPayments(): void

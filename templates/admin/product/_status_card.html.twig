@@ -11,7 +11,7 @@
                 <div class="text-sm font-medium text-heading">Сторона {{ side.sideName }}</div>
                 {% if side.airtime %}
                     <div class="text-xs text-body">
-                        занято слотов: <b class="font-semibold text-heading tabular-nums">{{ side.usedSlots }} из {{ side.slotCount }}</b>
+                        занято слотов: <b class="font-semibold text-heading tabular-nums">{{ side.usedSlotsLabel }} из {{ side.slotCount }}</b>{% if side.freeSeconds > 0 %} · свободно {{ side.freeSeconds }} из {{ side.blockSeconds }} сек{% endif %}
                     </div>
                     <div class="mt-1.5 h-1.5 max-w-40 overflow-hidden rounded-full bg-neutral-tertiary-medium" role="progressbar" aria-label="Занятость слотов" aria-valuenow="{{ side.loadPercent }}" aria-valuemin="0" aria-valuemax="100">
                         <div class="h-full rounded-full {{ side.loadPercent >= 100 ? 'bg-danger' : (side.loadPercent > 0 ? 'bg-warning' : 'bg-success') }}" style="width: {{ side.loadPercent }}%"></div>
@@ -31,7 +31,7 @@
         <div class="flex justify-between gap-3">
             <dt class="text-body">Владелец</dt>
             <dd class="text-right font-medium text-heading">
-                {% if product.own %}Своя конструкция{% else %}<a href="{{ path('admin_partner_edit', {id: product.owner.id}) }}" class="hover:underline">{{ product.owner.name }}</a>{% endif %}
+                {% if product.own %}Своя конструкция{% elseif is_granted('ROLE_SUPER_MANAGER') %}<a href="{{ path('admin_partner_edit', {id: product.owner.id}) }}" class="hover:underline">{{ product.owner.name }}</a>{% else %}{{ product.owner.name }}{% endif %}
             </dd>
         </div>
         {% if product.price is not null %}

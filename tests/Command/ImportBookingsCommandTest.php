@@ -89,7 +89,8 @@ final class ImportBookingsCommandTest extends KernelTestCase
             ['ул. Борсоева, 54а/1', 'А', 1, '2026-10-01', '2026-10-31'],
             ['Бурвод ул. Кабанская и трасса Р-258', 'А', null, '2026-10-01', '2026-12-31'], // "ООО "СМИТ-ТРЕЙД"", "до конца года"
         ], array_map(self::describe(...), $smith));
-        self::assertSame(BookingStatus::Paid, $smith[0]->getStatus());
+        self::assertSame(BookingStatus::Confirmed, $smith[0]->getStatus());
+        self::assertTrue($smith[0]->isPaid());
         self::assertSame('Из таблицы занятости: лист «октябрь 2026», строка 3, клиент «СМИТ-ТРЕЙД ООО (Тритон)»', $smith[0]->getComment());
 
         // a name the CRM doesn't know gets a card; "сентябрь" is the month of the sheet's year

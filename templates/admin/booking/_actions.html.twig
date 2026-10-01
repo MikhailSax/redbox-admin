@@ -1,22 +1,32 @@
-{# Pay / cancel buttons for `booking` as of `now`; `return` = 'list' | 'product' #}
+{# Confirm / pay / cancel buttons for `booking` as of `now`; `return` = 'list' | 'product' | 'dashboard' #}
 {% set status = booking.statusAt(now) %}
-<div class="flex justify-end gap-2">
+{% macro action(booking, route, token, label, return, confirm, title, button, variant = 'primary', css = 'btn-primary') %}
+    <form method="post" action="{{ path(route, {id: booking.id}) }}"
+          data-confirm="{{ confirm }}" data-confirm-title="{{ title }}" data-confirm-button="{{ button }}" data-confirm-variant="{{ variant }}">
+        <input type="hidden" name="_token" value="{{ csrf_token(token ~ '-booking-' ~ booking.id) }}">
+        <input type="hidden" name="return" value="{{ return }}">
+        <button type="submit" class="btn {{ css }} btn-sm">{{ label }}</button>
+    </form>
+{% endmacro %}
+<div class="flex flex-wrap justify-end gap-2">
     {% if status.value == 'hold' %}
-        <form method="post" action="{{ path('admin_booking_pay', {id: booking.id}) }}"
-              data-confirm="Клиент {{ booking.clientTitle }} оплатил бронь? Она будет закреплена и больше не снимется автоматически."
-              data-confirm-title="Отметить оплату" data-confirm-button="Да, оплачено" data-confirm-variant="primary">
-            <input type="hidden" name="_token" value="{{ csrf_token('pay-booking-' ~ booking.id) }}">
-            <input type="hidden" name="return" value="{{ return }}">
-            <button type="submit" class="btn btn-primary btn-sm">Оплачено</button>
-        </form>
+        {{ _self.action(booking, 'admin_booking_confirm', 'confirm', 'Подтвердить', return,
+            'Бронь клиента ' ~ booking.clientTitle ~ ' будет закреплена и больше не снимется автоматически. Оплату можно отметить позже — для постоплатников.',
+            'Подтвердить бронь', 'Да, подтвердить') }}
     {% endif %}
-    {% if status.value in ['hold', 'paid'] %}
-        <form method="post" action="{{ path('admin_booking_cancel', {id: booking.id}) }}"
-              data-confirm="Бронь клиента {{ booking.clientTitle }} будет отменена, место освободится."
-              data-confirm-title="Отменить бронь?" data-confirm-button="Да, отменить">
-            <input type="hidden" name="_token" value="{{ csrf_token('cancel-booking-' ~ booking.id) }}">
-            <input type="hidden" name="return" value="{{ return }}">
-            <button type="submit" class="btn btn-danger-outline btn-sm">Отменить</button>
-        </form>
+    {% if status.value in ['hold', 'confirmed'] and not booking.paid %}
+        {{ _self.action(booking, 'admin_booking_pay', 'pay', 'Оплачено', return,
+            'Клиент ' ~ booking.clientTitle ~ ' оплатил бронь?' ~ (status.value == 'hold' ? ' Она будет подтверждена и закреплена.' : ''),
+            'Отметить оплату', 'Да, оплачено', 'primary', status.value == 'hold' ? 'btn-secondary' : 'btn-primary') }}
+    {% endif %}
+    {% if status.value == 'confirmed' and booking.paid %}
+        {{ _self.action(booking, 'admin_booking_unpay', 'unpay', 'Снять оплату', return,
+            'Отметка об оплате брони клиента ' ~ booking.clientTitle ~ ' будет снята. Бронь останется подтверждённой.',
+            'Снять отметку об оплате?', 'Да, снять', 'primary', 'btn-secondary') }}
+    {% endif %}
+    {% if status.value in ['hold', 'confirmed'] %}
+        {{ _self.action(booking, 'admin_booking_cancel', 'cancel', 'Отменить', return,
+            'Бронь клиента ' ~ booking.clientTitle ~ ' будет отменена, место освободится.',
+            'Отменить бронь?', 'Да, отменить', 'danger', 'btn-danger-outline') }}
     {% endif %}
 </div>

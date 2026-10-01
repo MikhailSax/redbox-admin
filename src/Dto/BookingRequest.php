@@ -39,6 +39,9 @@ final class BookingRequest
     /** Slots of the screen's block; airtime (video) sides only */
     public ?int $slots = 1;
 
+    /** Seconds of each slot: the whole slot, or 5 of a 10-second slot; null = the whole slot */
+    public ?int $slotSeconds = null;
+
     /** Whose the booking is; a side is never taken for nobody (see validateClient()) */
     public ?User $client = null;
 
@@ -110,6 +113,9 @@ final class BookingRequest
     {
         if ($this->isAirtime() && (null === $this->slots || $this->slots < 1 || $this->slots > $this->side->getSlotCount())) {
             $context->buildViolation(\sprintf('Слотов — от 1 до %d', $this->side->getSlotCount()))->atPath('slots')->addViolation();
+        }
+        if ($this->isAirtime() && null !== $this->slotSeconds && !\in_array($this->slotSeconds, $this->side->getSlotSecondsChoices(), true)) {
+            $context->buildViolation(\sprintf('Слот этой стороны — %d сек: можно взять %s сек', $this->side->getSlotSeconds(), implode(' или ', $this->side->getSlotSecondsChoices())))->atPath('slotSeconds')->addViolation();
         }
 
         if ($this->isAirtime() && ($this->isByDays() || null === $this->startMonth)) {

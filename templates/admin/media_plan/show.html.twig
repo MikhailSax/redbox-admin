@@ -6,8 +6,10 @@
 {% block content %}
     {% set token = csrf_token('media-plan-' ~ plan.id) %}
     {% set free_items = problems|filter(p => p is null)|length %}
-    {# Items whose side is not fixed yet: no booking, or one still waiting for payment #}
-    {% set unpaid_items = plan.items|filter(i => i.booking is null or i.booking.status.value != 'paid')|length %}
+    {# Items whose side is not fixed yet: no booking, or one still waiting for confirmation #}
+    {% set unconfirmed_items = plan.items|filter(i => i.booking is null or i.booking.status.value != 'confirmed')|length %}
+    {# Agents make proposals; bookings, payments and deleting plans are for managers #}
+    {% set can_book = is_granted('ROLE_SUPER_MANAGER') %}
     {# Forms below update the page in place (assets/admin/ajax-forms.js): the [data-ajax-region] blocks are swapped #}
     <div data-ajax-forms>
 
@@ -33,20 +35,20 @@
         <div class="flex flex-wrap gap-2">
             <a href="{{ path('admin_media_plan_edit', {id: plan.id}) }}" class="btn btn-ghost">Параметры</a>
             <a href="{{ path('admin_media_plan_pdf', {id: plan.id}) }}" target="_blank" class="btn btn-secondary">{{ ui.icon('download', 'size-4') }} Скачать PDF</a>
-            {% if free_items > 0 %}
+            {% if can_book and free_items > 0 %}
                 <form method="post" action="{{ path('admin_media_plan_book', {id: plan.id}) }}"
-                      data-confirm="Для {{ free_items }} свободных позиций будут созданы брони на клиента «{{ plan.clientName }}». Без оплаты они снимутся через 24 часа."
+                      data-confirm="Для {{ free_items }} свободных позиций будут созданы брони на клиента «{{ plan.clientName }}». Без подтверждения или оплаты они снимутся через 24 часа."
                       data-confirm-title="Забронировать медиаплан?" data-confirm-button="Забронировать" data-confirm-variant="primary">
                     <input type="hidden" name="_token" value="{{ token }}">
                     <button type="submit" class="btn btn-primary">{{ ui.icon('calendar', 'size-4') }} Забронировать свободные ({{ free_items }})</button>
                 </form>
             {% endif %}
-            {% if unpaid_items > 0 and plan.items|length > 0 %}
+            {% if can_book and unconfirmed_items > 0 and plan.items|length > 0 %}
                 <form method="post" action="{{ path('admin_media_plan_confirm_bookings', {id: plan.id}) }}"
-                      data-confirm="Брони {{ unpaid_items }} позиций станут оплаченными и перестанут сниматься через 24 часа. Истёкшие и ещё не созданные брони будут созданы заново."
-                      data-confirm-title="Закрепить брони?" data-confirm-button="Закрепить" data-confirm-variant="primary">
+                      data-confirm="Брони {{ unconfirmed_items }} позиций будут подтверждены и перестанут сниматься через 24 часа — оплату можно отметить позже (постоплата). Истёкшие и ещё не созданные брони будут созданы заново."
+                      data-confirm-title="Подтвердить брони?" data-confirm-button="Подтвердить" data-confirm-variant="primary">
                     <input type="hidden" name="_token" value="{{ token }}">
-                    <button type="submit" class="btn btn-secondary">{{ ui.icon('check', 'size-4') }} Закрепить брони ({{ unpaid_items }})</button>
+                    <button type="submit" class="btn btn-secondary">{{ ui.icon('check', 'size-4') }} Подтвердить брони ({{ unconfirmed_items }})</button>
                 </form>
             {% endif %}
         </div>
@@ -80,7 +82,7 @@
                                     <span class="min-w-0">
                                         <span class="line-clamp-2 min-w-40 font-medium text-heading group-hover:underline">{{ item.displayTitle }}</span>
                                         <span class="block text-xs text-body-subtle">
-                                            Сторона {{ item.side.name }} · {{ item.side.effectiveProductType.name ?? '' }}{% if item.slots %} · {{ item.slots|plural('слот', 'слота', 'слотов') }} из {{ item.side.slotCount }}{% endif %}
+                                            Сторона {{ item.side.name }} · {{ item.side.effectiveProductType.name ?? '' }}{% if item.slots %} · {{ airtime_label(item) }} из {{ item.side.slotCount }}{% endif %}
                                             {% if not product.own %} · {{ product.owner.name }}{% endif %}
                                         </span>
                                     </span>
@@ -102,9 +104,20 @@
                                             <textarea name="description" rows="2" class="input mt-1 !px-2 text-sm">{{ item.displayDescription }}</textarea>
                                         </label>
                                         {% if item.side.airtime %}
-                                            <label class="block text-xs text-body">Слотов (из {{ item.side.slotCount }} по {{ item.side.slotSeconds }} сек)
-                                                <input type="number" name="slots" value="{{ item.slots ?? 1 }}" min="1" max="{{ item.side.slotCount }}" class="input mt-1 h-8 !w-24 !px-2 text-sm tabular-nums">
-                                            </label>
+                                            <div class="flex flex-wrap gap-3">
+                                                <label class="block text-xs text-body">Слотов (из {{ item.side.slotCount }} по {{ item.side.slotSeconds }} сек)
+                                                    <input type="number" name="slots" value="{{ item.slots ?? 1 }}" min="1" max="{{ item.side.slotCount }}" class="input mt-1 h-8 !w-24 !px-2 text-sm tabular-nums">
+                                                </label>
+                                                {% if item.side.slotSecondsChoices|length > 1 %}
+                                                    <label class="block text-xs text-body">Секунд в каждом слоте
+                                                        <select name="slotSeconds" class="input mt-1 h-8 !w-auto !py-0 !pe-7 text-sm">
+                                                            {% for seconds in item.side.slotSecondsChoices %}
+                                                                <option value="{{ seconds }}" {{ item.side.secondsPerSlot(item.slotSeconds) == seconds ? 'selected' }}>{{ seconds }} сек{{ seconds == item.side.slotSeconds ? ' (весь слот)' : ' (полслота)' }}</option>
+                                                            {% endfor %}
+                                                        </select>
+                                                    </label>
+                                                {% endif %}
+                                            </div>
                                         {% endif %}
                                         <div class="flex items-center gap-2">
                                             <button type="submit" class="btn btn-primary btn-sm">Сохранить</button>
@@ -223,6 +236,7 @@
                 <p class="mt-4 whitespace-pre-line text-sm text-body">{{ plan.comment }}</p>
             {% endif %}
 
+            {% if can_book %}
             <div class="mt-5 border-t border-default pt-4">
                 {{ include('admin/_delete_form.html.twig', {
                     action: path('admin_media_plan_delete', {id: plan.id}),
@@ -233,6 +247,7 @@
                     button_class: 'btn-ghost btn-sm w-full text-fg-danger hover:bg-danger-soft',
                 }) }}
             </div>
+            {% endif %}
         </aside>
     </div>
 
@@ -243,7 +258,7 @@
                 <h2 class="text-base font-semibold text-heading">Услуги</h2>
                 <p class="text-sm text-body">Изготовление макетов, печать, монтаж. Разовые: на месяцы не умножаются, скидка на них не действует.</p>
             </div>
-            <a href="{{ path('admin_service_index') }}" class="btn btn-ghost btn-sm">Справочник услуг</a>
+            {% if can_book %}<a href="{{ path('admin_service_index') }}" class="btn btn-ghost btn-sm">Справочник услуг</a>{% endif %}
         </div>
 
         {% if plan.serviceLines is not empty %}
@@ -304,6 +319,7 @@
         {{ include('admin/_service_units.html.twig') }}
     </div>
 
+    {% if can_book %}
     {# Payment schedule: when the client pays for the plan (PaymentScheduler, the payment calendar) #}
     <section id="payments" class="mb-6 scroll-mt-20" data-ajax-region>
         <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
@@ -337,6 +353,7 @@
             {{ include('admin/payment/_table.html.twig', {payments: plan.payments, return: 'plan', show_client: false, show_plan: false, empty: 'Платежей пока нет.'}) }}
         {% endif %}
     </section>
+    {% endif %}
 
     {# Picker #}
     <div class="card !p-0">
@@ -386,6 +403,11 @@
                                             <select name="slots" class="input h-8 !w-auto !py-0 !pe-7 text-xs" aria-label="Слотов" title="Слотов из {{ side.slotCount }} по {{ side.slotSeconds }} сек">
                                                 {% for n in 1..side.slotCount %}<option value="{{ n }}">{{ n }} сл.</option>{% endfor %}
                                             </select>
+                                            {% if side.slotSecondsChoices|length > 1 %}
+                                                <select name="slotSeconds" class="input h-8 !w-auto !py-0 !pe-7 text-xs" aria-label="Секунд в каждом слоте" title="Весь слот или его часть: 5 сек из {{ side.slotSeconds }}">
+                                                    {% for seconds in side.slotSecondsChoices %}<option value="{{ seconds }}">по {{ seconds }} сек</option>{% endfor %}
+                                                </select>
+                                            {% endif %}
                                         {% endif %}
                                         <button type="submit" {% if in_plan %}disabled{% endif %}
                                                 title="{{ in_plan ? 'Уже в медиаплане' : (problem ?? 'Свободна на весь период') }}"

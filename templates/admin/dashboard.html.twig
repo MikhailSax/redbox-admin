@@ -12,7 +12,7 @@
             <p class="page-subtitle">Что происходит с конструкциями в {{ month|month_label|lower }}</p>
         </div>
         <div class="flex flex-wrap gap-2">
-            <a href="{{ path('admin_booking_index', {status: 'hold'}) }}" class="btn btn-secondary">Брони на оплату</a>
+            <a href="{{ path('admin_booking_index', {status: 'hold'}) }}" class="btn btn-secondary">Брони на подтверждение</a>
             <a href="{{ path('admin_product_index', {status: 'free'}) }}" class="btn btn-primary">Свободные конструкции {{ ui.icon('arrow_right', 'size-4') }}</a>
         </div>
     </div>
@@ -22,7 +22,7 @@
     {% set kpis = [
 
         {label: 'Свободны', value: structures.free, hint: 'можно продавать', href: path('admin_product_index', {status: 'free'}), dot: 'bg-success', share: structures.free},
-        {label: 'Забронированы', value: structures.booked, hint: 'ждут оплаты', href: path('admin_product_index', {status: 'booked'}), dot: 'bg-warning', share: structures.booked},
+        {label: 'Забронированы', value: structures.booked, hint: 'ждут подтверждения', href: path('admin_product_index', {status: 'booked'}), dot: 'bg-warning', share: structures.booked},
         {label: 'Заняты', value: structures.occupied, hint: 'оплачены', href: path('admin_product_index', {status: 'occupied'}), dot: 'bg-danger', share: structures.occupied},
     ] %}
     <div class="mb-6 grid gap-4 sm:grid-cols-3">
@@ -76,11 +76,11 @@
             </div>
         </div>
 
-        {# Holds waiting for payment #}
+        {# Holds waiting for confirmation #}
         <div class="card min-w-0 !p-0 xl:col-span-2">
             <div class="flex items-center justify-between gap-3 px-5 pb-3 pt-5">
                 <div>
-                    <h2 class="text-base font-semibold text-heading">Ждут оплаты</h2>
+                    <h2 class="text-base font-semibold text-heading">Ждут подтверждения</h2>
                     <p class="text-sm text-body">Снимутся автоматически через 24 часа</p>
                 </div>
                 {% if holdCount > 0 %}

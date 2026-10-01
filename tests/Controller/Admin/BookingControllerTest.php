@@ -64,7 +64,7 @@ final class BookingControllerTest extends AdminWebTestCase
 
         self::assertResponseRedirects($this->url($this->billboard));
         $crawler = $this->client->followRedirect();
-        self::assertSelectorTextContains('[role=alert]', 'ждёт оплаты до 11.09.2026 12:00');
+        self::assertSelectorTextContains('[role=alert]', 'ждёт подтверждения до 11.09.2026 12:00');
         self::assertSelectorTextContains('main', 'ООО Ромашка');
         // the client card is linked, not just named
         self::assertSelectorExists('tbody a[href="/admin/clients/'.$this->customer->getId().'"]');
@@ -314,8 +314,88 @@ final class BookingControllerTest extends AdminWebTestCase
 
         self::assertResponseRedirects($this->url($this->billboard));
         $this->client->followRedirect();
-        self::assertSelectorTextContains('[role=alert]', 'Оплата отмечена');
-        self::assertSame(BookingStatus::Paid, $this->reload($booking)->getStatus());
+        self::assertSelectorTextContains('[role=alert]', 'Оплата отмечена, бронь подтверждена');
+        self::assertSame(BookingStatus::Confirmed, $this->reload($booking)->getStatus());
+        self::assertTrue($this->reload($booking)->isPaid());
+    }
+
+    /** Post-paying clients: the booking is confirmed first, the payment marked when the money comes */
+    public function testConfirmThenPayThenUnpay(): void
+    {
+        $booking = $this->hold($this->side($this->billboard, 'A'), '2026-09', 'Постоплатник');
+
+        $crawler = $this->client->request('GET', '/admin/bookings');
+        $this->submitPostForm($crawler, 'form[action="/admin/bookings/'.$booking->getId().'/confirm"]');
+        self::assertResponseRedirects('/admin/bookings');
+        $crawler = $this->client->followRedirect();
+        self::assertSelectorTextContains('[role=alert]', 'Бронь подтверждена');
+        self::assertSame(BookingStatus::Confirmed, $this->reload($booking)->getStatus());
+        self::assertFalse($this->reload($booking)->isPaid());
+        $row = $crawler->filter('tbody tr:contains("Постоплатник")');
+        self::assertStringContainsString('Подтверждена', $row->text());
+        self::assertStringContainsString('Не оплачена', $row->text());
+        self::assertCount(0, $row->filter('form[action$="/confirm"]'));
+
+        // the "confirmed, not paid" filter finds it
+        $crawler = $this->client->request('GET', '/admin/bookings?status=unpaid');
+        self::assertCount(1, $crawler->filter('tbody tr'));
+
+        // still holding the side days later
+        $this->clock->modify('+3 days');
+        $crawler = $this->client->request('GET', '/admin/bookings');
+        self::assertStringContainsString('Подтверждена', $crawler->filter('tbody tr:contains("Постоплатник")')->text());
+
+        $this->submitPostForm($crawler, 'form[action="/admin/bookings/'.$booking->getId().'/pay"]');
+        $crawler = $this->client->followRedirect();
+        self::assertTrue($this->reload($booking)->isPaid());
+        self::assertStringContainsString('Оплачена', $crawler->filter('tbody tr:contains("Постоплатник")')->text());
+        $this->client->request('GET', '/admin/bookings?status=unpaid');
+        self::assertSelectorTextContains('tbody', 'Ничего не найдено');
+
+        $crawler = $this->client->request('GET', '/admin/bookings');
+        $this->submitPostForm($crawler, 'form[action="/admin/bookings/'.$booking->getId().'/unpay"]');
+        $this->client->followRedirect();
+        self::assertFalse($this->reload($booking)->isPaid());
+        self::assertSame(BookingStatus::Confirmed, $this->reload($booking)->getStatus());
+    }
+
+    public function testScreenBookingByHalfSlots(): void
+    {
+        $screenSide = $this->side($this->screen, 'A');
+        $screenSide->setSlotSeconds(10)->setSlotCount(1);
+        $this->em->flush();
+
+        $crawler = $this->client->request('GET', $this->url($this->screen));
+        self::assertSelectorExists('select[name="booking_form[slotSeconds]"] option[value="5"]');
+
+        foreach (['Первая половина', 'Вторая половина'] as $title) {
+            $crawler = $this->client->request('GET', $this->url($this->screen));
+            [$values, $uri] = $this->formValues($crawler, 'Забронировать на 24 часа');
+            $values['booking_form']['side'] = (string) $screenSide->getId();
+            $values['booking_form']['startDate'] = '2026-09-10';
+            $values['booking_form']['endDate'] = '2026-09-30';
+            $values['booking_form']['slots'] = '1';
+            $values['booking_form']['slotSeconds'] = '5';
+            $values['booking_form']['client'] = (string) $this->customer->getId();
+            $values['booking_form']['comment'] = $title;
+            $this->submit($uri, $values);
+            self::assertResponseRedirects($this->url($this->screen));
+        }
+
+        // the 10-second slot is sold out by two halves: the grid shows it full, a third half doesn't fit
+        $crawler = $this->client->request('GET', $this->url($this->screen));
+        self::assertStringContainsString('1/1', $crawler->filter('tbody')->first()->text());
+        self::assertStringContainsString('1 слот по 5 сек', $crawler->filter('main')->text());
+        [$values, $uri] = $this->formValues($crawler, 'Забронировать на 24 часа');
+        $values['booking_form']['side'] = (string) $screenSide->getId();
+        $values['booking_form']['startDate'] = '2026-09-10';
+        $values['booking_form']['endDate'] = '2026-09-30';
+        $values['booking_form']['slots'] = '1';
+        $values['booking_form']['slotSeconds'] = '5';
+        $values['booking_form']['client'] = (string) $this->customer->getId();
+        $this->submit($uri, $values);
+        self::assertResponseStatusCodeSame(422);
+        self::assertSelectorTextContains('[role=alert]', 'свободно слотов: 0 из 1');
     }
 
     public function testCancelFromListReturnsToList(): void
@@ -343,7 +423,7 @@ final class BookingControllerTest extends AdminWebTestCase
         self::assertStringContainsString('Истекла', $crawler->filter('tbody tr:contains("Просрочил")')->text());
         self::assertCount(0, $crawler->filter('tbody tr:contains("Просрочил") form'));
 
-        $crawler = $this->client->request('GET', '/admin/bookings?status=paid');
+        $crawler = $this->client->request('GET', '/admin/bookings?status=confirmed');
         self::assertCount(1, $crawler->filter('tbody tr'));
         self::assertSelectorTextContains('tbody', 'Заплатил');
     }

@@ -13,6 +13,7 @@ use App\Entity\ProductType;
 use App\Entity\User;
 use App\Enum\BookingMode;
 use App\Enum\BookingStatus;
+use App\Service\Availability\AvailabilityResolver;
 use App\Service\BookingException;
 use App\Service\BookingManager;
 use Doctrine\ORM\EntityManagerInterface;
@@ -103,26 +104,56 @@ final class BookingManagerTest extends KernelTestCase
         self::assertInstanceOf(Booking::class, $this->book($this->billboardA, '2026-09', client: 'Второй клиент'));
     }
 
-    public function testPaidBookingNeverExpires(): void
+    public function testPaidBookingIsConfirmedAndNeverExpires(): void
     {
         $booking = $this->book($this->billboardA, '2026-09');
         $this->clock->modify('+2 hours');
         $this->manager->markPaid($booking);
 
-        self::assertSame(BookingStatus::Paid, $booking->getStatus());
+        self::assertSame(BookingStatus::Confirmed, $booking->getStatus());
+        self::assertTrue($booking->isPaid());
+        self::assertEquals($this->clock->now(), $booking->getConfirmedAt());
         self::assertNull($booking->getExpiresAt());
 
         $this->clock->modify('+30 days');
         self::assertSame(0, $this->manager->expireOverdueHolds());
         $this->assertUnavailable(fn () => $this->book($this->billboardA, '2026-09'), 'уже забронирована');
+        $this->assertUnavailable(fn () => $this->manager->markPaid($booking), 'уже отмечена оплаченной');
     }
 
-    public function testCannotPayExpiredHold(): void
+    public function testPostPaidBookingIsConfirmedBeforeTheMoney(): void
+    {
+        $booking = $this->book($this->billboardA, '2026-09');
+        $this->manager->confirm($booking);
+
+        self::assertSame(BookingStatus::Confirmed, $booking->getStatus());
+        self::assertFalse($booking->isPaid());
+        self::assertNull($booking->getExpiresAt());
+        $this->assertUnavailable(fn () => $this->manager->confirm($booking), 'только бронь, которая ждёт подтверждения');
+
+        // a day later it still holds the side, unpaid
+        $this->clock->modify('+3 days');
+        self::assertSame(0, $this->manager->expireOverdueHolds());
+        self::assertTrue($booking->isActiveAt($this->clock->now()));
+        $this->assertUnavailable(fn () => $this->book($this->billboardA, '2026-09', client: 'Другой'), 'уже забронирована');
+
+        // the money comes later; a mark made by mistake can be taken back
+        $this->manager->markPaid($booking);
+        self::assertTrue($booking->isPaid());
+        self::assertSame(BookingStatus::Confirmed, $booking->getStatus());
+        $this->manager->markUnpaid($booking);
+        self::assertFalse($booking->isPaid());
+        self::assertSame(BookingStatus::Confirmed, $booking->getStatus());
+        $this->assertUnavailable(fn () => $this->manager->markUnpaid($booking), 'и так не оплачена');
+    }
+
+    public function testCannotPayOrConfirmExpiredHold(): void
     {
         $booking = $this->book($this->billboardA, '2026-09');
         $this->clock->modify('+25 hours');
 
         $this->assertUnavailable(fn () => $this->manager->markPaid($booking), 'Срок брони истёк');
+        $this->assertUnavailable(fn () => $this->manager->confirm($booking), 'Срок брони истёк');
     }
 
     public function testCancelFreesTheSide(): void
@@ -175,6 +206,36 @@ final class BookingManagerTest extends KernelTestCase
         $this->assertUnavailable(fn () => $this->book($this->screen, '2026-10', slots: 3), 'укажите число слотов: от 1 до 2');
     }
 
+    public function testTenSecondSlotIsSoldWholeOrByHalves(): void
+    {
+        $this->screen->setSlotSeconds(10)->setSlotCount(2); // a 20-second block of two 10-second slots
+        $this->em->flush();
+        self::assertSame([10, 5], $this->screen->getSlotSecondsChoices());
+
+        // a client of 5 seconds takes half a slot, another one the whole second slot
+        $half = $this->book($this->screen, '2026-09', slots: 1, client: 'Пять секунд', seconds: 5);
+        self::assertSame(5, $half->getSlotSeconds());
+        self::assertSame(5, $this->screen->secondsTakenBy($half));
+        $this->book($this->screen, '2026-09', slots: 1, client: 'Целый слот');
+
+        // 15 of 20 seconds are taken: a whole slot no longer fits, the other half of the first one does
+        $this->assertUnavailable(fn () => $this->book($this->screen, '2026-09', slots: 1, client: 'Ещё целый'), 'свободно слотов: 0,5 из 2, а нужно 1');
+        $this->book($this->screen, '2026-09', slots: 1, client: 'Вторые пять', seconds: 5);
+        $this->assertUnavailable(fn () => $this->book($this->screen, '2026-09', slots: 1, client: 'Лишний', seconds: 5), 'свободно слотов: 0 из 2');
+
+        // the screen is taken only now, when all its time is
+        $availability = static::getContainer()->get(AvailabilityResolver::class)->forProduct($this->screen->getProduct()->getId(), new \DateTimeImmutable('2026-09-01'));
+        self::assertSame(0, $availability->side($this->screen->getId())->freeSeconds());
+    }
+
+    public function testHalfSlotOnlyWhereTheSlotSplits(): void
+    {
+        // the default 5-second slot can't be halved: the booking takes the whole slot
+        self::assertSame([5], $this->screen->getSlotSecondsChoices());
+        $booking = $this->book($this->screen, '2026-09', slots: 1, seconds: 10);
+        self::assertSame(5, $this->screen->secondsTakenBy($booking));
+    }
+
     public function testExpireOverdueHoldsOnlyTouchesUnpaidHolds(): void
     {
         $unpaid = $this->book($this->billboardA, '2026-09');
@@ -187,7 +248,7 @@ final class BookingManagerTest extends KernelTestCase
         self::assertSame(1, $this->manager->expireOverdueHolds());
 
         self::assertSame(BookingStatus::Expired, $unpaid->getStatus());
-        self::assertSame(BookingStatus::Paid, $paid->getStatus());
+        self::assertSame(BookingStatus::Confirmed, $paid->getStatus());
         self::assertSame(BookingStatus::Hold, $fresh->getStatus());
     }
 
@@ -204,9 +265,10 @@ final class BookingManagerTest extends KernelTestCase
         $columns['2026-10-19'] = [new \DateTimeImmutable('2026-10-19'), new \DateTimeImmutable('2026-10-19')];
         $grid = $this->manager->occupancy($this->screen->getProduct(), $columns)[$this->screen->getId()];
 
-        self::assertSame(5, $grid['2026-09']['used']);
-        self::assertSame(3, $grid['2026-10']['used']); // busiest day: 2 slots all month + 1 from the 5th to the 18th
-        self::assertSame(2, $grid['2026-10-19']['used']);
+        // seconds of the block: slots × 5 s
+        self::assertSame(25, $grid['2026-09']['used']);
+        self::assertSame(15, $grid['2026-10']['used']); // busiest day: 2 slots all month + 1 from the 5th to the 18th
+        self::assertSame(10, $grid['2026-10-19']['used']);
         self::assertSame(0, $grid['2026-11']['used']);
         self::assertCount(2, $grid['2026-09']['bookings']);
     }
@@ -306,13 +368,14 @@ final class BookingManagerTest extends KernelTestCase
         return $this->manager->hold($request);
     }
 
-    private function book(ProductSide $side, string $month, int $months = 1, ?int $slots = null, string $client = 'ООО Ромашка'): Booking
+    private function book(ProductSide $side, string $month, int $months = 1, ?int $slots = null, string $client = 'ООО Ромашка', ?int $seconds = null): Booking
     {
         $request = new BookingRequest();
         $request->side = $side;
         $request->startMonth = $month;
         $request->months = $months;
         $request->slots = $slots;
+        $request->slotSeconds = $seconds;
         $request->client = $this->clientAccount($client);
         $request->clientPhone = '+7 900 000-00-00';
 

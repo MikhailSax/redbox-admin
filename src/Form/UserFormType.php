@@ -37,7 +37,7 @@ class UserFormType extends AbstractType
                 'expanded' => true,
                 'constraints' => [new Assert\NotBlank(message: 'Выберите роль')],
                 'disabled' => !$options['can_change_role'],
-                'help' => $options['can_change_role'] ? 'Администратор дополнительно управляет пользователями.' : 'Свою роль изменить нельзя.',
+                'help' => $options['can_change_role'] ? 'Администратор дополнительно управляет пользователями. Агент заводит клиентов, собирает медиапланы и разбирает заявки; конструкции и их занятость только смотрит, брони и платежи не оформляет.' : 'Свою роль изменить нельзя.',
             ])
             // Hashed by the controller; empty on edit means "keep the current password".
             ->add('plainPassword', RepeatedType::class, [

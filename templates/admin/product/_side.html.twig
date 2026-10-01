@@ -10,10 +10,12 @@
             Сторона {{ side and side.name ? side.name : '' }}
             {% if photos is not empty %}<span class="text-sm font-normal text-body">· фото: {{ photos|length }}</span>{% endif %}
         </h3>
-        <button type="button" class="btn btn-danger-outline btn-sm" data-collection-remove
-                data-confirm="{{ photos is not empty ? 'Сторона и её фотографии (' ~ photos|length ~ ') будут удалены после сохранения формы.' : '' }}" data-confirm-title="Удалить сторону?">
-            Удалить сторону
-        </button>
+        {% if not readonly|default(false) %}
+            <button type="button" class="btn btn-danger-outline btn-sm" data-collection-remove
+                    data-confirm="{{ photos is not empty ? 'Сторона и её фотографии (' ~ photos|length ~ ') будут удалены после сохранения формы.' : '' }}" data-confirm-title="Удалить сторону?">
+                Удалить сторону
+            </button>
+        {% endif %}
     </div>
 
     {{ form_errors(side_form) }}
@@ -67,11 +69,13 @@
                             <td class="px-4 py-2 text-heading break-all">{{ photo.originalName ?? photo.filename }}</td>
                             <td class="px-4 py-2 whitespace-nowrap">{{ photo.createdAt|date('d.m.Y H:i') }}</td>
                             <td class="px-4 py-2 text-right">
-                                {# Submits the standalone form rendered after the main form (forms can't be nested) #}
-                                <button type="submit" form="delete-photo-{{ photo.id }}" class="btn btn-danger-outline btn-sm"
-                                        data-confirm="Фото будет удалено сразу. Несохранённые изменения на странице потеряются." data-confirm-title="Удалить фото?">
-                                    Удалить
-                                </button>
+                                {% if not readonly|default(false) %}
+                                    {# Submits the standalone form rendered after the main form (forms can't be nested) #}
+                                    <button type="submit" form="delete-photo-{{ photo.id }}" class="btn btn-danger-outline btn-sm"
+                                            data-confirm="Фото будет удалено сразу. Несохранённые изменения на странице потеряются." data-confirm-title="Удалить фото?">
+                                        Удалить
+                                    </button>
+                                {% endif %}
                             </td>
                         </tr>
                     {% endfor %}

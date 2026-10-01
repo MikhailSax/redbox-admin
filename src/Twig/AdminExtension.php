@@ -2,8 +2,11 @@
 
 namespace App\Twig;
 
+use App\Entity\Booking;
+use App\Entity\MediaPlanItem;
 use App\Entity\Product;
 use App\Entity\Promotion;
+use App\Enum\BookingMode;
 use App\Repository\BookingRepository;
 use App\Repository\LeadRepository;
 use App\Repository\PaymentRepository;
@@ -27,7 +30,7 @@ class AdminExtension
     }
 
     /**
-     * Badges of the sidebar: new requests from the website, holds waiting for payment, overdue client payments.
+     * Badges of the sidebar: new requests from the website, holds waiting for confirmation, overdue client payments.
      *
      * @return array{leads: int, holds: int, overduePayments: int}
      */
@@ -39,6 +42,29 @@ class AdminExtension
             'holds' => $this->bookings->countLiveHolds($this->clock->now()),
             'overduePayments' => $this->payments->countOverdue($this->clock->now()),
         ];
+    }
+
+    /**
+     * Airtime of a screen booking or media plan item: "2 слота", "1 слот по 5 сек" (part of each slot).
+     */
+    #[AsTwigFunction('airtime_label')]
+    public static function airtimeLabel(Booking|MediaPlanItem $airtime): string
+    {
+        $slots = $airtime->getSlots();
+        if (null === $slots) {
+            return '';
+        }
+        $seconds = $airtime->getSide()->secondsPerSlot($airtime->getSlotSeconds());
+        $label = self::plural($slots, 'слот', 'слота', 'слотов');
+
+        return $seconds < $airtime->getSide()->getSlotSeconds() ? \sprintf('%s по %d сек', $label, $seconds) : $label;
+    }
+
+    /** Seconds of a block as slots: "7", "7,5" */
+    #[AsTwigFunction('slots_label')]
+    public static function slotsLabel(int $seconds, int $slotSeconds): string
+    {
+        return BookingMode::slotsLabel($seconds, $slotSeconds);
     }
 
     /**

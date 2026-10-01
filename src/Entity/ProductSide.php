@@ -258,16 +258,16 @@ class ProductSide
     }
 
     /**
-     * Contacts a day with one client's advertising: the side's whole OTS; on a screen the share of the time
-     * the client's $slots are on (1 slot of 12 is shown 1/12 of the time). Null when the OTS is not known.
+     * Contacts a day with one client's advertising: the side's whole OTS; on a screen the share of the block
+     * the client's airtime takes (1 slot of 12 is shown 1/12 of the time, half a slot 1/24). Null when the OTS is not known.
      */
-    public function getDailyContacts(?int $slots): ?float
+    public function getDailyContacts(?int $slots, ?int $seconds = null): ?float
     {
         if (null === $this->dailyOts) {
             return null;
         }
 
-        return $this->isAirtime() ? $this->dailyOts * min($slots ?? 1, $this->slotCount) / max(1, $this->slotCount) : (float) $this->dailyOts;
+        return $this->isAirtime() ? $this->dailyOts * min($this->airtimeSeconds($slots ?? 1, $seconds), $this->getBlockSeconds()) / max(1, $this->getBlockSeconds()) : (float) $this->dailyOts;
     }
 
     public function getSlotSeconds(): int
@@ -300,10 +300,36 @@ class ProductSide
         return $this->slotSeconds * $this->slotCount;
     }
 
-    /** Slots a booking of this side takes: its own for airtime, the whole block for a whole side */
-    public function slotsTakenBy(Booking $booking): int
+    /**
+     * Seconds of the block a booking of this side takes on each of its days: its slots × the seconds it has
+     * in each of them, or the whole block for a whole-side booking. The screen is taken when the whole block is.
+     */
+    public function secondsTakenBy(Booking $booking): int
     {
-        return $booking->getSlots() ?? $this->slotCount;
+        return null !== $booking->getSlots() ? $this->airtimeSeconds($booking->getSlots(), $booking->getSlotSeconds()) : $this->getBlockSeconds();
+    }
+
+    /** $slots slots with $seconds of each (null = whole slots) */
+    public function airtimeSeconds(int $slots, ?int $seconds = null): int
+    {
+        return $slots * $this->secondsPerSlot($seconds);
+    }
+
+    /** What a client gets of each slot: $seconds when it's a valid part of the slot, the whole slot otherwise */
+    public function secondsPerSlot(?int $seconds): int
+    {
+        return null !== $seconds && \in_array($seconds, $this->getSlotSecondsChoices(), true) ? $seconds : $this->slotSeconds;
+    }
+
+    /**
+     * How much of a slot a client may take: the whole slot or a part of it that is a slot length of its own
+     * (a 10-second slot is sold whole or as two 5-second halves).
+     *
+     * @return list<int> seconds, the whole slot first
+     */
+    public function getSlotSecondsChoices(): array
+    {
+        return BookingMode::secondsChoices($this->slotSeconds);
     }
 
     public function getProductType(): ?ProductType

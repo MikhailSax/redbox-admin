@@ -87,6 +87,34 @@ const money = (value) => new Intl.NumberFormat('ru-RU', { maximumFractionDigits:
 
 const pinOptions = (status) => ({ preset: 'islands#circleDotIcon', iconColor: STATUS_COLORS[status] || STATUS_COLORS.none });
 
+/** How far apart structures standing at the very same point are drawn, degrees of latitude (~6 m) */
+const SAME_POINT_SPREAD = 0.00006;
+
+/**
+ * Every structure gets its own pin (no clusters), so structures at the very same coordinates would hide
+ * one another: those are spread on a small circle around the point.
+ */
+function spreadCoordinates(points) {
+    const groups = new Map();
+    points.forEach((point) => {
+        const key = point.lat.toFixed(6) + ',' + point.lng.toFixed(6);
+        groups.set(key, [...(groups.get(key) || []), point]);
+    });
+
+    const coordinates = new Map();
+    groups.forEach((group) => group.forEach((point, index) => {
+        if (group.length === 1) {
+            coordinates.set(point.id, [point.lat, point.lng]);
+            return;
+        }
+        const angle = (2 * Math.PI * index) / group.length;
+        const lngScale = Math.cos((point.lat * Math.PI) / 180) || 1;
+        coordinates.set(point.id, [point.lat + SAME_POINT_SPREAD * Math.sin(angle), point.lng + (SAME_POINT_SPREAD * Math.cos(angle)) / lngScale]);
+    }));
+
+    return coordinates;
+}
+
 /* ---------- Map of all structures ---------- */
 
 async function initConstructionMap(element) {
@@ -103,26 +131,22 @@ async function initConstructionMap(element) {
     const planSelect = document.querySelector('[data-map-plan]');
 
     const map = createMap(ymaps, element, ['zoomControl', 'typeSelector', 'fullscreenControl']);
-    const clusterer = new ymaps.Clusterer({
-        preset: 'islands#invertedBlackClusterIcons',
-        gridSize: 64,
-        groupByCoordinates: false,
-        clusterDisableClickZoom: false,
-        hasBalloon: true, // structures at the very same point open as a list
-    });
-    map.geoObjects.add(clusterer);
+    // No clusters: every structure is its own pin at any zoom
+    const pins = new ymaps.GeoObjectCollection();
+    map.geoObjects.add(pins);
 
     /** @type {Map<number, {point: object, placemark: object}>} */
     const markers = new Map();
     let controller = null;
     let firstLoad = true;
+    let canBook = true;
     const focusId = Number(new URLSearchParams(location.search).get('focus')) || null;
 
     /** Balloon HTML; depends on the media plan selected above the map */
     function balloon(point) {
         const plan = planSelect?.selectedOptions[0];
         const sides = point.sides.map((side) => '<span class="map-side-chip" data-status="' + escape(side.status) + '" title="Сторона '
-            + escape(side.name) + ': ' + escape(side.label.toLowerCase()) + (side.airtime ? ', занято слотов: ' + side.used + ' из ' + side.slots : '') + '">' + escape(side.name) + (side.airtime ? ' · ' + side.used + '/' + side.slots : '') + '</span>').join('');
+            + escape(side.name) + ': ' + escape(side.label.toLowerCase()) + (side.airtime ? ', занято слотов: ' + side.used + ' из ' + side.slots + ', свободно ' + side.freeSeconds + ' сек' : '') + '">' + escape(side.name) + (side.airtime ? ' · ' + side.used + '/' + side.slots : '') + '</span>').join('');
         const promos = point.promotions.map((promo) => '<span class="promo-badge">' + escape(promo.label + ' ' + promo.title) + '</span>').join('');
 
         let planBox = '';
@@ -145,7 +169,7 @@ async function initConstructionMap(element) {
             + planBox
             + '<div class="mt-3 flex gap-2">'
             + '<a href="' + escape(point.urls.edit) + '" class="btn btn-secondary btn-sm flex-1">Карточка</a>'
-            + '<a href="' + escape(point.urls.booking) + '" class="btn btn-primary btn-sm flex-1">Забронировать</a>'
+            + '<a href="' + escape(point.urls.booking) + '" class="btn btn-primary btn-sm flex-1">' + (canBook ? 'Забронировать' : 'Занятость') + '</a>'
             + '</div></div></div>';
     }
 
@@ -216,15 +240,7 @@ async function initConstructionMap(element) {
             return;
         }
         const { placemark } = marker;
-        map.setCenter(placemark.geometry.getCoordinates(), Math.max(map.getZoom(), 16), { duration: 300 }).then(() => {
-            const state = clusterer.getObjectState(placemark);
-            if (state.isClustered && state.cluster) {
-                state.cluster.state.set('activeObject', placemark);
-                clusterer.balloon.open(state.cluster);
-            } else {
-                placemark.balloon.open();
-            }
-        });
+        map.setCenter(placemark.geometry.getCoordinates(), Math.max(map.getZoom(), 16), { duration: 300 }).then(() => placemark.balloon.open());
     }
 
     function renderChips(data) {
@@ -244,23 +260,22 @@ async function initConstructionMap(element) {
     }
 
     function render(data) {
+        canBook = data.canBook !== false;
         map.balloon.close();
-        clusterer.removeAll();
+        pins.removeAll();
         markers.clear();
         list.replaceChildren();
 
-        const placemarks = data.points.map((point) => {
-            const placemark = new ymaps.Placemark([point.lat, point.lng], {
+        const coordinates = spreadCoordinates(data.points);
+        data.points.forEach((point) => {
+            const placemark = new ymaps.Placemark(coordinates.get(point.id), {
                 hintContent: point.name,
                 balloonContent: balloon(point),
-                clusterCaption: point.name,
             }, { ...pinOptions(point.status), balloonMinWidth: 256, balloonMaxWidth: 280, balloonPanelMaxMapArea: 0 });
             markers.set(point.id, { point, placemark });
             list.append(listItem(point));
-
-            return placemark;
+            pins.add(placemark);
         });
-        clusterer.add(placemarks);
 
         if (data.points.length === 0) {
             list.append(el('li', 'px-4 py-12 text-center text-sm text-body', 'По этим фильтрам конструкций на карте нет'));
@@ -273,7 +288,7 @@ async function initConstructionMap(element) {
         if (firstLoad && focusId && markers.has(focusId)) {
             focus(focusId);
         } else if (data.points.length > 0) {
-            map.setBounds(clusterer.getBounds(), { checkZoomRange: true, zoomMargin: 40 }).then(() => {
+            map.setBounds(pins.getBounds(), { checkZoomRange: true, zoomMargin: 40 }).then(() => {
                 if (map.getZoom() > 15) {
                     map.setZoom(15);
                 }

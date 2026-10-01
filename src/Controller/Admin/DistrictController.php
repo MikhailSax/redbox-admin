@@ -3,6 +3,7 @@
 namespace App\Controller\Admin;
 
 use App\Entity\District;
+use App\Entity\User;
 use App\Form\DistrictFormType;
 use App\Repository\DistrictRepository;
 use App\Repository\ProductRepository;
@@ -14,8 +15,10 @@ use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Routing\Requirement\Requirement;
 use Symfony\Component\Security\Http\Attribute\IsCsrfTokenValid;
+use Symfony\Component\Security\Http\Attribute\IsGranted;
 
 #[Route('/admin/districts', name: 'admin_district_')]
+#[IsGranted(User::ROLE_SUPER_MANAGER)]
 final class DistrictController extends AbstractController
 {
     public function __construct(

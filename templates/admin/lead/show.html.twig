@@ -40,14 +40,16 @@
                     <button type="submit" class="btn btn-primary">{{ ui.icon('document', 'size-4') }} Сделать медиаплан</button>
                 </form>
             {% endif %}
-            {{ include('admin/_delete_form.html.twig', {
-                action: path('admin_lead_delete', {id: lead.id}),
-                token_id: 'delete-lead-' ~ lead.id,
-                title: 'Удалить заявку?',
-                confirm: 'Заявка №' ~ lead.id ~ ' будет удалена. Созданный из неё медиаплан останется.',
-                label: 'Удалить',
-                button_class: 'btn-danger-outline',
-            }) }}
+            {% if is_granted('ROLE_SUPER_MANAGER') %}
+                {{ include('admin/_delete_form.html.twig', {
+                    action: path('admin_lead_delete', {id: lead.id}),
+                    token_id: 'delete-lead-' ~ lead.id,
+                    title: 'Удалить заявку?',
+                    confirm: 'Заявка №' ~ lead.id ~ ' будет удалена. Созданный из неё медиаплан останется.',
+                    label: 'Удалить',
+                    button_class: 'btn-danger-outline',
+                }) }}
+            {% endif %}
         </div>
     </div>
 
