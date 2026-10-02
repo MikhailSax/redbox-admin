@@ -117,6 +117,18 @@ class Product
     private ?string $longitude = null;
 
     /**
+     * False while the structure is out of order (repairs, taken down, no permit): it is left out of the dashboard,
+     * the website and media plans, and takes no new bookings. Bookings it already has stay.
+     */
+    #[ORM\Column(options: ['default' => true])]
+    private bool $working = true;
+
+    /** Why the structure doesn't work; only kept while it doesn't */
+    #[ORM\Column(length: 255, nullable: true)]
+    #[Assert\Length(max: 255)]
+    private ?string $notWorkingReason = null;
+
+    /**
      * @var Collection<int, ProductSide>
      */
     #[ORM\OneToMany(targetEntity: ProductSide::class, mappedBy: 'product', cascade: ['persist', 'remove'], orphanRemoval: true)]
@@ -347,6 +359,34 @@ class Product
         if (null !== $this->owner && null === $this->purchasePrice) {
             $context->buildViolation('Укажите цену партнёра')->atPath('purchasePrice')->addViolation();
         }
+    }
+
+    public function isWorking(): bool
+    {
+        return $this->working;
+    }
+
+    public function setWorking(bool $working): static
+    {
+        $this->working = $working;
+        if ($working) {
+            $this->notWorkingReason = null;
+        }
+
+        return $this;
+    }
+
+    public function getNotWorkingReason(): ?string
+    {
+        return $this->notWorkingReason;
+    }
+
+    public function setNotWorkingReason(?string $reason): static
+    {
+        $reason = null !== $reason ? trim($reason) : null;
+        $this->notWorkingReason = !$this->working && '' !== $reason ? $reason : null;
+
+        return $this;
     }
 
     public function getLatitude(): ?string

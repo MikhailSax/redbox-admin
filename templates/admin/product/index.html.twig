@@ -42,6 +42,11 @@
                 <option value="{{ partner.id }}" {{ query.owner == partner.id ~ "" ? "selected" }}>{{ partner.name }}</option>
             {% endfor %}
         </select>
+        <select name="working" class="input" aria-label="Работает">
+            <option value="">Работающие и нет</option>
+            <option value="yes" {{ query.working == 'yes' ? 'selected' }}>Работают</option>
+            <option value="no" {{ query.working == 'no' ? 'selected' }}>Не работают</option>
+        </select>
         <select name="month" class="input" aria-label="Статус на месяц">
             {% for m in months %}
                 <option value="{{ loop.first ? '' : m|date('Y-m') }}" {{ m|date('Y-m') == month|date('Y-m') ? 'selected' }}>{{ loop.first ? 'Сейчас · ' : '' }}{{ m|month_label }}</option>
@@ -126,6 +131,9 @@
                                                 {%- if product.size %} · {{ product.sizeLabel }}{% endif -%}
                                             </span>
                                             <span class="mt-1 flex flex-wrap items-center gap-1">
+                                                {% if not product.working %}
+                                                    <span class="inline-flex items-center rounded bg-danger-soft px-1.5 py-px text-[11px] font-medium text-fg-danger-strong ring-1 ring-danger-subtle" title="{{ product.notWorkingReason ?? 'Не попадает в «Обзор», на сайт и в медиапланы' }}">Не работает</span>
+                                                {% endif %}
                                                 <span class="inline-flex items-center rounded px-1.5 py-px text-[11px] font-medium {{ product.own ? "bg-zinc-100 text-heading ring-1 ring-zinc-200" : "bg-sky-50 text-sky-700 ring-1 ring-sky-200" }}">{{ product.own ? "Своя" : product.owner.name }}</span>
                                                 {% for promotion in promotions_for(product, true)|slice(0, 2) %}
                                                     <span class="promo-badge !h-[18px]" title="Акция «{{ promotion.title }}»">{{ promotion.discountLabel }}</span>

@@ -12,6 +12,7 @@ use Symfony\Component\Clock\ClockInterface;
 
 /**
  * Filtered structures with their availability for the chosen month: paginated for the list, all at once for the map.
+ * $workingOnly leaves out structures out of order (what is for sale: the website, media plans, the map).
  */
 class ProductListing
 {
@@ -32,9 +33,9 @@ class ProductListing
      *     month: \DateTimeImmutable,
      * }
      */
-    public function page(ProductListQuery $query, int $perPage): array
+    public function page(ProductListQuery $query, int $perPage, bool $workingOnly = false): array
     {
-        ['ids' => $ids, 'availability' => $availability, 'statusCounts' => $statusCounts, 'month' => $month] = $this->resolve($query);
+        ['ids' => $ids, 'availability' => $availability, 'statusCounts' => $statusCounts, 'month' => $month] = $this->resolve($query, $workingOnly);
 
         $total = \count($ids);
         $pageIds = \array_slice($ids, ($query->page - 1) * $perPage, $perPage);
@@ -54,9 +55,9 @@ class ProductListing
      *
      * @return array{products: list<Product>, availability: array<int, ProductAvailability>, statusCounts: array<string, int>, month: \DateTimeImmutable}
      */
-    public function all(ProductListQuery $query): array
+    public function all(ProductListQuery $query, bool $workingOnly = false): array
     {
-        ['ids' => $ids, 'availability' => $availability, 'statusCounts' => $statusCounts, 'month' => $month] = $this->resolve($query);
+        ['ids' => $ids, 'availability' => $availability, 'statusCounts' => $statusCounts, 'month' => $month] = $this->resolve($query, $workingOnly);
 
         return [
             'products' => $this->products->findForList($ids),
@@ -69,7 +70,7 @@ class ProductListing
     /**
      * @return array{ids: list<int>, availability: array<int, ProductAvailability>, statusCounts: array<string, int>, month: \DateTimeImmutable}
      */
-    private function resolve(ProductListQuery $query): array
+    private function resolve(ProductListQuery $query, bool $workingOnly): array
     {
         $month = null !== $query->month && '' !== $query->month
             ? MonthCalendar::parse($query->month)
@@ -77,7 +78,7 @@ class ProductListing
 
         // Status is computed from bookings, not stored: resolve it for every match (one aggregate query),
         // then count and filter in PHP.
-        $ids = $this->products->findMatchingIds($query);
+        $ids = $this->products->findMatchingIds($query, $workingOnly);
         $availability = $this->availability->forProducts($ids, $month);
 
         $statusCounts = array_fill_keys(array_map(static fn (AvailabilityStatus $s) => $s->value, AvailabilityStatus::cases()), 0);

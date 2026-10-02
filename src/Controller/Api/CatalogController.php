@@ -43,7 +43,7 @@ final class CatalogController extends AbstractController
     public function structures(#[MapQueryString] ProductListQuery $query = new ProductListQuery()): JsonResponse
     {
         ['products' => $products, 'availability' => $availability, 'statusCounts' => $counts, 'total' => $total, 'pages' => $pages, 'month' => $month]
-            = $this->listing->page($query, self::PER_PAGE);
+            = $this->listing->page($query, self::PER_PAGE, workingOnly: true);
 
         return $this->json([
             'items' => array_map(fn (Product $product) => $this->presenter->structure($product, $availability[$product->getId()] ?? null), $products),
@@ -58,6 +58,7 @@ final class CatalogController extends AbstractController
     #[Route('/structures/{id}', name: 'structure', requirements: ['id' => Requirement::DIGITS], methods: ['GET'])]
     public function structure(Product $product, #[MapQueryParameter] ?string $month = null): JsonResponse
     {
+        $this->assertWorking($product);
         $availability = $this->listing->all(new ProductListQuery(month: $month))['availability'][$product->getId()] ?? null;
 
         return $this->json($this->presenter->structure($product, $availability));
@@ -69,6 +70,7 @@ final class CatalogController extends AbstractController
     #[Route('/structures/{id}/availability', name: 'structure_availability', requirements: ['id' => Requirement::DIGITS], methods: ['GET'])]
     public function availability(Product $product, #[MapQueryParameter] ?string $from = null, #[MapQueryParameter] ?string $to = null): JsonResponse
     {
+        $this->assertWorking($product);
         $today = $this->clock->now()->setTime(0, 0);
         $start = self::date($from) ?? $today;
         $end = self::date($to) ?? $start->modify('+90 days');
@@ -81,6 +83,14 @@ final class CatalogController extends AbstractController
         }
 
         return $this->json($this->presenter->availability($product, $start, $end));
+    }
+
+    /** A structure out of order isn't on the website */
+    private function assertWorking(Product $product): void
+    {
+        if (!$product->isWorking()) {
+            throw $this->createNotFoundException();
+        }
     }
 
     /**

@@ -53,7 +53,7 @@ final class MapController extends AbstractController
     #[Route('/admin/map/data', name: 'admin_map_data', methods: ['GET'])]
     public function data(ProductListing $listing, Packages $assets, PromotionResolver $promotions, #[MapQueryString] ProductListQuery $query = new ProductListQuery()): JsonResponse
     {
-        ['products' => $products, 'availability' => $availability, 'statusCounts' => $statusCounts, 'month' => $month] = $listing->all($query);
+        ['products' => $products, 'availability' => $availability, 'statusCounts' => $statusCounts, 'month' => $month] = $listing->all($query, workingOnly: 'no' !== $query->working);
 
         $points = [];
         $withoutCoordinates = 0;

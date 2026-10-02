@@ -81,7 +81,7 @@ final class MediaPlanController extends AbstractController
     public function show(Request $request, MediaPlan $plan, ProductListing $listing, BookingManager $bookings, #[MapQueryParameter] ?string $q = null): Response
     {
         // Picker: every structure matching the search, each side checked for the whole plan period
-        $candidates = $listing->all(new ProductListQuery(q: $q))['products'];
+        $candidates = $listing->all(new ProductListQuery(q: $q), workingOnly: true)['products'];
         $sideProblems = [];
         foreach ($candidates as $product) {
             foreach ($product->getSides() as $side) {
@@ -208,15 +208,22 @@ final class MediaPlanController extends AbstractController
         $slots = (int) $payload->getString('slots') ?: null;
         $slotSeconds = (int) $payload->getString('slotSeconds') ?: null;
         $added = 0;
+        $notWorking = [];
         foreach ($payload->all('sides') as $sideId) {
             $side = $this->entityManager->find(ProductSide::class, (int) $sideId);
-            if (null !== $side && null !== $this->manager->addSide($plan, $side, $slots, $slotSeconds)) {
+            if (null !== $side && !$side->getProduct()->isWorking()) {
+                $notWorking[(string) $side->getProduct()->getName()] = true;
+            } elseif (null !== $side && null !== $this->manager->addSide($plan, $side, $slots, $slotSeconds)) {
                 ++$added;
             }
         }
         $this->entityManager->flush();
 
-        $message = $added > 0 ? \sprintf('Добавлено в медиаплан «%s»: %d', $plan->getTitle(), $added) : 'Эти стороны уже есть в медиаплане';
+        $message = match (true) {
+            $added > 0 => \sprintf('Добавлено в медиаплан «%s»: %d', $plan->getTitle(), $added),
+            [] !== $notWorking => \sprintf('Не работает, в медиаплан не добавлено: %s', implode(', ', array_keys($notWorking))),
+            default => 'Эти стороны уже есть в медиаплане',
+        };
 
         if ('json' === $request->getPreferredFormat()) {
             return $this->json(['added' => $added, 'message' => $message, 'items' => $plan->getItems()->count()]);

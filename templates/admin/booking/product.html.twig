@@ -81,8 +81,15 @@
     </div>
     {% endfor %}
 
-    {# Agents only look at the occupancy: booking is for managers #}
-    {% if is_granted('ROLE_SUPER_MANAGER') %}
+    {% if not product.working %}
+        <div class="mb-6 rounded-lg border border-danger-subtle bg-danger-soft px-4 py-3 text-sm text-fg-danger-strong" role="status">
+            <b>Конструкция не работает</b>{% if product.notWorkingReason %}: {{ product.notWorkingReason }}{% endif %}. Новые брони на неё не принимаются; уже сделанные остаются.
+            Снова принимать брони — отметьте «Работает» в карточке конструкции.
+        </div>
+    {% endif %}
+
+    {# Agents only look at the occupancy: booking is for managers; a structure out of order takes no new bookings #}
+    {% if is_granted('ROLE_SUPER_MANAGER') and product.working %}
     <div class="grid gap-6 lg:grid-cols-3 mb-6">
         {# New booking #}
         <div class="card lg:col-span-2">

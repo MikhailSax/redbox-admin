@@ -28,11 +28,12 @@ class AvailabilityResolver
     }
 
     /**
-     * @param list<int>|null $productIds null = every structure
+     * @param list<int>|null $productIds  null = every structure
+     * @param bool           $workingOnly structures out of order are left out (the dashboard)
      *
      * @return array<int, ProductAvailability> keyed by product id, in the order of $productIds
      */
-    public function forProducts(?array $productIds, \DateTimeInterface $month): array
+    public function forProducts(?array $productIds, \DateTimeInterface $month, bool $workingOnly = false): array
     {
         if ([] === $productIds) {
             return [];
@@ -53,6 +54,9 @@ class AvailabilityResolver
             ->orderBy('s.name', 'ASC');
         if (null !== $productIds) {
             $sides->andWhere('p.id IN (:ids)')->setParameter('ids', $productIds);
+        }
+        if ($workingOnly) {
+            $sides->andWhere('p.working = true');
         }
         $sides = $sides->getQuery()->getArrayResult();
 

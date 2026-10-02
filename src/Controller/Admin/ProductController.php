@@ -37,7 +37,7 @@ final class ProductController extends AbstractController
 
     /** Client-side tabs of the product card and the form fields on each, see templates/admin/product/_form.html.twig */
     private const CARD_TABS = [
-        'main' => ['name', 'schemeNumber', 'category', 'productType', 'size', 'price', 'owner', 'purchasePrice', 'shortDescription', 'description'],
+        'main' => ['name', 'schemeNumber', 'category', 'productType', 'size', 'working', 'notWorkingReason', 'price', 'owner', 'purchasePrice', 'shortDescription', 'description'],
         'location' => ['district', 'latitude', 'longitude'],
         'sides' => ['sides'],
         'seo' => ['seoTitle', 'seoDescription', 'seoKeywords'],

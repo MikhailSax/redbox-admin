@@ -34,7 +34,8 @@ class MediaPlanManager
      */
     public function addSide(MediaPlan $plan, ProductSide $side, ?int $slots = null, ?int $slotSeconds = null): ?MediaPlanItem
     {
-        if ($plan->hasSide($side)) {
+        // a structure out of order is not offered
+        if ($plan->hasSide($side) || !$side->getProduct()?->isWorking()) {
             return null;
         }
 

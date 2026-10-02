@@ -18,6 +18,7 @@ use Symfony\Component\Clock\ClockInterface;
  *
  * Billboards (sides sold whole) and video screens (airtime) are counted apart: a billboard side is free, booked
  * or occupied, a screen is loaded by the seconds of its block sold on the busiest day of the month.
+ * Only working structures count: those out of order (Product::$working) are not for sale.
  */
 class DashboardStats
 {
@@ -53,7 +54,7 @@ class DashboardStats
         $screens = [];
         $current = [];
         foreach ($months as $i => $month) {
-            $products = $this->availability->forProducts(null, $month);
+            $products = $this->availability->forProducts(null, $month, workingOnly: true);
             if (0 === $i) {
                 $current = $products;
             }

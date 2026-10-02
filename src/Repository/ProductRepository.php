@@ -22,10 +22,11 @@ class ProductRepository extends ServiceEntityRepository
     /**
      * Ids of products matching the text/category/type filters, newest changes first.
      * The availability filter is applied afterwards (status is computed, not stored).
+     * $workingOnly: structures out of order are left out whatever the query says (the website, media plans).
      *
      * @return list<int>
      */
-    public function findMatchingIds(ProductListQuery $query): array
+    public function findMatchingIds(ProductListQuery $query, bool $workingOnly = false): array
     {
         $qb = $this->createQueryBuilder('p')
             ->select('p.id')
@@ -52,6 +53,12 @@ class ProductRepository extends ServiceEntityRepository
 
         if (null !== $query->size && '' !== $query->size) {
             $qb->andWhere('p.size = :size')->setParameter('size', $query->size);
+        }
+
+        if ($workingOnly || 'yes' === $query->working) {
+            $qb->andWhere('p.working = true');
+        } elseif ('no' === $query->working) {
+            $qb->andWhere('p.working = false');
         }
 
         // "own" = Redbox's structures, a number = structures of that partner
