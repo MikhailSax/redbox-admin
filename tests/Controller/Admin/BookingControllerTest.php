@@ -530,6 +530,197 @@ final class BookingControllerTest extends AdminWebTestCase
     /**
      * @param list<string> $sides
      */
+    public function testListShowsTheSideApartAndSortsByAnyColumn(): void
+    {
+        $this->hold($this->side($this->billboard, 'B'), '2026-10', 'Борис');
+        $this->hold($this->side($this->billboard, 'A'), '2026-11', 'Анна');
+        $this->hold($this->side($this->screen, 'A'), '2026-09', 'Вера');
+        $rows = fn (string $query): array => $this->client->request('GET', '/admin/bookings'.$query)->filter('tbody tr')
+            ->each(static fn ($row) => trim($row->filter('th')->text()).' '.trim($row->filter('td')->eq(0)->text()));
+
+        // newest first; the side in a column of its own
+        self::assertSame(['Экран на площади A', 'Щит на Ленина A', 'Щит на Ленина B'], $rows(''));
+        self::assertResponseIsSuccessful();
+        // by structure, its sides one after another
+        self::assertSame(['Щит на Ленина A', 'Щит на Ленина B', 'Экран на площади A'], $rows('?sort=product'));
+        self::assertSame(['Экран на площади A', 'Щит на Ленина A', 'Щит на Ленина B'], $rows('?sort=product&dir=desc')); // sides still A to B
+        self::assertSame(['Экран на площади A', 'Щит на Ленина B', 'Щит на Ленина A'], $rows('?sort=period'));
+        self::assertSame(['Щит на Ленина B', 'Щит на Ленина A', 'Экран на площади A'], $rows('?sort=nonsense&dir=asc')); // unknown column: by creation date
+
+        // the header links: the active column turns its order around, the status filter stays
+        $crawler = $this->client->request('GET', '/admin/bookings?status=hold&sort=product');
+        self::assertSame('ascending', $crawler->filter('th[aria-sort]')->attr('aria-sort'));
+        self::assertSame('/admin/bookings?status=hold&sort=product&dir=desc', $crawler->filter('thead a:contains("Конструкция")')->attr('href'));
+        self::assertSame('/admin/bookings?status=hold&sort=side', $crawler->filter('thead a:contains("Сторона")')->attr('href'));
+        self::assertSame('/admin/bookings?status=hold', $crawler->filter('thead a:contains("Создана")')->attr('href'));
+        self::assertSame('product', $crawler->filter('form[data-live-filter] input[name="sort"]')->attr('value'));
+    }
+
+    public function testNewClientIsAPersonAnEntrepreneurOrACompanyAsChosen(): void
+    {
+        $crawler = $this->client->request('GET', $this->url($this->billboard));
+        self::assertCount(3, $crawler->filter('input[name="booking_form[newClientType]"]'));
+        self::assertCount(0, $crawler->filter('input[name="booking_form[newClientType]"][checked]'));
+        [$values, $uri] = $this->formValues($crawler, 'Забронировать на 24 часа');
+        $values['booking_form']['side'] = (string) $this->side($this->billboard, 'A')->getId();
+        $values['booking_form']['startMonth'] = '2026-10';
+        $values['booking_form']['client'] = '';
+        $values['booking_form']['newClient'] = 'ИП Сидоров С. С.';
+
+        // an entrepreneur needs an ИНН of 12 digits
+        $values['booking_form']['newClientType'] = ClientType::Entrepreneur->value;
+        $this->submit($uri, $values);
+        self::assertResponseStatusCodeSame(422);
+        self::assertSelectorTextContains('main', 'Укажите ИНН');
+        $values['booking_form']['newClientInn'] = '1234567890';
+        $this->submit($uri, $values);
+        self::assertResponseStatusCodeSame(422);
+        self::assertSelectorTextContains('main', 'ИНН ИП — 12 цифр');
+
+        $values['booking_form']['newClientInn'] = '123456789012';
+        $this->submit($uri, $values);
+        self::assertResponseRedirects();
+        $client = $this->em->getRepository(Booking::class)->findOneBy([])->getClient();
+        self::assertSame(ClientType::Entrepreneur, $client->getClientType());
+        self::assertSame(['ИП Сидоров С. С.', '123456789012'], [$client->getCompany(), $client->getInn()]);
+
+        // a private person chosen by hand keeps no requisites
+        $values['booking_form']['side'] = (string) $this->side($this->billboard, 'B')->getId();
+        $values['booking_form']['newClient'] = 'Петрова Анна';
+        $values['booking_form']['newClientType'] = ClientType::Individual->value;
+        $values['booking_form']['newClientInn'] = '';
+        $this->submit($uri, $values);
+        self::assertResponseRedirects();
+        $client = $this->em->getRepository(User::class)->findOneBy(['name' => 'Петрова Анна']);
+        self::assertSame(ClientType::Individual, $client->getClientType());
+        self::assertNull($client->getCompany());
+    }
+
+    public function testScreenSellsPartOfItsBlock(): void
+    {
+        // 12 slots in the block, 9 of them on sale
+        $side = $this->side($this->screen, 'A')->setSlotCount(9)->setLoopSlotCount(12)->setDailyOts(12000);
+        $this->em->flush();
+        self::assertSame([45, 60], [$side->getBlockSeconds(), $side->getLoopSeconds()]);
+        self::assertSame(1000.0, $side->getDailyContacts(1)); // a slot is still 1/12 of the time on screen
+
+        $crawler = $this->client->request('GET', $this->url($this->screen));
+        self::assertSame(['A 9 × 5 сек из 12'], $crawler->filter('table tbody')->eq(0)->filter('th')->each(static fn ($th) => $th->text()));
+        [$values, $uri] = $this->formValues($crawler, 'Забронировать на 24 часа');
+        $values['booking_form']['client'] = (string) $this->customer->getId();
+        $values['booking_form']['startDate'] = '2026-09-12';
+        $values['booking_form']['endDate'] = '2026-09-25';
+        $values['booking_form']['slots'] = '10';
+        $this->submit($uri, $values);
+        self::assertResponseStatusCodeSame(422);
+        self::assertSelectorTextContains('main', 'Слотов — от 1 до 9');
+
+        $values['booking_form']['slots'] = '9';
+        $this->submit($uri, $values);
+        $crawler = $this->client->followRedirect();
+        self::assertSame('9/9', trim($crawler->filter('table tbody')->eq(0)->filter('td')->eq(2)->text()));
+
+        // the side form: on sale fewer than in the block, not the other way round
+        $crawler = $this->client->request('GET', '/admin/products/'.$this->screen->getId().'/edit');
+        [$values, $uri] = $this->formValues($crawler, 'Сохранить');
+        self::assertSame('12', $values['product_form']['sides'][0]['loopSlotCount']);
+        $values['product_form']['sides'][0]['loopSlotCount'] = '8';
+        $this->submit($uri, $values);
+        self::assertResponseStatusCodeSame(422);
+        self::assertSelectorTextContains('main', 'Всего слотов в блоке не может быть меньше, чем в продаже');
+    }
+
+    public function testSlotsOfABookingAreChanged(): void
+    {
+        $side = $this->side($this->screen, 'A');
+        $hold = function (int $slots, string $client) use ($side): Booking {
+            $request = new BookingRequest();
+            $request->side = $side;
+            $request->startDate = new \DateTimeImmutable('2026-09-12');
+            $request->endDate = new \DateTimeImmutable('2026-09-25');
+            $request->slots = $slots;
+            $request->client = $this->customer;
+            $request->clientName = $client;
+
+            return static::getContainer()->get(BookingManager::class)->hold($request);
+        };
+        $mine = $hold(2, 'Кафе');
+        $hold(8, 'Аптека');
+        $this->hold($this->side($this->billboard, 'A'), '2026-10');
+
+        $crawler = $this->client->request('GET', $this->url($this->screen));
+        $form = $crawler->filter('form[action="/admin/bookings/'.$mine->getId().'/slots"]');
+        self::assertSame('2', $form->filter('input[name="slots"]')->attr('value'));
+        $change = function (string $slots) use ($form): void {
+            $values = $form->form()->getPhpValues();
+            $values['slots'] = $slots;
+            $this->client->request('POST', $form->form()->getUri(), $values);
+        };
+
+        // 8 + 4 fill the block
+        $change('4');
+        self::assertResponseRedirects($this->url($this->screen));
+        $this->client->followRedirect();
+        self::assertAnySelectorTextContains('[role=alert]', 'Слотов в брони: 4');
+        self::assertSame(4, $this->reload($mine)->getSlots());
+
+        // one more doesn't fit, fewer always do
+        $change('5');
+        $this->client->followRedirect();
+        self::assertAnySelectorTextContains('[role=alert]', 'свободно слотов: 4 из 12, а нужно 5');
+        $change('13');
+        $this->client->followRedirect();
+        self::assertAnySelectorTextContains('[role=alert]', 'Слотов — от 1 до 12');
+        $change('1');
+        self::assertSame(1, $this->reload($mine)->getSlots());
+
+        // a whole side has no slots to change
+        $crawler = $this->client->request('GET', $this->url($this->billboard));
+        self::assertCount(1, $crawler->filter('form[action$="/cancel"]'));
+        self::assertCount(0, $crawler->filter('form[action$="/slots"]'));
+    }
+
+    public function testScreenTurnedIntoAStaticPosterTakesWholeSides(): void
+    {
+        $static = $this->em->getRepository(ProductType::class)->findOneBy(['name' => 'Статика']);
+        $video = $this->em->getRepository(ProductType::class)->findOneBy(['name' => 'Видеоэкран']);
+        // the side has the screen's type of its own (e.g. moved by the import) and a client's slot in September
+        $this->side($this->screen, 'A')->setProductType($video);
+        $this->em->flush();
+        $request = new BookingRequest();
+        $request->side = $this->side($this->screen, 'A');
+        $request->startDate = new \DateTimeImmutable('2026-09-12');
+        $request->endDate = new \DateTimeImmutable('2026-09-25');
+        $request->slots = 1;
+        $request->client = $this->customer;
+        static::getContainer()->get(BookingManager::class)->hold($request);
+
+        // the structure becomes a static poster with two sides
+        $crawler = $this->client->request('GET', '/admin/products/'.$this->screen->getId().'/edit');
+        [$values, $uri] = $this->formValues($crawler, 'Сохранить');
+        self::assertSame((string) $video->getId(), $values['product_form']['sides'][0]['productType']);
+        $values['product_form']['productType'] = (string) $static->getId();
+        $values['product_form']['sides'][1] = ['name' => 'B', 'productType' => ''] + $values['product_form']['sides'][0];
+        $this->submit($uri, $values);
+        self::assertResponseRedirects();
+
+        $this->em->clear();
+        $product = $this->em->find(Product::class, $this->screen->getId());
+        self::assertSame(['A' => null, 'B' => null], array_combine(
+            $product->getSides()->map(static fn (ProductSide $s) => $s->getName())->getValues(),
+            $product->getSides()->map(static fn (ProductSide $s) => $s->getProductType()?->getName())->getValues(),
+        ));
+        self::assertFalse($product->hasAirtimeSides());
+
+        // the old slot booking takes side A for its days, it isn't "1 slot of 12" any more
+        $crawler = $this->client->request('GET', $this->url($product));
+        self::assertSelectorNotExists('input[name="booking_form[slots]"]');
+        self::assertSelectorTextContains('h2', 'Занятость на 12 месяцев');
+        self::assertStringNotContainsString('слот', $crawler->filter('main')->text());
+        $sideA = $product->getSides()->findFirst(static fn ($i, ProductSide $s) => 'A' === $s->getName());
+        self::assertNotNull(static::getContainer()->get(BookingManager::class)->availabilityProblem($sideA, new \DateTimeImmutable('2026-09-01'), new \DateTimeImmutable('2026-09-30'), null));
+    }
+
     private function product(string $name, Category $category, ProductType $type, District $district, array $sides): Product
     {
         $product = (new Product())->setName($name)->setCategory($category)->setProductType($type)

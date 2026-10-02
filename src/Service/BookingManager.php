@@ -303,17 +303,50 @@ class BookingManager
         }
     }
 
+    /**
+     * The client takes another number of slots on the same days; more of them only while they are free.
+     *
+     * @throws BookingException
+     */
+    public function changeSlots(Booking $booking, int $slots): void
+    {
+        $side = $booking->getSide();
+        $now = $this->clock->now();
+        if (!$booking->isActiveAt($now)) {
+            throw new BookingException('Эта бронь уже не действует.');
+        }
+        if (null === $booking->getSlots() || !$this->isAirtime($side)) {
+            throw new BookingException(\sprintf('Сторона %s бронируется целиком — слотов у брони нет.', $side->getName()));
+        }
+        if ($slots < 1 || $slots > $side->getSlotCount()) {
+            throw new BookingException(\sprintf('Слотов — от 1 до %d.', $side->getSlotCount()));
+        }
+
+        $lock = $this->lockFactory->createLock('booking-side-'.$side->getId(), 30);
+        $lock->acquire(true);
+
+        try {
+            $this->assertAvailable($side, $booking->getStartDate(), $booking->getEndDate(), $slots, $booking->getSlotSeconds(), $now, $booking);
+            $booking->changeSlots($slots);
+            $this->entityManager->flush();
+        } finally {
+            $lock->release();
+        }
+    }
+
     public function isAirtime(ProductSide $side): bool
     {
         return $side->isAirtime();
     }
 
     /**
+     * @param Booking|null $except a booking being changed: its own airtime doesn't stand in its way
+     *
      * @throws BookingException
      */
-    private function assertAvailable(ProductSide $side, \DateTimeImmutable $start, \DateTimeImmutable $end, ?int $slots, ?int $slotSeconds, \DateTimeImmutable $now): void
+    private function assertAvailable(ProductSide $side, \DateTimeImmutable $start, \DateTimeImmutable $end, ?int $slots, ?int $slotSeconds, \DateTimeImmutable $now, ?Booking $except = null): void
     {
-        $existing = $this->bookings->findActiveOverlapping($side, $start, $end, $now);
+        $existing = array_values(array_filter($this->bookings->findActiveOverlapping($side, $start, $end, $now), static fn (Booking $b) => $b !== $except));
 
         if (null === $slots) {
             if ([] !== $existing) {

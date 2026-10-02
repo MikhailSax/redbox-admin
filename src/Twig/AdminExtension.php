@@ -45,13 +45,14 @@ class AdminExtension
     }
 
     /**
-     * Airtime of a screen booking or media plan item: "2 слота", "1 слот по 5 сек" (part of each slot).
+     * Airtime of a screen booking or media plan item: "2 слота", "1 слот по 5 сек" (part of each slot);
+     * empty when the side is no longer sold as airtime (its old slots don't count).
      */
     #[AsTwigFunction('airtime_label')]
     public static function airtimeLabel(Booking|MediaPlanItem $airtime): string
     {
         $slots = $airtime->getSlots();
-        if (null === $slots) {
+        if (null === $slots || !$airtime->getSide()->isAirtime()) {
             return '';
         }
         $seconds = $airtime->getSide()->secondsPerSlot($airtime->getSlotSeconds());

@@ -145,6 +145,8 @@ final class ProductController extends AbstractController
     private function handleForm(Request $request, Product $product, string $template, string $successMessage, bool $readonly = false): Response
     {
         $originalSides = $product->getSides()->toArray();
+        $originalType = $product->getProductType();
+        $originalSideTypes = array_map(static fn (ProductSide $side) => $side->getProductType(), $originalSides);
         $form = $this->createForm(ProductFormType::class, $product, ['disabled' => $readonly]);
         $form->handleRequest($request);
 
@@ -158,6 +160,17 @@ final class ProductController extends AbstractController
         }
 
         if ($form->isSubmitted() && $form->isValid()) {
+            // A side that had the structure's old type as its own (e.g. sides moved by the import) follows the new one:
+            // a screen turned into a static poster stops selling slots on every side, not only on those without a type.
+            // A type the same as the structure's isn't one of its own either.
+            foreach ($product->getSides() as $side) {
+                $type = $side->getProductType();
+                $i = array_search($side, $originalSides, true);
+                if (null !== $type && ($type === $product->getProductType() || (false !== $i && $type === $originalType && $type === $originalSideTypes[$i]))) {
+                    $side->setProductType(null);
+                }
+            }
+
             foreach ($form->get('sides') as $sideForm) {
                 /** @var UploadedFile[] $files */
                 $files = $sideForm->get('newPhotos')->getData() ?? [];

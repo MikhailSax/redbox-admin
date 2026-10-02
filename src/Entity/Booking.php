@@ -174,6 +174,15 @@ class Booking
         return $this->slots;
     }
 
+    /** Another number of slots for an airtime booking; checked by BookingManager::changeSlots() */
+    public function changeSlots(int $slots): void
+    {
+        if (null === $this->slots) {
+            throw new \LogicException('A whole-side booking has no slots.');
+        }
+        $this->slots = $slots;
+    }
+
     public function getSlotSeconds(): ?int
     {
         return $this->slotSeconds;

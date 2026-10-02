@@ -270,7 +270,10 @@ class AddressProgramImporter
             || ($type->getBookingMode()->isAirtime() && $rowType->getBookingMode()->isAirtime());
     }
 
-    /** "5 сек" and a "60 сек" block: 12 slots of 5 s; left as is when the columns are empty or odd */
+    /**
+     * "5 сек" and a "60 сек" block: 12 slots of 5 s; left as is when the columns are empty or odd.
+     * The whole block is on sale, unless the side sells only part of it (set by hand): that part stays.
+     */
     private static function applySlots(ProductSide $side, AddressProgramRow $row): void
     {
         $slot = (int) preg_replace('/\D+/', '', (string) $row->slotText);
@@ -281,7 +284,9 @@ class AddressProgramImporter
 
         $block = (int) preg_replace('/\D+/', '', (string) $row->blockText);
         if ($block > 0 && 0 === $block % $slot && $block / $slot <= BookingMode::MAX_SLOT_COUNT) {
-            $side->setSlotCount(intdiv($block, $slot));
+            $slots = intdiv($block, $slot);
+            $onSale = null !== $side->getLoopSlotCount() ? min($side->getSlotCount(), $slots) : $slots;
+            $side->setSlotCount($onSale)->setLoopSlotCount($onSale < $slots ? $slots : null);
         }
     }
 

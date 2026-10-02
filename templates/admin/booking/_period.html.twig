@@ -2,5 +2,5 @@
 {{ period_label(booking.startDate, booking.endDate) }}
 <div class="text-xs text-body">
     {{- booking.wholeMonths ? booking.monthCount ~ ' мес.' : booking.days ~ ' дн.' -}}
-    {%- if booking.slots %} · {{ airtime_label(booking) }}{% endif -%}
+    {%- if airtime_label(booking) %} · {{ airtime_label(booking) }}{% endif -%}
 </div>

@@ -43,11 +43,11 @@
                         <tr class="border-b border-default last:border-0">
                             <th scope="row" class="sticky left-0 bg-neutral-primary-soft px-4 py-2 text-left font-medium text-heading whitespace-nowrap">
                                 {{ side.name }}
-                                {% if grid_airtime %}<div class="text-[11px] font-normal text-body-subtle">{{ side.slotCount }} × {{ side.slotSeconds }} сек</div>{% endif %}
+                                {% if grid_airtime %}<div class="text-[11px] font-normal text-body-subtle">{{ side.slotCount }} × {{ side.slotSeconds }} сек{% if side.loopSlotCount and side.loopSlotCount > side.slotCount %} из {{ side.loopSlotCount }}{% endif %}</div>{% endif %}
                             </th>
                             {% for key, column in group.columns %}
                                 {% set cell = group.cells[side.id][key] %}
-                                {% set clients = cell.bookings|map(b => b.clientTitle ~ (b.slots ? ' (' ~ airtime_label(b) ~ ')' : '') ~ ' — ' ~ b.statusAt(now).label)|join("\n") %}
+                                {% set clients = cell.bookings|map(b => b.clientTitle ~ (airtime_label(b) ? ' (' ~ airtime_label(b) ~ ')' : '') ~ ' — ' ~ b.statusAt(now).label)|join("\n") %}
                                 <td class="p-1">
                                     {% if grid_airtime %}
                                         {# cell.used is seconds of the block: half a 10-second slot sold leaves the other half free #}

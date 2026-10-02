@@ -52,24 +52,24 @@ class ClientCards
     }
 
     /**
-     * A new card, persisted (not flushed). The type follows from the ИНН; without one it is a private person
-     * called $title. An email another account already has is left out and reported in $notes.
+     * A new card, persisted (not flushed). The type is $type when the manager chose one, otherwise it follows from the ИНН
+     * (without one it is a private person called $title). An email another account already has is left out and reported in $notes.
      *
      * @param list<string> $notes
      *
-     * @throws ClientCardException when the data don't make a valid card (e.g. an ИНН of 11 digits)
+     * @throws ClientCardException when the data don't make a valid card (e.g. an ИНН of 11 digits, or an ИП without one)
      */
-    public function create(string $title, ?string $phone = null, ?string $email = null, ?string $inn = null, ?string $kpp = null, ?string $contactName = null, array &$notes = []): User
+    public function create(string $title, ?string $phone = null, ?string $email = null, ?string $inn = null, ?string $kpp = null, ?string $contactName = null, array &$notes = [], ?ClientType $type = null): User
     {
         $title = trim($title);
         if ('' === $title) {
             throw new ClientCardException('Укажите название или ФИО клиента');
         }
 
-        if (!\in_array(\strlen((string) self::digits($inn)), [0, 10, 12], true)) {
+        if (null === $type && !\in_array(\strlen((string) self::digits($inn)), [0, 10, 12], true)) {
             throw new ClientCardException(\sprintf('%s: ИНН — 10 цифр у организации или 12 у ИП', $title));
         }
-        $type = ClientType::fromInn($inn);
+        $type ??= ClientType::fromInn($inn);
         $client = (new User())
             ->setRole(User::ROLE_CLIENT)
             ->setClientType($type)
@@ -105,11 +105,11 @@ class ClientCards
      *
      * @throws ClientCardException
      */
-    public function findOrCreate(string $title, ?string $phone = null, ?string $email = null, ?string $inn = null, ?string $kpp = null, ?string $contactName = null): array
+    public function findOrCreate(string $title, ?string $phone = null, ?string $email = null, ?string $inn = null, ?string $kpp = null, ?string $contactName = null, ?ClientType $type = null): array
     {
         $found = $this->find($title, $inn, $email);
 
-        return null !== $found ? [$found, false] : [$this->create($title, $phone, $email, $inn, $kpp, $contactName), true];
+        return null !== $found ? [$found, false] : [$this->create($title, $phone, $email, $inn, $kpp, $contactName, type: $type), true];
     }
 
     /**

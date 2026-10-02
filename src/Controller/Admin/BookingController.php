@@ -47,16 +47,21 @@ final class BookingController extends AbstractController
 
     #[Route('/admin/bookings', name: 'admin_booking_index', methods: ['GET'])]
     #[IsGranted(User::ROLE_SUPER_MANAGER)]
-    public function index(Request $request, #[MapQueryParameter] ?string $status = null, #[MapQueryParameter] ?string $q = null): Response
+    public function index(Request $request, #[MapQueryParameter] ?string $status = null, #[MapQueryParameter] ?string $q = null, #[MapQueryParameter] ?string $sort = null, #[MapQueryParameter] ?string $dir = null): Response
     {
         // "unpaid" is not a status: confirmed bookings of post-paying clients still waiting for the money
         $unpaid = 'unpaid' === $status;
         $filter = null !== $status && !$unpaid ? BookingStatus::tryFrom($status) : null;
+        // by the creation date the newest come first, by any other column A to Z, the earliest first
+        $sort = isset(BookingRepository::LIST_SORTS[(string) $sort]) ? $sort : 'created';
+        $descending = 'desc' === $dir || (null === $dir && 'created' === $sort);
         $params = [
-            'bookings' => $this->bookings->findForList($filter, $q, unpaid: $unpaid),
+            'bookings' => $this->bookings->findForList($filter, $q, unpaid: $unpaid, sort: $sort, descending: $descending),
             'filter' => $filter,
             'unpaid' => $unpaid,
             'q' => $q,
+            'sort' => $sort,
+            'descending' => $descending,
             'now' => $this->clock->now(),
         ];
 
@@ -103,7 +108,7 @@ final class BookingController extends AbstractController
                 // "Новый клиент" instead of one from the list: its card is saved together with the booking
                 $newClient = null === $bookingRequest->client ? NewClientFields::data($form) : null;
                 if (null !== $newClient) {
-                    [$bookingRequest->client, $created] = $clientCards->findOrCreate($newClient['title'], $newClient['phone'], $newClient['email'], $newClient['inn']);
+                    [$bookingRequest->client, $created] = $clientCards->findOrCreate($newClient['title'], $newClient['phone'], $newClient['email'], $newClient['inn'], type: $newClient['type']);
                 }
                 $user = $this->getUser();
                 $booking = $this->bookingManager->hold($bookingRequest, $user instanceof User ? $user : null);
@@ -176,6 +181,16 @@ final class BookingController extends AbstractController
     public function unpay(Request $request, Booking $booking): Response
     {
         return $this->apply($request, $booking, fn () => $this->bookingManager->markUnpaid($booking), 'Отметка об оплате снята, бронь остаётся подтверждённой');
+    }
+
+    #[Route('/admin/bookings/{id}/slots', name: 'admin_booking_slots', requirements: ['id' => Requirement::DIGITS], methods: ['POST'])]
+    #[IsCsrfTokenValid(new Expression('"slots-booking-" ~ args["booking"].getId()'))]
+    #[IsGranted(User::ROLE_SUPER_MANAGER)]
+    public function slots(Request $request, Booking $booking): Response
+    {
+        $slots = (int) $request->getPayload()->getString('slots');
+
+        return $this->apply($request, $booking, fn () => $this->bookingManager->changeSlots($booking, $slots), \sprintf('Слотов в брони: %d', $slots));
     }
 
     #[Route('/admin/bookings/{id}/cancel', name: 'admin_booking_cancel', requirements: ['id' => Requirement::DIGITS], methods: ['POST'])]

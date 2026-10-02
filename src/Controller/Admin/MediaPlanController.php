@@ -448,7 +448,7 @@ final class MediaPlanController extends AbstractController
         }
 
         try {
-            [$client, $created] = $this->clientCards->findOrCreate($new['title'], $new['phone'], $new['email'], $new['inn']);
+            [$client, $created] = $this->clientCards->findOrCreate($new['title'], $new['phone'], $new['email'], $new['inn'], type: $new['type']);
         } catch (ClientCardException $e) {
             $form->get('newClient')->addError(new FormError($e->getMessage()));
 

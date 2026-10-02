@@ -9,6 +9,17 @@
     </form>
 {% endmacro %}
 <div class="flex flex-wrap justify-end gap-2">
+    {# A screen booking: the client may take more or fewer slots on the same days #}
+    {% if status.value in ['hold', 'confirmed'] and booking.slots and booking.side.airtime %}
+        <form method="post" action="{{ path('admin_booking_slots', {id: booking.id}) }}" class="flex items-center gap-1">
+            <input type="hidden" name="_token" value="{{ csrf_token('slots-booking-' ~ booking.id) }}">
+            <input type="hidden" name="return" value="{{ return }}">
+            <label class="sr-only" for="booking-slots-{{ booking.id }}">Слотов в брони</label>
+            <input type="number" id="booking-slots-{{ booking.id }}" name="slots" value="{{ booking.slots }}" min="1" max="{{ booking.side.slotCount }}"
+                   class="input h-8 !w-16 !px-2 text-sm tabular-nums" title="Слотов из {{ booking.side.slotCount }} по {{ booking.side.slotSeconds }} сек">
+            <button type="submit" class="btn btn-secondary btn-sm">Изменить</button>
+        </form>
+    {% endif %}
     {% if status.value == 'hold' %}
         {{ _self.action(booking, 'admin_booking_confirm', 'confirm', 'Подтвердить', return,
             'Бронь клиента ' ~ booking.clientTitle ~ ' будет закреплена и больше не снимется автоматически. Оплату можно отметить позже — для постоплатников.',

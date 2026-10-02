@@ -91,10 +91,16 @@ class ProductSideFormType extends AbstractType
                 'help' => 'Длина одного ролика в блоке.',
             ])
             ->add('slotCount', IntegerType::class, [
-                'label' => 'Слотов в блоке',
+                'label' => 'Слотов в продаже',
                 'attr' => ['min' => 1, 'max' => BookingMode::MAX_SLOT_COUNT],
                 'empty_data' => (string) BookingMode::DEFAULT_SLOT_COUNT,
-                'help' => 'Экран занят, когда разобраны все.',
+                'help' => 'Сколько слотов можно продать. Экран занят, когда разобраны все.',
+            ])
+            ->add('loopSlotCount', IntegerType::class, [
+                'label' => 'Всего слотов в блоке',
+                'required' => false,
+                'attr' => ['min' => 1, 'max' => BookingMode::MAX_SLOT_COUNT, 'placeholder' => 'как в продаже'],
+                'help' => 'Если часть блока не продаётся: например, 12 в блоке, 9 в продаже. По нему считаются контакты.',
             ])
             ->add('dailyOts', IntegerType::class, [
                 'label' => 'OTS в сутки',

@@ -80,7 +80,7 @@
                     <div class="name">{{ item.displayTitle }}</div>
                     <table class="specs">
                         {% if item.displayFormat %}<tr><td class="k">Формат</td><td>{{ item.displayFormat }}</td></tr>{% endif %}
-                        <tr><td class="k">Сторона</td><td>{{ item.side.name }}{% if item.slots %} · {{ item.slots|plural('слот', 'слота', 'слотов') }} по {{ item.side.secondsPerSlot(item.slotSeconds) }} сек, блок {{ item.side.blockSeconds }} сек{% endif %}</td></tr>
+                        <tr><td class="k">Сторона</td><td>{{ item.side.name }}{% if item.slots %} · {{ item.slots|plural('слот', 'слота', 'слотов') }} по {{ item.side.secondsPerSlot(item.slotSeconds) }} сек, блок {{ item.side.loopSeconds }} сек{% endif %}</td></tr>
                         {% if product.district %}<tr><td class="k">Район</td><td>{{ product.district.name }}</td></tr>{% endif %}
                         {% if item.contacts is not null %}<tr><td class="k">Контакты</td><td>{{ item.contacts|number_format(0, ',', ' ') }} за период</td></tr>{% endif %}
                         {% if product.latitude and product.longitude %}<tr><td class="k">Координаты</td><td>{{ product.latitude|number_format(5, '.', '') }}, {{ product.longitude|number_format(5, '.', '') }}</td></tr>{% endif %}

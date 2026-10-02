@@ -18,13 +18,17 @@
             <input type="search" name="q" value="{{ q }}" class="input" autocomplete="off" placeholder="Клиент, телефон или конструкция…">
         </label>
         <input type="hidden" name="status" value="{{ unpaid ? 'unpaid' : (filter ? filter.value : '') }}">
+        <input type="hidden" name="sort" value="{{ sort != 'created' ? sort : '' }}">
+        <input type="hidden" name="dir" value="{{ descending != (sort == 'created') ? (descending ? 'desc' : 'asc') : '' }}">
     </form>
 
     <div id="booking-results">
         {% block results %}
             {# Imported here too: renderBlock() (live filter) renders this block without the template top level #}
             {% import 'admin/_icons.html.twig' as ui %}
-            {% set base = q ? {q: q} : {} %}
+            {% set sorting = (sort != 'created' ? {sort: sort} : {})|merge(descending != (sort == 'created') ? {dir: descending ? 'desc' : 'asc'} : {}) %}
+            {% set base = (q ? {q: q} : {})|merge(sorting) %}
+            {% set status_query = unpaid ? {status: 'unpaid'} : (filter ? {status: filter.value} : {}) %}
             <div class="mb-4 flex flex-wrap gap-2">
                 {% set chip = 'inline-flex h-8 items-center rounded-full border px-3 text-sm font-medium transition-colors' %}
                 {% for tab in [{value: null, label: 'Все'}]|merge(enum_cases('App\\Enum\\BookingStatus')|map(s => {value: s, label: s.label})) %}
@@ -39,11 +43,28 @@
                 <table class="data-table">
                     <thead>
                         <tr>
-                            <th scope="col" class="px-4 py-2.5">Конструкция</th>
-                            <th scope="col" class="px-4 py-2.5">Период</th>
-                            <th scope="col" class="px-4 py-2.5">Клиент</th>
-                            <th scope="col" class="px-4 py-2.5">Статус</th>
-                            <th scope="col" class="px-4 py-2.5">Создана</th>
+                            {# Sortable columns: a click sorts by the column, a second click turns the order around #}
+                            {% for column in [
+                                {key: 'product', label: 'Конструкция'},
+                                {key: 'side', label: 'Сторона'},
+                                {key: 'period', label: 'Период'},
+                                {key: 'client', label: 'Клиент'},
+                                {key: 'status', label: 'Статус'},
+                                {key: 'created', label: 'Создана'},
+                            ] %}
+                                {% set active = sort == column.key %}
+                                {# the newest first by the creation date, A to Z / the earliest first by the others #}
+                                {% set next_desc = active ? not descending : column.key == 'created' %}
+                                {% set query = (q ? {q: q} : {})|merge(status_query)
+                                    |merge(column.key != 'created' ? {sort: column.key} : {})
+                                    |merge(next_desc != (column.key == 'created') ? {dir: next_desc ? 'desc' : 'asc'} : {}) %}
+                                <th scope="col" class="px-4 py-2.5" {% if active %}aria-sort="{{ descending ? 'descending' : 'ascending' }}"{% endif %}>
+                                    <a href="{{ path('admin_booking_index', query) }}" data-live-link class="inline-flex items-center gap-1 hover:text-heading {{ active ? 'text-heading' : '' }}">
+                                        {{- column.label -}}
+                                        <span aria-hidden="true" class="{{ active ? '' : 'opacity-30' }}">{{ active and descending ? '↓' : '↑' }}</span>
+                                    </a>
+                                </th>
+                            {% endfor %}
                             <th scope="col" class="px-4 py-2.5"><span class="sr-only">Действия</span></th>
                         </tr>
                     </thead>
@@ -52,8 +73,10 @@
                             <tr>
                                 <th scope="row" class="px-4 py-3 font-medium text-heading">
                                     <a href="{{ path('admin_booking_product', {id: booking.product.id}) }}" class="hover:underline">{{ booking.product.name|highlight(q) }}</a>
-                                    <div class="text-xs font-normal text-body-subtle">Сторона {{ booking.side.name }}</div>
                                 </th>
+                                <td class="px-4 py-3 whitespace-nowrap">
+                                    <span class="inline-flex min-w-7 justify-center rounded-md bg-zinc-100 px-1.5 py-0.5 text-sm font-semibold text-heading ring-1 ring-zinc-200">{{ booking.side.name }}</span>
+                                </td>
                                 <td class="px-4 py-3 whitespace-nowrap">{{ include('admin/booking/_period.html.twig') }}</td>
                                 <td class="px-4 py-3">{{ include('admin/booking/_client.html.twig') }}</td>
                                 <td class="px-4 py-3">{{ include('admin/booking/_status.html.twig') }}</td>
@@ -65,7 +88,7 @@
                             </tr>
                         {% else %}
                             <tr>
-                                <td colspan="6" class="px-4 py-16 text-center">
+                                <td colspan="7" class="px-4 py-16 text-center">
                                     <span class="mx-auto mb-3 grid size-12 place-items-center rounded-full bg-zinc-100 text-zinc-400">{{ ui.icon('calendar') }}</span>
                                     <p class="font-medium text-heading">{{ q or filter or unpaid ? 'Ничего не найдено' : 'Броней пока нет' }}</p>
                                     <p class="mt-1 text-sm text-body">Забронировать конструкцию можно из её карточки — вкладка «Бронирование».</p>

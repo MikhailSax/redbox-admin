@@ -9,6 +9,7 @@ use Doctrine\Common\Collections\Collection;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 use Symfony\Component\Validator\Constraints as Assert;
+use Symfony\Component\Validator\Context\ExecutionContextInterface;
 
 /**
  * A side of an advertising structure (A, B, ...).
@@ -77,10 +78,18 @@ class ProductSide
     #[Assert\Choice(choices: BookingMode::SLOT_DURATIONS, message: 'Слот — 5 или 10 секунд')]
     private int $slotSeconds = BookingMode::DEFAULT_SLOT_SECONDS;
 
-    /** Video screens: slots in the block; the screen is taken when every slot is booked */
+    /** Video screens: slots of the block on sale; the screen is taken when every one of them is booked */
     #[ORM\Column(options: ['default' => BookingMode::DEFAULT_SLOT_COUNT])]
     #[Assert\Range(notInRangeMessage: 'Слотов — от {{ min }} до {{ max }}', min: 1, max: BookingMode::MAX_SLOT_COUNT)]
     private int $slotCount = BookingMode::DEFAULT_SLOT_COUNT;
+
+    /**
+     * Video screens: every slot of the block, those not on sale (the owner's own clips, social ads) included;
+     * null = as many as are on sale. A client's share of the airtime, and so the contacts, is counted from it.
+     */
+    #[ORM\Column(nullable: true)]
+    #[Assert\Range(notInRangeMessage: 'Слотов — от {{ min }} до {{ max }}', min: 1, max: BookingMode::MAX_SLOT_COUNT)]
+    private ?int $loopSlotCount = null;
 
     /**
      * Type of this side when it differs from the structure's (a video screen on one side, a static poster on the other);
@@ -258,8 +267,9 @@ class ProductSide
     }
 
     /**
-     * Contacts a day with one client's advertising: the side's whole OTS; on a screen the share of the block
-     * the client's airtime takes (1 slot of 12 is shown 1/12 of the time, half a slot 1/24). Null when the OTS is not known.
+     * Contacts a day with one client's advertising: the side's whole OTS; on a screen the share of the whole block
+     * the client's airtime takes (1 slot of 12 is shown 1/12 of the time, half a slot 1/24, even when only 9 of
+     * the 12 are on sale). Null when the OTS is not known.
      */
     public function getDailyContacts(?int $slots, ?int $seconds = null): ?float
     {
@@ -267,7 +277,7 @@ class ProductSide
             return null;
         }
 
-        return $this->isAirtime() ? $this->dailyOts * min($this->airtimeSeconds($slots ?? 1, $seconds), $this->getBlockSeconds()) / max(1, $this->getBlockSeconds()) : (float) $this->dailyOts;
+        return $this->isAirtime() ? $this->dailyOts * min($this->airtimeSeconds($slots ?? 1, $seconds), $this->getBlockSeconds()) / max(1, $this->getLoopSeconds()) : (float) $this->dailyOts;
     }
 
     public function getSlotSeconds(): int
@@ -294,19 +304,46 @@ class ProductSide
         return $this;
     }
 
-    /** Length of the screen's block, seconds: every slot once */
+    public function getLoopSlotCount(): ?int
+    {
+        return $this->loopSlotCount;
+    }
+
+    public function setLoopSlotCount(?int $loopSlotCount): static
+    {
+        $this->loopSlotCount = $loopSlotCount;
+
+        return $this;
+    }
+
+    #[Assert\Callback]
+    public function validateLoopSlotCount(ExecutionContextInterface $context): void
+    {
+        if (null !== $this->loopSlotCount && $this->loopSlotCount < $this->slotCount) {
+            $context->buildViolation('Всего слотов в блоке не может быть меньше, чем в продаже')->atPath('loopSlotCount')->addViolation();
+        }
+    }
+
+    /** Airtime of the screen's block on sale, seconds: every slot on sale once. The screen is taken when all of it is. */
     public function getBlockSeconds(): int
     {
         return $this->slotSeconds * $this->slotCount;
     }
 
+    /** Length of the whole block, seconds, the slots not on sale included */
+    public function getLoopSeconds(): int
+    {
+        return $this->slotSeconds * max($this->slotCount, $this->loopSlotCount ?? 0);
+    }
+
     /**
      * Seconds of the block a booking of this side takes on each of its days: its slots × the seconds it has
      * in each of them, or the whole block for a whole-side booking. The screen is taken when the whole block is.
+     * On a side no longer sold as airtime (a screen turned into a static poster) every booking takes the whole side.
      */
     public function secondsTakenBy(Booking $booking): int
     {
-        return null !== $booking->getSlots() ? $this->airtimeSeconds($booking->getSlots(), $booking->getSlotSeconds()) : $this->getBlockSeconds();
+        return null !== $booking->getSlots() && $this->isAirtime() ? $this->airtimeSeconds($booking->getSlots(), $booking->getSlotSeconds()) : $this->getBlockSeconds();
     }
 
     /** $slots slots with $seconds of each (null = whole slots) */

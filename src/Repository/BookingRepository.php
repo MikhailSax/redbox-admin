@@ -104,20 +104,39 @@ class BookingRepository extends ServiceEntityRepository
     }
 
     /**
-     * Newest first; $status = null means every status. $search matches the client (card or typed-in
-     * contact), the phone or the structure name. $unpaid: only confirmed bookings not paid yet (post-paying clients).
+     * Columns the list of bookings is sorted by: key => fields, the first one in the chosen direction, the rest
+     * break ties (a structure's sides one after another, each side's bookings by date).
+     */
+    public const LIST_SORTS = [
+        'product' => ['p.name', 's.name', 'b.startDate'],
+        'side' => ['s.name', 'p.name', 'b.startDate'],
+        'period' => ['b.startDate', 'b.endDate', 'p.name'],
+        'client' => ['clientSort', 'b.startDate'],
+        'status' => ['b.status', 'b.startDate'],
+        'created' => ['b.createdAt'],
+    ];
+
+    /**
+     * $status = null means every status. $search matches the client (card or typed-in contact), the phone or
+     * the structure name. $unpaid: only confirmed bookings not paid yet (post-paying clients).
+     * Sorted by $sort (a key of LIST_SORTS), newest first by default.
      *
      * @return list<Booking>
      */
-    public function findForList(?BookingStatus $status, ?string $search = null, int $limit = 200, bool $unpaid = false): array
+    public function findForList(?BookingStatus $status, ?string $search = null, int $limit = 200, bool $unpaid = false, string $sort = 'created', bool $descending = true): array
     {
         $qb = $this->createQueryBuilder('b')
             ->addSelect('s', 'p', 'c')
+            // the client as the list shows it: the card's company or name, otherwise the typed-in contact
+            ->addSelect('COALESCE(c.company, c.name, b.clientName) AS HIDDEN clientSort')
             ->join('b.side', 's')
             ->join('s.product', 'p')
             ->leftJoin('b.client', 'c')
-            ->orderBy('b.createdAt', 'DESC')
             ->setMaxResults($limit);
+        foreach (self::LIST_SORTS[$sort] ?? self::LIST_SORTS['created'] as $i => $field) {
+            $qb->addOrderBy($field, 0 === $i && $descending ? 'DESC' : 'ASC');
+        }
+        $qb->addOrderBy('b.id', $descending ? 'DESC' : 'ASC');
 
         if ($unpaid) {
             $qb->andWhere('b.paidAt IS NULL');

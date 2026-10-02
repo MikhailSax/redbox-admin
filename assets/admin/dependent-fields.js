@@ -2,6 +2,7 @@
  * Show or hide a form row depending on another field:
  *   <div data-visible-when="product_form_owner"> — visible while #product_form_owner has a value
  *   <div data-hidden-when="promotion_form_appliesToAll"> — hidden while the checkbox is checked
+ *   <div data-hidden-when="booking_form_newClientType" data-hidden-values="individual"> — hidden while the value is one of the listed
  *   <div data-visible-when="client_form_clientType" data-visible-values="entrepreneur legal">
  *       — visible while the field's value is one of the listed; the source may be a group of radios (its container id)
  * Checkboxes and radios count as "having a value" when checked.
@@ -30,7 +31,11 @@ function update(row) {
         row.classList.toggle('hidden', !visible);
     }
     if (row.dataset.hiddenWhen !== undefined) {
-        row.classList.toggle('hidden', valueOf(document.getElementById(row.dataset.hiddenWhen)) !== '');
+        const value = valueOf(document.getElementById(row.dataset.hiddenWhen));
+        const hidden = row.dataset.hiddenValues !== undefined
+            ? row.dataset.hiddenValues.split(/\s+/).includes(value)
+            : value !== '';
+        row.classList.toggle('hidden', hidden);
     }
 }
 
