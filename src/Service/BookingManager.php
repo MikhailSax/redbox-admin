@@ -52,8 +52,8 @@ class BookingManager
         if (null === $request->client) {
             throw new BookingException('Выберите клиента — бронь закрепляется за карточкой клиента.');
         }
-        if (!$side->getProduct()?->isWorking()) {
-            throw new BookingException(\sprintf('Конструкция «%s» не работает%s — новые брони на неё не принимаются.', $side->getProduct()?->getName(), null !== $side->getProduct()?->getNotWorkingReason() ? ' ('.$side->getProduct()->getNotWorkingReason().')' : ''));
+        if (!$side->isWorking()) {
+            throw new BookingException(\sprintf('Не работает: %s — новые брони на эту сторону не принимаются.', $side->getNotWorkingLabel()));
         }
         [$start, $end] = $request->period();
         $slots = $this->isAirtime($side) ? $request->slots : null;

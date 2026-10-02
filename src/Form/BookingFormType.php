@@ -45,11 +45,13 @@ class BookingFormType extends AbstractType
                 'class' => ProductSide::class,
                 'query_builder' => static fn (EntityRepository $r): QueryBuilder => $r->createQueryBuilder('s')
                     ->andWhere('s.product = :product')
+                    // a side out of order takes no new bookings
+                    ->andWhere('s.working = true')
                     ->setParameter('product', $product)
                     ->orderBy('s.name', 'ASC'),
                 'choice_label' => static fn (ProductSide $side): string => 'Сторона '.$side->getName().($side->isAirtime() ? \sprintf(' · %s по %d сек', AdminExtension::plural($side->getSlotCount(), 'слот', 'слота', 'слотов'), $side->getSlotSeconds()) : ($mixed ? ' · на месяц' : '')),
                 'choice_attr' => static fn (ProductSide $side): array => ['data-booking-mode' => $side->getBookingMode()->value],
-                'placeholder' => $product->getSides()->count() > 1 ? 'Выберите сторону' : false,
+                'placeholder' => $product->getSides()->filter(static fn (ProductSide $side) => $side->isWorking())->count() > 1 ? 'Выберите сторону' : false,
             ])
             ->add('client', EntityType::class, [
                 'label' => 'Клиент',

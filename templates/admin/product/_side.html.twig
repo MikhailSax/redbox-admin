@@ -20,6 +20,12 @@
 
     {{ form_errors(side_form) }}
 
+    <div class="mb-5 rounded-lg border border-default p-4 pb-0">
+        {{ form_row(side_form.working) }}
+        {# the reason only while it doesn't work (assets/admin/dependent-fields.js) #}
+        {{ form_row(side_form.notWorkingReason, {row_attr: {'data-hidden-when': side_form.working.vars.id}}) }}
+    </div>
+
     <div class="grid gap-x-6 md:grid-cols-[10rem_16rem_12rem]">
         {{ form_row(side_form.name) }}
         {{ form_row(side_form.productType) }}

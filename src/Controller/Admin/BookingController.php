@@ -92,8 +92,9 @@ final class BookingController extends AbstractController
         }
 
         $bookingRequest = new BookingRequest();
-        if (1 === $product->getSides()->count()) {
-            $bookingRequest->side = $product->getSides()->first();
+        $working = $product->getSides()->filter(static fn (ProductSide $side) => $side->isWorking());
+        if (1 === $working->count()) {
+            $bookingRequest->side = $working->first();
         }
         if ($airtime) {
             $bookingRequest->startDate = $now->setTime(0, 0);

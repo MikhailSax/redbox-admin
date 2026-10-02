@@ -25,11 +25,7 @@
                         {{ form_row(form.productType) }}
                         {{ form_row(form.size) }}
                     </div>
-                    <div class="mb-5 rounded-lg border border-default p-4 pb-0">
-                        {{ form_row(form.working) }}
-                        {# the reason only while it doesn't work (assets/admin/dependent-fields.js) #}
-                        {{ form_row(form.notWorkingReason, {row_attr: {'data-hidden-when': form.working.vars.id}}) }}
-                    </div>
+
                     <fieldset class="mb-5 rounded-lg border border-default bg-zinc-50/60 p-4">
                         <legend class="px-1 text-sm font-medium text-heading">Владелец и цены</legend>
                         <div class="grid gap-x-6 md:grid-cols-2">

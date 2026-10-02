@@ -211,8 +211,8 @@ final class MediaPlanController extends AbstractController
         $notWorking = [];
         foreach ($payload->all('sides') as $sideId) {
             $side = $this->entityManager->find(ProductSide::class, (int) $sideId);
-            if (null !== $side && !$side->getProduct()->isWorking()) {
-                $notWorking[(string) $side->getProduct()->getName()] = true;
+            if (null !== $side && !$side->isWorking()) {
+                $notWorking[$side->getNotWorkingLabel()] = true;
             } elseif (null !== $side && null !== $this->manager->addSide($plan, $side, $slots, $slotSeconds)) {
                 ++$added;
             }

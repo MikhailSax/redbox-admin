@@ -63,8 +63,8 @@ final class OrderController extends AbstractController
         $unknown = [];
         foreach ($order->items as $index => $item) {
             $side = $this->entityManager->find(ProductSide::class, (int) $item->sideId);
-            // a structure out of order is not on the website: as if it were gone
-            if (null === $side || !$side->getProduct()?->isWorking()) {
+            // a side out of order is not on the website: as if it were gone
+            if (null === $side || !$side->isWorking()) {
                 $unknown[] = $index;
                 continue;
             }

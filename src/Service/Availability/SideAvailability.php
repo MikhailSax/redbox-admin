@@ -24,6 +24,8 @@ final readonly class SideAvailability
         public int $slotCount = 1,
         /** Length of a slot; 1 for a whole side */
         public int $slotSeconds = 1,
+        /** False while the side is out of order (ProductSide::$working) */
+        public bool $working = true,
     ) {
     }
 

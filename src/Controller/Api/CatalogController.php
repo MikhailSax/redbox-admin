@@ -85,7 +85,7 @@ final class CatalogController extends AbstractController
         return $this->json($this->presenter->availability($product, $start, $end));
     }
 
-    /** A structure out of order isn't on the website */
+    /** A structure with no working side isn't on the website */
     private function assertWorking(Product $product): void
     {
         if (!$product->isWorking()) {

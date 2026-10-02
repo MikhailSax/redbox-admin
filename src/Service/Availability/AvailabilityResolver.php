@@ -29,7 +29,7 @@ class AvailabilityResolver
 
     /**
      * @param list<int>|null $productIds  null = every structure
-     * @param bool           $workingOnly structures out of order are left out (the dashboard)
+     * @param bool           $workingOnly sides out of order are left out (the dashboard, what is for sale)
      *
      * @return array<int, ProductAvailability> keyed by product id, in the order of $productIds
      */
@@ -46,7 +46,7 @@ class AvailabilityResolver
 
         $sides = $this->entityManager->createQueryBuilder()
             // a side's own type wins over the structure's (a screen on one side, a static poster on another)
-            ->select('p.id AS productId', 's.id AS sideId', 's.name AS sideName', 's.slotCount AS slotCount', 's.slotSeconds AS slotSeconds', 'COALESCE(st.bookingMode, t.bookingMode) AS mode')
+            ->select('p.id AS productId', 's.id AS sideId', 's.name AS sideName', 's.slotCount AS slotCount', 's.slotSeconds AS slotSeconds', 's.working AS working', 'COALESCE(st.bookingMode, t.bookingMode) AS mode')
             ->from(ProductSide::class, 's')
             ->join('s.product', 'p')
             ->join('p.productType', 't')
@@ -56,7 +56,7 @@ class AvailabilityResolver
             $sides->andWhere('p.id IN (:ids)')->setParameter('ids', $productIds);
         }
         if ($workingOnly) {
-            $sides->andWhere('p.working = true');
+            $sides->andWhere('s.working = true');
         }
         $sides = $sides->getQuery()->getArrayResult();
 
@@ -90,8 +90,8 @@ class AvailabilityResolver
             [$confirmed, $hold] = self::load($bookingsBySide[(int) $row['sideId']] ?? [], $airtime, $from, $to);
 
             $sidesByProduct[(int) $row['productId']][] = $airtime
-                ? new SideAvailability((int) $row['sideId'], (string) $row['sideName'], true, $confirmed, $hold, (int) $row['slotCount'], (int) $row['slotSeconds'])
-                : new SideAvailability((int) $row['sideId'], (string) $row['sideName'], false, $confirmed, $hold);
+                ? new SideAvailability((int) $row['sideId'], (string) $row['sideName'], true, $confirmed, $hold, (int) $row['slotCount'], (int) $row['slotSeconds'], (bool) $row['working'])
+                : new SideAvailability((int) $row['sideId'], (string) $row['sideName'], false, $confirmed, $hold, working: (bool) $row['working']);
         }
 
         $result = [];

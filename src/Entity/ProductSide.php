@@ -92,6 +92,18 @@ class ProductSide
     private ?int $loopSlotCount = null;
 
     /**
+     * False while the side is out of order (repairs, the screen is off, no permit): it is left out of the dashboard,
+     * the website and media plans, and takes no new bookings. Bookings it already has stay.
+     */
+    #[ORM\Column(options: ['default' => true])]
+    private bool $working = true;
+
+    /** Why the side doesn't work; only kept while it doesn't */
+    #[ORM\Column(length: 255, nullable: true)]
+    #[Assert\Length(max: 255)]
+    private ?string $notWorkingReason = null;
+
+    /**
      * Type of this side when it differs from the structure's (a video screen on one side, a static poster on the other);
      * null = Product::$productType. The type decides how the side is booked.
      */
@@ -367,6 +379,40 @@ class ProductSide
     public function getSlotSecondsChoices(): array
     {
         return BookingMode::secondsChoices($this->slotSeconds);
+    }
+
+    public function isWorking(): bool
+    {
+        return $this->working;
+    }
+
+    public function setWorking(bool $working): static
+    {
+        $this->working = $working;
+        if ($working) {
+            $this->notWorkingReason = null;
+        }
+
+        return $this;
+    }
+
+    public function getNotWorkingReason(): ?string
+    {
+        return $this->notWorkingReason;
+    }
+
+    public function setNotWorkingReason(?string $reason): static
+    {
+        $reason = null !== $reason ? trim($reason) : null;
+        $this->notWorkingReason = !$this->working && '' !== $reason ? $reason : null;
+
+        return $this;
+    }
+
+    /** "Сторона В (ремонт)": for messages */
+    public function getNotWorkingLabel(): string
+    {
+        return \sprintf('%s, сторона %s%s', $this->product?->getName(), $this->name, null !== $this->notWorkingReason ? ' ('.$this->notWorkingReason.')' : '');
     }
 
     public function getProductType(): ?ProductType

@@ -30,7 +30,7 @@ final readonly class ProductListQuery
         /** "own" for Redbox's structures or a partner id */
         #[Assert\Regex('/^(own|\d+)$/')]
         public ?string $owner = null,
-        /** "yes" — working structures only, "no" — those out of order; every one by default */
+        /** "yes" — structures whose every side works, "no" — those with a side out of order; every one by default */
         #[Assert\Choice(choices: ['yes', 'no'])]
         public ?string $working = null,
         /** Month the status is shown for, "YYYY-MM"; current month by default */

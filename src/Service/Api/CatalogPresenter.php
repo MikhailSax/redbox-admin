@@ -42,7 +42,8 @@ class CatalogPresenter
     public function structure(Product $product, ?ProductAvailability $availability = null, bool $withSides = true): array
     {
         $sides = [];
-        foreach ($product->getSides() as $side) {
+        // a side out of order is not for sale
+        foreach ($product->getSides()->filter(static fn (ProductSide $side) => $side->isWorking()) as $side) {
             $sides[] = $this->side($side, $availability?->sides ?? []);
         }
 
@@ -82,7 +83,7 @@ class CatalogPresenter
         $now = $this->clock->now();
 
         $sides = [];
-        foreach ($product->getSides() as $side) {
+        foreach ($product->getSides()->filter(static fn (ProductSide $side) => $side->isWorking()) as $side) {
             $active = $this->bookings->findActiveOverlapping($side, $from, $to, $now);
             $busy = $side->isAirtime()
                 ? BookingManager::fullPeriods($side, $active, $from, $to)

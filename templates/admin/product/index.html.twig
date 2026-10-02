@@ -131,8 +131,12 @@
                                                 {%- if product.size %} · {{ product.sizeLabel }}{% endif -%}
                                             </span>
                                             <span class="mt-1 flex flex-wrap items-center gap-1">
-                                                {% if not product.working %}
-                                                    <span class="inline-flex items-center rounded bg-danger-soft px-1.5 py-px text-[11px] font-medium text-fg-danger-strong ring-1 ring-danger-subtle" title="{{ product.notWorkingReason ?? 'Не попадает в «Обзор», на сайт и в медиапланы' }}">Не работает</span>
+                                                {% set not_working = product.notWorkingSides %}
+                                                {% if not_working is not empty %}
+                                                    <span class="inline-flex items-center rounded bg-danger-soft px-1.5 py-px text-[11px] font-medium text-fg-danger-strong ring-1 ring-danger-subtle"
+                                                          title="{{ not_working|map(s => 'Сторона ' ~ s.name ~ (s.notWorkingReason ? ': ' ~ s.notWorkingReason : ''))|join("\n") }}">
+                                                        {{- not_working|length == product.sides|length ? 'Не работает' : 'Не работает: ' ~ not_working|map(s => s.name)|join(', ') -}}
+                                                    </span>
                                                 {% endif %}
                                                 <span class="inline-flex items-center rounded px-1.5 py-px text-[11px] font-medium {{ product.own ? "bg-zinc-100 text-heading ring-1 ring-zinc-200" : "bg-sky-50 text-sky-700 ring-1 ring-sky-200" }}">{{ product.own ? "Своя" : product.owner.name }}</span>
                                                 {% for promotion in promotions_for(product, true)|slice(0, 2) %}
@@ -149,8 +153,9 @@
                                     <div class="flex gap-1">
                                         {% for side in item.sides %}
                                             {% set side_status = side.status %}
-                                            <span class="inline-flex h-6 min-w-6 items-center justify-center rounded-md border px-1.5 text-xs font-medium {{ tones[side_status.value] }}"
-                                                  title="Сторона {{ side.sideName }}: {{ side_status.label|lower }}{{ side.airtime ? ', занято слотов: ' ~ side.usedSlotsLabel ~ ' из ' ~ side.slotCount ~ ', свободно ' ~ side.freeSeconds ~ ' сек' : '' }}">
+                                            {# a side out of order: struck through, it is not for sale #}
+                                            <span class="inline-flex h-6 min-w-6 items-center justify-center rounded-md border px-1.5 text-xs font-medium {{ tones[side_status.value] }} {{ side.working ? '' : 'line-through opacity-50' }}"
+                                                  title="Сторона {{ side.sideName }}: {{ side.working ? '' : 'не работает, ' }}{{ side_status.label|lower }}{{ side.airtime ? ', занято слотов: ' ~ side.usedSlotsLabel ~ ' из ' ~ side.slotCount ~ ', свободно ' ~ side.freeSeconds ~ ' сек' : '' }}">
                                                 {{ side.sideName }}{% if side.airtime %}<span class="ms-1 opacity-70 tabular-nums">{{ side.usedSlotsLabel }}/{{ side.slotCount }}</span>{% endif %}
                                             </span>
                                         {% else %}

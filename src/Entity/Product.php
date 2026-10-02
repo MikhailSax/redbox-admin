@@ -116,17 +116,6 @@ class Product
     #[Assert\Range(notInRangeMessage: 'Долгота должна быть от {{ min }} до {{ max }}', min: -180, max: 180)]
     private ?string $longitude = null;
 
-    /**
-     * False while the structure is out of order (repairs, taken down, no permit): it is left out of the dashboard,
-     * the website and media plans, and takes no new bookings. Bookings it already has stay.
-     */
-    #[ORM\Column(options: ['default' => true])]
-    private bool $working = true;
-
-    /** Why the structure doesn't work; only kept while it doesn't */
-    #[ORM\Column(length: 255, nullable: true)]
-    #[Assert\Length(max: 255)]
-    private ?string $notWorkingReason = null;
 
     /**
      * @var Collection<int, ProductSide>
@@ -361,33 +350,6 @@ class Product
         }
     }
 
-    public function isWorking(): bool
-    {
-        return $this->working;
-    }
-
-    public function setWorking(bool $working): static
-    {
-        $this->working = $working;
-        if ($working) {
-            $this->notWorkingReason = null;
-        }
-
-        return $this;
-    }
-
-    public function getNotWorkingReason(): ?string
-    {
-        return $this->notWorkingReason;
-    }
-
-    public function setNotWorkingReason(?string $reason): static
-    {
-        $reason = null !== $reason ? trim($reason) : null;
-        $this->notWorkingReason = !$this->working && '' !== $reason ? $reason : null;
-
-        return $this;
-    }
 
     public function getLatitude(): ?string
     {
@@ -465,6 +427,20 @@ class Product
     public function hasWholeSides(): bool
     {
         return $this->sides->exists(static fn (int|string $i, ProductSide $side) => !$side->isAirtime());
+    }
+
+    /** Some side works (ProductSide::$working), so the structure is for sale; a structure without sides yet counts as working */
+    public function isWorking(): bool
+    {
+        return $this->sides->isEmpty() || $this->sides->exists(static fn (int|string $i, ProductSide $side) => $side->isWorking());
+    }
+
+    /**
+     * @return list<ProductSide> sides out of order
+     */
+    public function getNotWorkingSides(): array
+    {
+        return $this->sides->filter(static fn (ProductSide $side) => !$side->isWorking())->getValues();
     }
 
     /**

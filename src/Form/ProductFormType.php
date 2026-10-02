@@ -12,7 +12,6 @@ use Doctrine\ORM\EntityRepository;
 use Doctrine\ORM\QueryBuilder;
 use Symfony\Bridge\Doctrine\Form\Type\EntityType;
 use Symfony\Component\Form\AbstractType;
-use Symfony\Component\Form\Extension\Core\Type\CheckboxType;
 use Symfony\Component\Form\Extension\Core\Type\ChoiceType;
 use Symfony\Component\Form\Extension\Core\Type\CollectionType;
 use Symfony\Component\Form\Extension\Core\Type\MoneyType;
@@ -63,17 +62,7 @@ class ProductFormType extends AbstractType
                 'choice_attr' => static fn (ProductType $type): array => ['data-airtime' => $type->getBookingMode()->isAirtime() ? '1' : '0'],
                 'attr' => ['data-product-type' => ''],
             ])
-            ->add('working', CheckboxType::class, [
-                'label' => 'Работает',
-                'required' => false,
-                'help' => 'Неработающая конструкция не попадает в «Обзор», на сайт и в медиапланы, новые брони на неё не принимаются. Уже сделанные брони остаются.',
-            ])
-            // set after "working": the reason is kept only while the structure doesn't work
-            ->add('notWorkingReason', TextType::class, [
-                'label' => 'Почему не работает',
-                'required' => false,
-                'attr' => ['placeholder' => 'ремонт, демонтаж, нет разрешения…', 'maxlength' => 255],
-            ])
+
             ->add('district', EntityType::class, [
                 'label' => 'Район',
                 'class' => District::class,

@@ -393,7 +393,8 @@
                                 </p>
                             </div>
                             <div class="flex flex-wrap gap-1.5">
-                                {% for side in product.sides %}
+                                {# sides out of order are not offered #}
+                                {% for side in product.sides|filter(s => s.working) %}
                                     {% set in_plan = plan.hasSide(side) %}
                                     {% set problem = sideProblems[side.id] ?? null %}
                                     <form method="post" action="{{ path('admin_media_plan_add_items', {id: plan.id}) }}" class="flex items-center gap-1">

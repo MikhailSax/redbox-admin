@@ -12,7 +12,7 @@ use Symfony\Component\Clock\ClockInterface;
 
 /**
  * Filtered structures with their availability for the chosen month: paginated for the list, all at once for the map.
- * $workingOnly leaves out structures out of order (what is for sale: the website, media plans, the map).
+ * $workingOnly leaves out sides out of order, and structures with none working (what is for sale: the website, media plans, the map).
  */
 class ProductListing
 {
@@ -79,7 +79,7 @@ class ProductListing
         // Status is computed from bookings, not stored: resolve it for every match (one aggregate query),
         // then count and filter in PHP.
         $ids = $this->products->findMatchingIds($query, $workingOnly);
-        $availability = $this->availability->forProducts($ids, $month);
+        $availability = $this->availability->forProducts($ids, $month, $workingOnly);
 
         $statusCounts = array_fill_keys(array_map(static fn (AvailabilityStatus $s) => $s->value, AvailabilityStatus::cases()), 0);
         foreach ($availability as $item) {

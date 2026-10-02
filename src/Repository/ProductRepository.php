@@ -22,7 +22,7 @@ class ProductRepository extends ServiceEntityRepository
     /**
      * Ids of products matching the text/category/type filters, newest changes first.
      * The availability filter is applied afterwards (status is computed, not stored).
-     * $workingOnly: structures out of order are left out whatever the query says (the website, media plans).
+     * $workingOnly: structures with no working side are left out whatever the query says (the website, media plans).
      *
      * @return list<int>
      */
@@ -55,10 +55,14 @@ class ProductRepository extends ServiceEntityRepository
             $qb->andWhere('p.size = :size')->setParameter('size', $query->size);
         }
 
-        if ($workingOnly || 'yes' === $query->working) {
-            $qb->andWhere('p.working = true');
+        $sideWhere = \sprintf('EXISTS (SELECT 1 FROM %s ws WHERE ws.product = p AND ws.working = %%s)', ProductSide::class);
+        if ($workingOnly) {
+            $qb->andWhere(\sprintf($sideWhere, 'true'));
+        }
+        if ('yes' === $query->working) {
+            $qb->andWhere('NOT '.\sprintf($sideWhere, 'false'));
         } elseif ('no' === $query->working) {
-            $qb->andWhere('p.working = false');
+            $qb->andWhere(\sprintf($sideWhere, 'false'));
         }
 
         // "own" = Redbox's structures, a number = structures of that partner

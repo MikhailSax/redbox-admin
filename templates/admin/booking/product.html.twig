@@ -43,6 +43,7 @@
                         <tr class="border-b border-default last:border-0">
                             <th scope="row" class="sticky left-0 bg-neutral-primary-soft px-4 py-2 text-left font-medium text-heading whitespace-nowrap">
                                 {{ side.name }}
+                                {% if not side.working %}<div class="text-[11px] font-medium text-fg-danger-strong" title="{{ side.notWorkingReason }}">не работает</div>{% endif %}
                                 {% if grid_airtime %}<div class="text-[11px] font-normal text-body-subtle">{{ side.slotCount }} × {{ side.slotSeconds }} сек{% if side.loopSlotCount and side.loopSlotCount > side.slotCount %} из {{ side.loopSlotCount }}{% endif %}</div>{% endif %}
                             </th>
                             {% for key, column in group.columns %}
@@ -81,14 +82,17 @@
     </div>
     {% endfor %}
 
-    {% if not product.working %}
+    {% set not_working = product.notWorkingSides %}
+    {% if not_working is not empty %}
         <div class="mb-6 rounded-lg border border-danger-subtle bg-danger-soft px-4 py-3 text-sm text-fg-danger-strong" role="status">
-            <b>Конструкция не работает</b>{% if product.notWorkingReason %}: {{ product.notWorkingReason }}{% endif %}. Новые брони на неё не принимаются; уже сделанные остаются.
-            Снова принимать брони — отметьте «Работает» в карточке конструкции.
+            <b>Не работает:</b>
+            {% for side in not_working %}сторона {{ side.name }}{% if side.notWorkingReason %} ({{ side.notWorkingReason }}){% endif %}{{ not loop.last ? ', ' }}{% endfor %}.
+            Новые брони на {{ not_working|length > 1 ? 'эти стороны' : 'эту сторону' }} не принимаются; уже сделанные остаются.
+            Снова принимать брони — отметьте «Работает» у стороны в карточке конструкции.
         </div>
     {% endif %}
 
-    {# Agents only look at the occupancy: booking is for managers; a structure out of order takes no new bookings #}
+    {# Agents only look at the occupancy: booking is for managers; sides out of order take no new bookings #}
     {% if is_granted('ROLE_SUPER_MANAGER') and product.working %}
     <div class="grid gap-6 lg:grid-cols-3 mb-6">
         {# New booking #}
