@@ -50,6 +50,7 @@
                                 {key: 'period', label: 'Период'},
                                 {key: 'client', label: 'Клиент'},
                                 {key: 'status', label: 'Статус'},
+                                {key: 'sold', label: 'Продано за'},
                                 {key: 'created', label: 'Создана'},
                             ] %}
                                 {% set active = sort == column.key %}
@@ -80,6 +81,7 @@
                                 <td class="px-4 py-3 whitespace-nowrap">{{ include('admin/booking/_period.html.twig') }}</td>
                                 <td class="px-4 py-3">{{ include('admin/booking/_client.html.twig') }}</td>
                                 <td class="px-4 py-3">{{ include('admin/booking/_status.html.twig') }}</td>
+                                <td class="px-4 py-3">{{ include('admin/booking/_sold.html.twig', {return: 'list'}) }}</td>
                                 <td class="px-4 py-3 whitespace-nowrap">
                                     {{ booking.createdAt|date('d.m.Y H:i') }}
                                     {% if booking.createdBy %}<div class="text-xs text-body-subtle">{{ booking.createdBy.name }}</div>{% endif %}
@@ -88,7 +90,7 @@
                             </tr>
                         {% else %}
                             <tr>
-                                <td colspan="7" class="px-4 py-16 text-center">
+                                <td colspan="8" class="px-4 py-16 text-center">
                                     <span class="mx-auto mb-3 grid size-12 place-items-center rounded-full bg-zinc-100 text-zinc-400">{{ ui.icon('calendar') }}</span>
                                     <p class="font-medium text-heading">{{ q or filter or unpaid ? 'Ничего не найдено' : 'Броней пока нет' }}</p>
                                     <p class="mt-1 text-sm text-body">Забронировать конструкцию можно из её карточки — вкладка «Бронирование».</p>

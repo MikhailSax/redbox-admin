@@ -87,6 +87,10 @@ class Booking
     #[ORM\Column(type: Types::TEXT, nullable: true)]
     private ?string $comment;
 
+    /** What the booking was sold for in the end, rubles for the whole period (discounts and bargaining included); null = not set yet */
+    #[ORM\Column(nullable: true)]
+    private ?int $soldPrice = null;
+
     #[ORM\ManyToOne]
     #[ORM\JoinColumn(onDelete: 'SET NULL')]
     private ?User $createdBy;
@@ -304,5 +308,17 @@ class Booking
     public function getCreatedBy(): ?User
     {
         return $this->createdBy;
+    }
+
+    public function getSoldPrice(): ?int
+    {
+        return $this->soldPrice;
+    }
+
+    public function setSoldPrice(?int $soldPrice): static
+    {
+        $this->soldPrice = $soldPrice;
+
+        return $this;
     }
 }

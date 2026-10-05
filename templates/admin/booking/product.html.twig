@@ -134,6 +134,7 @@
                     {{ form_row(form.clientPhone) }}
                 </div>
                 {{ form_row(form.comment) }}
+                {{ form_row(form.soldPrice) }}
                 <button type="submit" class="btn btn-primary">Забронировать на 24 часа</button>
             {{ form_end(form) }}
         </div>
@@ -164,6 +165,7 @@
                     <th scope="col" class="px-4 py-3 font-medium">Период</th>
                     <th scope="col" class="px-4 py-3 font-medium">Клиент</th>
                     <th scope="col" class="px-4 py-3 font-medium">Статус</th>
+                    <th scope="col" class="px-4 py-3 font-medium">Продано за</th>
                     <th scope="col" class="px-4 py-3 font-medium"><span class="sr-only">Действия</span></th>
                 </tr>
             </thead>
@@ -178,10 +180,11 @@
                             {% if booking.comment %}<div class="text-xs mt-1">{{ booking.comment }}</div>{% endif %}
                         </td>
                         <td class="px-4 py-3">{{ include('admin/booking/_status.html.twig') }}</td>
+                        <td class="px-4 py-3">{{ include('admin/booking/_sold.html.twig', {return: 'product'}) }}</td>
                         <td class="px-4 py-3">{{ include('admin/booking/_actions.html.twig', {return: 'product'}) }}</td>
                     </tr>
                 {% else %}
-                    <tr><td colspan="5" class="px-4 py-8 text-center">Броней пока нет.</td></tr>
+                    <tr><td colspan="6" class="px-4 py-8 text-center">Броней пока нет.</td></tr>
                 {% endfor %}
             </tbody>
         </table>

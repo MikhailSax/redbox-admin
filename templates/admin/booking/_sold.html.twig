@@ -1,0 +1,14 @@
+{# "Продано за" of `booking`: super managers type the final price right in the list; `return` = 'list' | 'product' #}
+{% if is_granted('ROLE_SUPER_MANAGER') %}
+    <form method="post" action="{{ path('admin_booking_price', {id: booking.id}) }}" class="flex items-center gap-1">
+        <input type="hidden" name="_token" value="{{ csrf_token('price-booking-' ~ booking.id) }}">
+        <input type="hidden" name="return" value="{{ return }}">
+        <label class="sr-only" for="booking-price-{{ booking.id }}">Продано за, ₽</label>
+        <input type="text" inputmode="numeric" id="booking-price-{{ booking.id }}" name="price"
+               value="{{ booking.soldPrice is not null ? booking.soldPrice|number_format(0, ',', ' ') : '' }}" placeholder="—"
+               class="input h-8 !w-28 !px-2 text-right text-sm tabular-nums" title="Итоговая сумма за весь период, ₽. Пусто — стереть">
+        <button type="submit" class="btn btn-secondary btn-sm" title="Сохранить сумму">₽</button>
+    </form>
+{% else %}
+    <span class="whitespace-nowrap tabular-nums">{{ booking.soldPrice is not null ? booking.soldPrice|number_format(0, ',', ' ') ~ ' ₽' : '—' }}</span>
+{% endif %}

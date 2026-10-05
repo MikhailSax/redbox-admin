@@ -58,6 +58,10 @@ final class BookingRequest
 
     public ?string $comment = null;
 
+    /** What the booking is sold for, rubles for the whole period; may be set later in the bookings list */
+    #[Assert\PositiveOrZero(message: 'Сумма не может быть меньше нуля')]
+    public ?int $soldPrice = null;
+
     /** What goes into the booking: the typed-in contact, or the contact person of the client card */
     public function contactName(): string
     {

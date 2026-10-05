@@ -194,6 +194,21 @@ final class BookingController extends AbstractController
         return $this->apply($request, $booking, fn () => $this->bookingManager->changeSlots($booking, $slots), \sprintf('Слотов в брони: %d', $slots));
     }
 
+    /** "Продано за": the final price of the booking, empty clears it */
+    #[Route('/admin/bookings/{id}/price', name: 'admin_booking_price', requirements: ['id' => Requirement::DIGITS], methods: ['POST'])]
+    #[IsCsrfTokenValid(new Expression('"price-booking-" ~ args["booking"].getId()'))]
+    #[IsGranted(User::ROLE_SUPER_MANAGER)]
+    public function price(Request $request, Booking $booking): Response
+    {
+        // "45 000" and "45000" alike
+        $typed = preg_replace('/\D+/', '', $request->getPayload()->getString('price'));
+        $price = '' === $typed ? null : (int) $typed;
+
+        return $this->apply($request, $booking, fn () => $this->bookingManager->setSoldPrice($booking, $price), null === $price
+            ? 'Сумма продажи стёрта'
+            : \sprintf('Продано за %s ₽', number_format($price, 0, ',', ' ')));
+    }
+
     #[Route('/admin/bookings/{id}/cancel', name: 'admin_booking_cancel', requirements: ['id' => Requirement::DIGITS], methods: ['POST'])]
     #[IsCsrfTokenValid(new Expression('"cancel-booking-" ~ args["booking"].getId()'))]
     #[IsGranted(User::ROLE_SUPER_MANAGER)]

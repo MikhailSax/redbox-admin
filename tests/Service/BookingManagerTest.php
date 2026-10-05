@@ -166,6 +166,21 @@ final class BookingManagerTest extends KernelTestCase
         $this->assertUnavailable(fn () => $this->manager->cancel($booking), 'уже не действует');
     }
 
+    public function testSoldPriceIsKeptAndCanBeCleared(): void
+    {
+        $booking = $this->book($this->billboardA, '2026-09');
+        self::assertNull($booking->getSoldPrice());
+
+        $this->manager->setSoldPrice($booking, 45000);
+        $this->em->refresh($booking);
+        self::assertSame(45000, $booking->getSoldPrice());
+
+        $this->manager->setSoldPrice($booking, null);
+        $this->em->refresh($booking);
+        self::assertNull($booking->getSoldPrice());
+        $this->assertUnavailable(fn () => $this->manager->setSoldPrice($booking, -1), 'меньше нуля');
+    }
+
     public function testScreenBlockHoldsUpToItsSlots(): void
     {
         self::assertSame(BookingMode::DEFAULT_SLOT_COUNT, $this->screen->getSlotCount()); // 12 × 5 s

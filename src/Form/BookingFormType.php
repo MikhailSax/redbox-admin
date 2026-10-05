@@ -88,6 +88,12 @@ class BookingFormType extends AbstractType
                 'label' => 'Комментарий',
                 'required' => false,
                 'attr' => ['rows' => 2],
+            ])
+            ->add('soldPrice', IntegerType::class, [
+                'label' => 'Продано за, ₽',
+                'required' => false,
+                'attr' => ['min' => 0, 'step' => 1000, 'placeholder' => 'Например, 45000'],
+                'help' => 'Итоговая сумма за весь период, со скидками. Не знаете сейчас — впишите позже в списке броней.',
             ]);
 
         if ($airtime) {

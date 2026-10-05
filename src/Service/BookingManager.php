@@ -78,6 +78,7 @@ class BookingManager
             $this->assertAvailable($side, $start, $end, $slots, $seconds, $now);
 
             $booking = new Booking($side, $start, $end, $slots, $request->client, $request->contactName(), $request->contactPhone(), $request->comment, $createdBy, $seconds);
+            $booking->setSoldPrice($request->soldPrice);
             $booking->hold($now->modify(self::HOLD_TTL));
 
             $this->entityManager->persist($booking);
@@ -311,6 +312,17 @@ class BookingManager
      *
      * @throws BookingException
      */
+    /** The final price of the booking; null clears it. Kept on cancelled and expired bookings too: it is history */
+    public function setSoldPrice(Booking $booking, ?int $price): void
+    {
+        if (null !== $price && $price < 0) {
+            throw new BookingException('Сумма продажи не может быть меньше нуля.');
+        }
+
+        $booking->setSoldPrice($price);
+        $this->entityManager->flush();
+    }
+
     public function changeSlots(Booking $booking, int $slots): void
     {
         $side = $booking->getSide();

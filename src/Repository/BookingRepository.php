@@ -113,6 +113,7 @@ class BookingRepository extends ServiceEntityRepository
         'period' => ['b.startDate', 'b.endDate', 'p.name'],
         'client' => ['clientSort', 'b.startDate'],
         'status' => ['b.status', 'b.startDate'],
+        'sold' => ['b.soldPrice', 'b.startDate'],
         'created' => ['b.createdAt'],
     ];
 
