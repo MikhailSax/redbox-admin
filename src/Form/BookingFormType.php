@@ -14,6 +14,7 @@ use Doctrine\ORM\QueryBuilder;
 use Symfony\Bridge\Doctrine\Form\Type\EntityType;
 use Symfony\Component\Form\AbstractType;
 use Symfony\Component\Form\Extension\Core\Type\ChoiceType;
+use Symfony\Component\Form\Extension\Core\Type\CollectionType;
 use Symfony\Component\Form\Extension\Core\Type\DateType;
 use Symfony\Component\Form\Extension\Core\Type\IntegerType;
 use Symfony\Component\Form\Extension\Core\Type\TelType;
@@ -94,6 +95,15 @@ class BookingFormType extends AbstractType
                 'required' => false,
                 'attr' => ['min' => 0, 'step' => 1000, 'placeholder' => 'Например, 45000'],
                 'help' => 'Итоговая сумма за весь период, со скидками. Не знаете сейчас — впишите позже в списке броней.',
+            ])
+            // rows are added and removed by assets/admin/collection.js, a catalog pick prefills one (service-line.js)
+            ->add('services', CollectionType::class, [
+                'label' => false,
+                'entry_type' => ServiceLineFormType::class,
+                'entry_options' => ['label' => false],
+                'allow_add' => true,
+                'allow_delete' => true,
+                'prototype' => true,
             ]);
 
         if ($airtime) {

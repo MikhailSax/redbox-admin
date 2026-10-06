@@ -3,7 +3,9 @@
 namespace App\Service;
 
 use App\Dto\BookingRequest;
+use App\Dto\ServiceLineInput;
 use App\Entity\Booking;
+use App\Entity\BookingServiceLine;
 use App\Entity\Product;
 use App\Entity\ProductSide;
 use App\Entity\User;
@@ -79,6 +81,9 @@ class BookingManager
 
             $booking = new Booking($side, $start, $end, $slots, $request->client, $request->contactName(), $request->contactPhone(), $request->comment, $createdBy, $seconds);
             $booking->setSoldPrice($request->soldPrice);
+            foreach ($request->services as $service) {
+                $booking->addServiceLine(self::serviceLine($service));
+            }
             $booking->hold($now->modify(self::HOLD_TTL));
 
             $this->entityManager->persist($booking);
@@ -145,6 +150,12 @@ class BookingManager
     /**
      * @throws BookingException
      */
+    /** Name, unit and prices are copied: the booking keeps its numbers if the catalog changes */
+    private static function serviceLine(ServiceLineInput $input): BookingServiceLine
+    {
+        return new BookingServiceLine(trim((string) $input->name), (string) $input->unit, (string) $input->quantity, (string) $input->unitPrice, $input->service?->getCostPrice(), $input->service);
+    }
+
     private function assertHoldLive(Booking $booking, \DateTimeImmutable $now): void
     {
         if ($booking->isHoldOverdue($now)) {
@@ -320,6 +331,31 @@ class BookingManager
         }
 
         $booking->setSoldPrice($price);
+        $this->entityManager->flush();
+    }
+
+    /**
+     * A one-off service (layout, printing, mounting…) sold with a booking in force.
+     *
+     * @throws BookingException
+     */
+    public function addService(Booking $booking, ServiceLineInput $input): BookingServiceLine
+    {
+        if (!$booking->isActiveAt($this->clock->now())) {
+            throw new BookingException('Эта бронь уже не действует — услуги к ней не добавляются.');
+        }
+
+        $line = self::serviceLine($input);
+        $booking->addServiceLine($line);
+        $this->entityManager->persist($line);
+        $this->entityManager->flush();
+
+        return $line;
+    }
+
+    public function removeService(Booking $booking, BookingServiceLine $line): void
+    {
+        $booking->removeServiceLine($line);
         $this->entityManager->flush();
     }
 

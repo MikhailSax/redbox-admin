@@ -3,6 +3,7 @@
 namespace App\Tests\Controller\Admin;
 
 use App\Dto\BookingRequest;
+use App\Entity\AdditionalService;
 use App\Entity\Booking;
 use App\Entity\Category;
 use App\Entity\District;
@@ -351,6 +352,95 @@ final class BookingControllerTest extends AdminWebTestCase
         $crawler = $this->client->request('GET', $this->url($this->billboard).'?month=2026-11');
         $this->submitPostForm($crawler, 'form[action="/admin/bookings/'.$november->getId().'/confirm"]');
         self::assertResponseRedirects($this->url($this->billboard).'?month=2026-11');
+    }
+
+    /** Revenue of the tab: "Продано за" of the bookings in force, a month takes its share of a longer booking by days */
+    public function testBookingsTableShowsTheRevenueOfTheTab(): void
+    {
+        $manager = static::getContainer()->get(BookingManager::class);
+        $long = $this->hold($this->side($this->billboard, 'A'), '2026-09', 'Надолго', months: 3); // 30 + 31 + 30 days
+        $manager->setSoldPrice($long, 90000);
+        $manager->markPaid($long);
+        $manager->setSoldPrice($this->hold($this->side($this->billboard, 'B'), '2026-09', 'На месяц'), 20000);
+        $cancelled = $this->hold($this->side($this->billboard, 'B'), '2026-10', 'Передумал');
+        $manager->setSoldPrice($cancelled, 50000);
+        $manager->cancel($cancelled);
+        $this->hold($this->side($this->billboard, 'B'), '2026-11', 'Без суммы');
+
+        $revenue = fn (string $query) => preg_replace('/\s+/u', ' ', trim($this->client->request('GET', $this->url($this->billboard).$query)->filter('[data-revenue]')->text()));
+
+        // 90 000 × 30 / 91 + 20 000
+        self::assertStringContainsString('Выручка за сентябрь 2026', $revenue(''));
+        self::assertStringContainsString('49 670 ₽ оплачено 29 670 ₽', $revenue(''));
+        // a cancelled booking brings nothing
+        self::assertStringContainsString('30 659 ₽ оплачено 30 659 ₽', $revenue('?month=2026-10'));
+        self::assertStringContainsString('без суммы: 1', $revenue('?month=2026-11'));
+        self::assertStringContainsString('Выручка за всё время', $revenue('?month=all'));
+        self::assertStringContainsString('110 000 ₽ оплачено 90 000 ₽', $revenue('?month=all'));
+    }
+
+    /** Services sold with a booking: picked when booking, added and removed later in the list, counted apart in the revenue */
+    public function testBookingCarriesServices(): void
+    {
+        $printing = (new AdditionalService())->setName('Печать баннера')->setUnit('м²')->setPrice('350.00')->setCostPrice('200.00');
+        $mounting = (new AdditionalService())->setName('Монтаж')->setUnit('выезд')->setPrice('3000.00');
+        $this->em->persist($printing);
+        $this->em->persist($mounting);
+        $this->em->flush();
+
+        // picked in the new booking form: a catalog entry fills what was left empty, a custom line is typed in
+        $crawler = $this->client->request('GET', $this->url($this->billboard));
+        [$values, $uri] = $this->formValues($crawler, 'Забронировать на 24 часа');
+        $values['booking_form']['side'] = (string) $this->side($this->billboard, 'A')->getId();
+        $values['booking_form']['startMonth'] = '2026-09';
+        $values['booking_form']['months'] = '2';
+        $values['booking_form']['client'] = (string) $this->customer->getId();
+        $values['booking_form']['soldPrice'] = '60000';
+        $values['booking_form']['services'] = [
+            ['service' => (string) $printing->getId(), 'name' => '', 'quantity' => '18', 'unit' => '', 'unitPrice' => ''],
+            ['service' => '', 'name' => 'Дизайн макета', 'quantity' => '1', 'unit' => 'макет', 'unitPrice' => '2500'],
+        ];
+        $this->submit($uri, $values);
+        self::assertResponseRedirects($this->url($this->billboard));
+
+        $booking = $this->em->getRepository(Booking::class)->findOneBy([]);
+        $lines = $booking->getServiceLines()->getValues();
+        self::assertSame(['Печать баннера', 'Дизайн макета'], array_map(fn ($l) => $l->getName(), $lines));
+        self::assertSame('м²', $lines[0]->getUnit());
+        self::assertSame(6300.0, $lines[0]->getTotal());
+        self::assertSame(200.0, $lines[0]->getUnitCost());
+        self::assertSame(8800.0, $booking->getServicesTotal());
+
+        // added in the list: the catalog price unless typed otherwise
+        $crawler = $this->client->request('GET', $this->url($this->billboard));
+        $form = $crawler->filter('form[action="/admin/bookings/'.$booking->getId().'/services"]')->form();
+        $values = $form->getPhpValues();
+        $values['booking_service_'.$booking->getId()]['service'] = (string) $mounting->getId();
+        $this->submit($form->getUri(), $values);
+        self::assertResponseRedirects($this->url($this->billboard));
+        $crawler = $this->client->followRedirect();
+        self::assertSelectorTextContains('[role=alert]', 'Услуга «Монтаж» добавлена к брони');
+        self::assertSame(11800.0, $this->reload($booking)->getServicesTotal());
+
+        // services go whole to the month the booking starts in, the placement is shared by days (compared without spaces)
+        $total = fn (string $query) => preg_replace('/\s+/u', '', $this->client->request('GET', $this->url($this->billboard).$query)->filter('[data-revenue]')->text());
+        self::assertStringContainsString('Размещение29508₽Услуги11800₽Итого41308₽', $total(''));
+        self::assertStringContainsString('Размещение30492₽Услуги0₽Итого30492₽', $total('?month=2026-10'));
+        self::assertStringContainsString('Размещение60000₽Услуги11800₽Итого71800₽', $total('?month=all'));
+
+        // removed in the list
+        $crawler = $this->client->request('GET', $this->url($this->billboard));
+        $line = $this->reload($booking)->getServiceLines()->first();
+        $this->submitPostForm($crawler, 'form[action="/admin/bookings/'.$booking->getId().'/services/'.$line->getId().'/delete"]');
+        self::assertResponseRedirects($this->url($this->billboard));
+        self::assertSame(['Дизайн макета', 'Монтаж'], array_map(fn ($l) => $l->getName(), $this->reload($booking)->getServiceLines()->getValues()));
+
+        // a cancelled booking takes no more services
+        $crawler = $this->client->request('GET', $this->url($this->billboard));
+        $this->submitPostForm($crawler, 'form[action="/admin/bookings/'.$booking->getId().'/cancel"]');
+        $crawler = $this->client->request('GET', $this->url($this->billboard));
+        self::assertCount(0, $crawler->filter('form[action$="/services"]'));
+        self::assertStringContainsString('Монтаж', $crawler->filter('.table-card')->last()->text());
     }
 
     /** Post-paying clients: the booking is confirmed first, the payment marked when the money comes */
@@ -771,11 +861,12 @@ final class BookingControllerTest extends AdminWebTestCase
         return $product->getSides()->filter(fn (ProductSide $s) => $s->getName() === $name)->first();
     }
 
-    private function hold(ProductSide $side, string $month, string $client = 'ООО Ромашка'): Booking
+    private function hold(ProductSide $side, string $month, string $client = 'ООО Ромашка', int $months = 1): Booking
     {
         $request = new BookingRequest();
         $request->side = $side;
         $request->startMonth = $month;
+        $request->months = $months;
         $request->client = $this->customer;
         $request->clientName = $client;
         $request->clientPhone = '+7 900 000-00-00';

@@ -43,17 +43,19 @@
             </p>
         {% endif %}
     </div>
-    {% if product.id and can_manage %}
+    {% if product.id %}
         <div class="flex flex-wrap gap-2">
             {% if active_tab != 'booking' %}
                 <a href="{{ path('admin_booking_product', {id: product.id}) }}" class="btn btn-primary">Забронировать</a>
             {% endif %}
-            <form method="post" action="{{ path('admin_product_delete', {id: product.id}) }}"
-                  data-confirm="Конструкция «{{ product.name }}» будет удалена вместе со сторонами и фотографиями."
-                  data-confirm-title="Удалить конструкцию?">
-                <input type="hidden" name="_token" value="{{ csrf_token('delete-product-' ~ product.id) }}">
-                <button type="submit" class="btn btn-danger-outline">Удалить</button>
-            </form>
+            {% if can_manage %}
+                <form method="post" action="{{ path('admin_product_delete', {id: product.id}) }}"
+                      data-confirm="Конструкция «{{ product.name }}» будет удалена вместе со сторонами и фотографиями."
+                      data-confirm-title="Удалить конструкцию?">
+                    <input type="hidden" name="_token" value="{{ csrf_token('delete-product-' ~ product.id) }}">
+                    <button type="submit" class="btn btn-danger-outline">Удалить</button>
+                </form>
+            {% endif %}
         </div>
     {% endif %}
 </div>
@@ -77,7 +79,7 @@
             <li class="me-1" role="presentation">
                 <a href="{{ path('admin_booking_product', {id: product.id}) }}"
                    class="inline-flex items-center gap-2 px-4 py-3 border-b-2 rounded-t-base {{ active_tab == 'booking' ? 'text-fg-brand border-brand' : 'border-transparent text-body hover:text-heading hover:border-default-strong' }}">
-                    {{ can_manage ? 'Бронирование' : 'Занятость' }}
+                    Бронирование
                     {% if activeBookings|default(0) > 0 %}
                         <span class="inline-flex items-center justify-center min-w-5 h-5 px-1 text-xs font-semibold rounded-full bg-brand-softer text-fg-brand-strong" title="Действующие брони">{{ activeBookings }}</span>
                     {% endif %}

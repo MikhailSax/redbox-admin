@@ -1,0 +1,45 @@
+{#
+    Services sold with `booking` in the product's bookings list: the lines, "×" to remove one and a folded
+    "add a service" form. `service_form` = its ServiceLineFormType view, null when the booking is no longer in force;
+    `return_month`? = the month tab to come back to.
+#}
+{% if booking.serviceLines is not empty %}
+    <ul class="space-y-1 text-xs mb-1">
+        {% for line in booking.serviceLines %}
+            <li class="flex items-center gap-1">
+                <span class="min-w-0">
+                    <span class="text-heading">{{ line.name }}</span>
+                    <span class="text-body-subtle whitespace-nowrap tabular-nums">· {{ line.quantity == line.quantity|round ? line.quantity|round : line.quantity }} {{ line.unit }} · {{ line.total|number_format(0, ',', ' ') }} ₽</span>
+                </span>
+                {% if service_form %}
+                    <form method="post" action="{{ path('admin_booking_remove_service', {id: booking.id, line: line.id}) }}"
+                          data-confirm="Услуга «{{ line.name }}» будет убрана из брони клиента {{ booking.clientTitle }}." data-confirm-title="Убрать услугу?" data-confirm-button="Убрать">
+                        <input type="hidden" name="_token" value="{{ csrf_token('service-booking-' ~ booking.id) }}">
+                        {% if return_month|default(null) %}<input type="hidden" name="month" value="{{ return_month }}">{% endif %}
+                        <button type="submit" class="grid size-5 place-items-center rounded text-body-subtle hover:bg-danger-soft hover:text-fg-danger" title="Убрать">×</button>
+                    </form>
+                {% endif %}
+            </li>
+        {% endfor %}
+    </ul>
+    {% if booking.serviceLines|length > 1 %}<div class="text-xs font-medium text-heading tabular-nums whitespace-nowrap">всего {{ booking.servicesTotal|number_format(0, ',', ' ') }} ₽</div>{% endif %}
+{% elseif not service_form %}
+    <span class="text-body-subtle">—</span>
+{% endif %}
+{% if service_form %}
+    <details class="mt-1">
+        <summary class="cursor-pointer text-xs font-medium text-fg-brand hover:underline whitespace-nowrap">+ услуга</summary>
+        {% form_theme service_form 'admin/form/theme.html.twig' %}
+        {{ form_start(service_form, {attr: {class: 'mt-2 grid gap-2 w-64', novalidate: 'novalidate'}}) }}
+            {% if return_month|default(null) %}<input type="hidden" name="month" value="{{ return_month }}">{% endif %}
+            {{ form_row(service_form.service, {row_attr: {class: 'mb-0'}}) }}
+            {{ form_row(service_form.name, {row_attr: {class: 'mb-0'}}) }}
+            <div class="grid grid-cols-[1fr_1fr] gap-2">
+                {{ form_row(service_form.quantity, {row_attr: {class: 'mb-0'}}) }}
+                {{ form_row(service_form.unit, {row_attr: {class: 'mb-0'}}) }}
+            </div>
+            {{ form_row(service_form.unitPrice, {row_attr: {class: 'mb-0'}}) }}
+            <button type="submit" class="btn btn-primary btn-sm">Добавить</button>
+        {{ form_end(service_form) }}
+    </details>
+{% endif %}

@@ -139,7 +139,6 @@ async function initConstructionMap(element) {
     const markers = new Map();
     let controller = null;
     let firstLoad = true;
-    let canBook = true;
     const focusId = Number(new URLSearchParams(location.search).get('focus')) || null;
 
     /** Balloon HTML; depends on the media plan selected above the map */
@@ -169,7 +168,7 @@ async function initConstructionMap(element) {
             + planBox
             + '<div class="mt-3 flex gap-2">'
             + '<a href="' + escape(point.urls.edit) + '" class="btn btn-secondary btn-sm flex-1">Карточка</a>'
-            + '<a href="' + escape(point.urls.booking) + '" class="btn btn-primary btn-sm flex-1">' + (canBook ? 'Забронировать' : 'Занятость') + '</a>'
+            + '<a href="' + escape(point.urls.booking) + '" class="btn btn-primary btn-sm flex-1">Забронировать</a>'
             + '</div></div></div>';
     }
 
@@ -260,7 +259,6 @@ async function initConstructionMap(element) {
     }
 
     function render(data) {
-        canBook = data.canBook !== false;
         map.balloon.close();
         pins.removeAll();
         markers.clear();

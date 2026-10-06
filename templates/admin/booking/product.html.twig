@@ -97,8 +97,9 @@
         </div>
     {% endif %}
 
-    {# Agents only look at the occupancy: booking is for managers; sides out of order take no new bookings #}
-    {% if is_granted('ROLE_SUPER_MANAGER') and product.working %}
+    {# Agents book too (24h holds); confirming, payments, prices and services are for managers. Sides out of order take no new bookings #}
+    {% set is_manager = is_granted('ROLE_SUPER_MANAGER') %}
+    {% if product.working %}
     <div class="grid gap-6 lg:grid-cols-3 mb-6">
         {# New booking #}
         <div class="card lg:col-span-2">
@@ -140,6 +141,25 @@
                 </div>
                 {{ form_row(form.comment) }}
                 {{ form_row(form.soldPrice) }}
+
+                {# One-off services sold with the booking: rows added by assets/admin/collection.js #}
+                <div class="mb-5">
+                    <div class="flex flex-wrap items-center justify-between gap-3 mb-2">
+                        <div>
+                            <h3 class="text-sm font-medium text-heading">Услуги</h3>
+                            <p class="text-xs text-body">Макет, печать, монтаж — разово, сверх «Продано за». Можно добавить и позже в списке броней.</p>
+                        </div>
+                        <button type="button" class="btn btn-secondary btn-sm" data-collection-add="booking-services">+ Добавить услугу</button>
+                    </div>
+                    <div id="booking-services" class="space-y-3" data-index="{{ form.services|length }}"
+                         data-prototype="{{ include('admin/booking/_service_row.html.twig', {line: form.services.vars.prototype})|e('html_attr') }}">
+                        {% for line in form.services %}
+                            {{ include('admin/booking/_service_row.html.twig') }}
+                        {% endfor %}
+                    </div>
+                    {% do form.services.setRendered %}
+                </div>
+                {{ include('admin/_service_units.html.twig') }}
                 <button type="submit" class="btn btn-primary">Забронировать на 24 часа</button>
             {{ form_end(form) }}
         </div>
@@ -155,7 +175,11 @@
                 {% if whole %}
                     <li>{{ mixed ? 'Статичная сторона' : 'Сторона' }} бронируется целиком на календарный месяц — одному клиенту.</li>
                 {% endif %}
-                <li>«Подтвердить» закрепляет бронь без оплаты — для постоплатников; оплату отметьте «Оплачено», когда придут деньги. «Оплачено» у неподтверждённой брони сразу и подтверждает её.</li>
+                {% if is_manager %}
+                    <li>«Подтвердить» закрепляет бронь без оплаты — для постоплатников; оплату отметьте «Оплачено», когда придут деньги. «Оплачено» у неподтверждённой брони сразу и подтверждает её.</li>
+                {% else %}
+                    <li>Подтверждает бронь и отмечает оплату менеджер — сообщите ему о брони, пока не прошли 24 часа.</li>
+                {% endif %}
             </ul>
         </div>
     </div>
@@ -195,8 +219,11 @@
                     <th scope="col" class="px-4 py-3 font-medium">Период</th>
                     <th scope="col" class="px-4 py-3 font-medium">Клиент</th>
                     <th scope="col" class="px-4 py-3 font-medium">Статус</th>
-                    <th scope="col" class="px-4 py-3 font-medium">Продано за</th>
-                    <th scope="col" class="px-4 py-3 font-medium"><span class="sr-only">Действия</span></th>
+                    {% if is_manager %}
+                        <th scope="col" class="px-4 py-3 font-medium">Продано за</th>
+                        <th scope="col" class="px-4 py-3 font-medium">Услуги</th>
+                        <th scope="col" class="px-4 py-3 font-medium"><span class="sr-only">Действия</span></th>
+                    {% endif %}
                 </tr>
             </thead>
             <tbody>
@@ -210,13 +237,38 @@
                             {% if booking.comment %}<div class="text-xs mt-1">{{ booking.comment }}</div>{% endif %}
                         </td>
                         <td class="px-4 py-3">{{ include('admin/booking/_status.html.twig') }}</td>
-                        <td class="px-4 py-3">{{ include('admin/booking/_sold.html.twig', {return: 'product'}) }}</td>
-                        <td class="px-4 py-3">{{ include('admin/booking/_actions.html.twig', {return: 'product'}) }}</td>
+                        {% if is_manager %}
+                            <td class="px-4 py-3">{{ include('admin/booking/_sold.html.twig', {return: 'product'}) }}</td>
+                            <td class="px-4 py-3">{{ include('admin/booking/_services.html.twig', {service_form: serviceForms[booking.id] ?? null}) }}</td>
+                            <td class="px-4 py-3">{{ include('admin/booking/_actions.html.twig', {return: 'product'}) }}</td>
+                        {% endif %}
                     </tr>
                 {% else %}
-                    <tr><td colspan="6" class="px-4 py-8 text-center">{{ monthTab == 'all' or allBookings == 0 ? 'Броней пока нет.' : 'В этом месяце броней нет.' }}</td></tr>
+                    <tr><td colspan="{{ is_manager ? 7 : 4 }}" class="px-4 py-8 text-center">{{ monthTab == 'all' or allBookings == 0 ? 'Броней пока нет.' : 'В этом месяце броней нет.' }}</td></tr>
                 {% endfor %}
             </tbody>
+            {% if is_manager and bookings is not empty %}
+                {# Revenue of the tab: bookings in force only; a month takes its share of a longer booking by days #}
+                <tfoot class="bg-neutral-secondary-soft border-t border-default">
+                    <tr data-revenue>
+                        <th scope="row" colspan="4" class="px-4 py-3 text-right font-medium text-heading">
+                            {{ monthTab == 'all' ? 'Выручка за всё время' : 'Выручка за ' ~ (monthTabs[monthTab].month|month_label|lower) }}
+                            <div class="text-xs font-normal text-body-subtle">
+                                действующие брони{{ monthTab != 'all' ? '; бронь на несколько месяцев — долей по дням, услуги — в месяц начала брони' }}
+                            </div>
+                        </th>
+                        <td colspan="3" class="px-4 py-3">
+                            <dl class="text-xs text-body tabular-nums">
+                                <div class="flex justify-between gap-3 max-w-56"><dt>Размещение</dt><dd class="whitespace-nowrap">{{ revenue.placement|number_format(0, ',', ' ') }} ₽</dd></div>
+                                <div class="flex justify-between gap-3 max-w-56"><dt>Услуги</dt><dd class="whitespace-nowrap">{{ revenue.services|number_format(0, ',', ' ') }} ₽</dd></div>
+                            </dl>
+                            <div class="mt-1 text-base font-semibold text-heading whitespace-nowrap tabular-nums">Итого {{ revenue.total|number_format(0, ',', ' ') }} ₽</div>
+                            <div class="text-xs text-body whitespace-nowrap tabular-nums">оплачено {{ revenue.paid|number_format(0, ',', ' ') }} ₽</div>
+                            {% if revenue.unpriced %}<div class="text-xs text-fg-warning">без суммы: {{ revenue.unpriced }}</div>{% endif %}
+                        </td>
+                    </tr>
+                </tfoot>
+            {% endif %}
         </table>
     </div>
     {% endif %}

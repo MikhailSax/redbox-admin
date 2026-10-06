@@ -323,9 +323,9 @@ final class MediaPlanController extends AbstractController
         return $this->redirectToRoute('admin_media_plan_show', ['id' => $plan->getId()], Response::HTTP_SEE_OTHER);
     }
 
+    /** Agents book a plan too: the holds wait for a manager to confirm them */
     #[Route('/{id}/book', name: 'book', requirements: ['id' => Requirement::DIGITS], methods: ['POST'])]
     #[IsCsrfTokenValid(new Expression('"media-plan-" ~ args["plan"].getId()'))]
-    #[IsGranted(User::ROLE_SUPER_MANAGER)]
     public function book(MediaPlan $plan): Response
     {
         $user = $this->getUser();

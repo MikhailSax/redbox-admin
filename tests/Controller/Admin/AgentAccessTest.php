@@ -11,11 +11,12 @@ use App\Entity\Product;
 use App\Entity\ProductSide;
 use App\Entity\ProductType;
 use App\Entity\User;
+use App\Enum\BookingStatus;
 use Symfony\Component\Clock\Test\ClockSensitiveTrait;
 
 /**
  * An agent adds clients, fills media plans, works the website's requests and looks at the catalogue,
- * but changes no structure and makes no bookings or payments.
+ * makes 24h holds, but changes no structure, confirms no bookings and keeps no payments.
  */
 final class AgentAccessTest extends AdminWebTestCase
 {
@@ -92,19 +93,42 @@ final class AgentAccessTest extends AdminWebTestCase
         $this->em->clear();
         self::assertSame('Щит на Ленина', $this->em->find(Product::class, $this->billboard->getId())->getName());
 
-        // the map and the occupancy are there to look at, without booking
         $this->client->request('GET', '/admin/map');
         self::assertResponseIsSuccessful();
-        $this->client->request('GET', '/admin/map/data');
-        self::assertFalse(json_decode((string) $this->client->getResponse()->getContent(), true)['canBook']);
+    }
+
+    public function testAgentBooksButConfirmingIsForManagers(): void
+    {
+        $customer = $this->createClientCard();
 
         $crawler = $this->client->request('GET', '/admin/products/'.$this->billboard->getId().'/bookings');
         self::assertResponseIsSuccessful();
         self::assertSelectorTextContains('h2', 'Занятость на 12 месяцев');
-        self::assertCount(0, $crawler->selectButton('Забронировать на 24 часа'));
-        $this->client->request('POST', '/admin/products/'.$this->billboard->getId().'/bookings', ['booking_form' => []]);
-        self::assertResponseStatusCodeSame(403);
-        self::assertSame(0, $this->em->getRepository(Booking::class)->count([]));
+        [$values, $uri] = $this->formValues($crawler, 'Забронировать на 24 часа');
+        $values['booking_form']['side'] = (string) $this->billboard->getSides()->first()->getId();
+        $values['booking_form']['startMonth'] = '2026-10';
+        $values['booking_form']['months'] = '1';
+        $values['booking_form']['client'] = (string) $customer->getId();
+        $this->submit($uri, $values);
+        self::assertResponseRedirects('/admin/products/'.$this->billboard->getId().'/bookings');
+
+        $booking = $this->em->getRepository(Booking::class)->findOneBy([]);
+        self::assertSame(BookingStatus::Hold, $booking->getStatus());
+        self::assertSame('me@redbox.local', $booking->getCreatedBy()?->getEmail());
+
+        // the hold is in the list, without the manager's buttons and money
+        $crawler = $this->client->request('GET', '/admin/products/'.$this->billboard->getId().'/bookings?month=all');
+        self::assertStringContainsString('Ждёт подтверждения', $crawler->filter('#bookings ~ .table-card tbody')->text());
+        self::assertCount(0, $crawler->filter('form[action^="/admin/bookings/"]'));
+        self::assertSelectorNotExists('[data-revenue]');
+
+        // confirming, paying and cancelling are refused
+        foreach (['confirm', 'pay', 'cancel'] as $action) {
+            $this->client->request('POST', '/admin/bookings/'.$booking->getId().'/'.$action);
+            self::assertFalse($this->client->getResponse()->isSuccessful(), $action);
+        }
+        $this->em->clear();
+        self::assertSame(BookingStatus::Hold, $this->em->find(Booking::class, $booking->getId())->getStatus());
     }
 
     public function testAgentAddsAClientAndFillsAMediaPlan(): void
@@ -138,16 +162,21 @@ final class AgentAccessTest extends AdminWebTestCase
         $this->client->submit($crawler->filter('#plan-picker form')->first()->form());
         self::assertResponseRedirects('/admin/media-plans/'.$plan->getId());
 
-        // the plan is filled, but booking it, its payments and deleting it are for managers
+        // the agent books the plan; confirming the holds, its payments and deleting it are for managers
         $crawler = $this->client->request('GET', '/admin/media-plans/'.$plan->getId());
         self::assertCount(1, $this->em->find(MediaPlan::class, $plan->getId())->getItems());
-        self::assertSelectorNotExists('form[action$="/book"]');
-        self::assertSelectorNotExists('form[action$="/bookings/confirm"]');
         self::assertSelectorNotExists('#payments');
+        $this->client->submit($crawler->filter('form[action$="/book"]')->form());
+        self::assertResponseRedirects('/admin/media-plans/'.$plan->getId());
+        $this->client->followRedirect();
+        self::assertSelectorTextContains('[role=alert]', 'Создано броней: 1');
+        self::assertSame(BookingStatus::Hold, $this->em->getRepository(Booking::class)->findOneBy([])->getStatus());
+        self::assertSelectorNotExists('form[action$="/bookings/confirm"]');
+
+        $crawler = $this->client->request('GET', '/admin/media-plans/'.$plan->getId());
         $token = $crawler->filter('form[action$="/items"] input[name="_token"]')->attr('value');
-        $this->client->request('POST', '/admin/media-plans/'.$plan->getId().'/book', ['_token' => $token]);
+        $this->client->request('POST', '/admin/media-plans/'.$plan->getId().'/bookings/confirm', ['_token' => $token]);
         self::assertResponseStatusCodeSame(403);
-        self::assertSame(0, $this->em->getRepository(Booking::class)->count([]));
     }
 
     public function testAgentWorksTheWebsiteRequests(): void

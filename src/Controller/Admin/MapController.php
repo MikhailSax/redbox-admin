@@ -5,7 +5,6 @@ namespace App\Controller\Admin;
 use App\Dto\ProductListQuery;
 use App\Entity\Product;
 use App\Entity\Promotion;
-use App\Entity\User;
 use App\Repository\CategoryRepository;
 use App\Repository\MediaPlanRepository;
 use App\Repository\PartnerRepository;
@@ -94,8 +93,6 @@ final class MapController extends AbstractController
         }
 
         return $this->json([
-            // agents look at the occupancy, booking is for managers
-            'canBook' => $this->isGranted(User::ROLE_SUPER_MANAGER),
             'month' => MonthCalendar::label($month),
             'statusCounts' => $statusCounts,
             'points' => $points,

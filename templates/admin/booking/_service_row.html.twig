@@ -1,0 +1,9 @@
+{# One service row of the new booking form (also the collection prototype); `line` = a ServiceLineFormType view #}
+<div class="grid items-end gap-3 rounded-base border border-default bg-neutral-secondary-soft p-3 md:grid-cols-2 xl:grid-cols-[minmax(12rem,1.2fr)_minmax(10rem,1fr)_6rem_6rem_8rem_auto]" data-collection-item data-service-line>
+    {{ form_row(line.service, {row_attr: {class: 'mb-0'}}) }}
+    {{ form_row(line.name, {row_attr: {class: 'mb-0'}}) }}
+    {{ form_row(line.quantity, {row_attr: {class: 'mb-0'}}) }}
+    {{ form_row(line.unit, {row_attr: {class: 'mb-0'}}) }}
+    {{ form_row(line.unitPrice, {row_attr: {class: 'mb-0'}}) }}
+    <button type="button" class="btn btn-ghost btn-sm text-fg-danger hover:bg-danger-soft" data-collection-remove title="Убрать услугу">Убрать</button>
+</div>

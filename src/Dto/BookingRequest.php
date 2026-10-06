@@ -62,6 +62,14 @@ final class BookingRequest
     #[Assert\PositiveOrZero(message: 'Сумма не может быть меньше нуля')]
     public ?int $soldPrice = null;
 
+    /**
+     * One-off services sold with the booking (layouts, printing, mounting); more may be added in the bookings list.
+     *
+     * @var list<ServiceLineInput>
+     */
+    #[Assert\Valid]
+    public array $services = [];
+
     /** What goes into the booking: the typed-in contact, or the contact person of the client card */
     public function contactName(): string
     {

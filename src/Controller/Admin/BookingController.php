@@ -3,7 +3,9 @@
 namespace App\Controller\Admin;
 
 use App\Dto\BookingRequest;
+use App\Dto\ServiceLineInput;
 use App\Entity\Booking;
+use App\Entity\BookingServiceLine;
 use App\Entity\Product;
 use App\Entity\ProductSide;
 use App\Entity\User;
@@ -11,6 +13,7 @@ use App\Enum\BookingMode;
 use App\Enum\BookingStatus;
 use App\Form\BookingFormType;
 use App\Form\NewClientFields;
+use App\Form\ServiceLineFormType;
 use App\Repository\BookingRepository;
 use App\Service\Availability\AvailabilityResolver;
 use App\Service\BookingException;
@@ -22,6 +25,7 @@ use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\Clock\ClockInterface;
 use Symfony\Component\ExpressionLanguage\Expression;
 use Symfony\Component\Form\FormError;
+use Symfony\Component\Form\FormInterface;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Attribute\MapQueryParameter;
@@ -74,14 +78,11 @@ final class BookingController extends AbstractController
 
     /**
      * Occupancy grid of the product's sides for the next months, its bookings and the "new booking" form.
-     * Agents see the grid only: they make no bookings.
+     * Agents book too (a 24h hold); confirming, payments, cancelling and the price stay with managers.
      */
     #[Route('/admin/products/{id}/bookings', name: 'admin_booking_product', requirements: ['id' => Requirement::DIGITS], methods: ['GET', 'POST'])]
     public function product(Request $request, Product $product, ClientCards $clientCards, #[MapQueryParameter] ?string $month = null): Response
     {
-        if ($request->isMethod('POST')) {
-            $this->denyAccessUnlessGranted(User::ROLE_SUPER_MANAGER);
-        }
         $now = $this->clock->now();
         // Each side is booked by its own type: airtime sides by days, the others by months
         $airtime = $product->hasAirtimeSides();
@@ -147,10 +148,31 @@ final class BookingController extends AbstractController
         $monthTabs = self::monthTabs($allBookings, $now);
         $defaultTab = self::defaultMonthTab($monthTabs, $now);
         $monthTab = 'all' === $month || isset($monthTabs[(string) $month]) ? $month : $defaultTab;
+        $tabMonth = null;
         if ('all' !== $monthTab) {
             $tabMonth = $monthTabs[$monthTab]['month'];
             $bookings = array_values(array_filter($allBookings, static fn (Booking $b) => $b->overlaps($tabMonth, MonthCalendar::lastDay($tabMonth))));
         }
+
+        // Revenue of the tab: "Продано за" of the bookings in force; a month gets its share of a longer booking by days
+        // Services are one-off: they go whole to the month the booking starts in
+        $revenue = ['placement' => 0, 'services' => 0, 'total' => 0, 'paid' => 0, 'unpriced' => 0];
+        $serviceForms = [];
+        foreach ($bookings as $booking) {
+            if (!$booking->isActiveAt($now)) {
+                continue;
+            }
+            $serviceForms[$booking->getId()] = $this->serviceForm($booking)->createView();
+            $services = null === $tabMonth || $booking->getStartDate()->format('Y-m') === $monthTab ? $booking->getServicesTotal() : 0;
+            $price = null !== $tabMonth ? $booking->getSoldPriceWithin($tabMonth, MonthCalendar::lastDay($tabMonth)) : $booking->getSoldPrice();
+            if (null === $price) {
+                ++$revenue['unpriced'];
+            }
+            $revenue['placement'] += $price ?? 0;
+            $revenue['services'] += $services;
+            $revenue['paid'] += $booking->isPaid() ? ($price ?? 0) + $services : 0;
+        }
+        $revenue['total'] = $revenue['placement'] + $revenue['services'];
 
         return $this->render('admin/booking/product.html.twig', [
             'product' => $product,
@@ -161,6 +183,8 @@ final class BookingController extends AbstractController
             'monthTabs' => $monthTabs,
             'monthTab' => $monthTab,
             'defaultMonthTab' => $defaultTab,
+            'revenue' => $revenue,
+            'serviceForms' => $serviceForms,
             'availability' => $this->availability->forProduct($product->getId(), $now),
             'activeBookings' => $this->bookings->countActiveForProduct($product, $now),
             'airtime' => $airtime,
@@ -221,6 +245,39 @@ final class BookingController extends AbstractController
         return $this->apply($request, $booking, fn () => $this->bookingManager->setSoldPrice($booking, $price), null === $price
             ? 'Сумма продажи стёрта'
             : \sprintf('Продано за %s ₽', number_format($price, 0, ',', ' ')));
+    }
+
+    /** A one-off service sold with the booking: from the catalog (prefilled) or typed in */
+    #[Route('/admin/bookings/{id}/services', name: 'admin_booking_add_service', requirements: ['id' => Requirement::DIGITS], methods: ['POST'])]
+    #[IsGranted(User::ROLE_SUPER_MANAGER)]
+    public function addService(Request $request, Booking $booking): Response
+    {
+        $form = $this->serviceForm($booking);
+        $form->handleRequest($request);
+        if (!$form->isSubmitted() || !$form->isValid()) {
+            foreach ($form->getErrors(true) as $error) {
+                $this->addFlash('error', $error->getMessage());
+            }
+
+            return $this->backToProduct($request, $booking);
+        }
+
+        /** @var ServiceLineInput $input */
+        $input = $form->getData();
+
+        return $this->apply($request, $booking, fn () => $this->bookingManager->addService($booking, $input), \sprintf('Услуга «%s» добавлена к брони', trim((string) $input->name)));
+    }
+
+    #[Route('/admin/bookings/{id}/services/{line}/delete', name: 'admin_booking_remove_service', requirements: ['id' => Requirement::DIGITS, 'line' => Requirement::DIGITS], methods: ['POST'])]
+    #[IsCsrfTokenValid(new Expression('"service-booking-" ~ args["booking"].getId()'))]
+    #[IsGranted(User::ROLE_SUPER_MANAGER)]
+    public function removeService(Request $request, Booking $booking, BookingServiceLine $line): Response
+    {
+        if ($line->getBooking() !== $booking) {
+            throw $this->createNotFoundException();
+        }
+
+        return $this->apply($request, $booking, fn () => $this->bookingManager->removeService($booking, $line), \sprintf('Услуга «%s» убрана из брони', $line->getName()));
     }
 
     #[Route('/admin/bookings/{id}/cancel', name: 'admin_booking_cancel', requirements: ['id' => Requirement::DIGITS], methods: ['POST'])]
@@ -321,9 +378,22 @@ final class BookingController extends AbstractController
             return $this->redirectToRoute('admin_booking_index', status: Response::HTTP_SEE_OTHER);
         }
 
-        // ...on the month tab it was pressed on
+        return $this->backToProduct($request, $booking);
+    }
+
+    /** The product's booking page, on the month tab the button was pressed on */
+    private function backToProduct(Request $request, Booking $booking): Response
+    {
         $month = $request->getPayload()->getString('month');
 
         return $this->redirectToRoute('admin_booking_product', array_filter(['id' => $booking->getProduct()->getId(), 'month' => $month]), Response::HTTP_SEE_OTHER);
+    }
+
+    /** "Add a service" of one booking in the list: named apart, so the forms of different rows don't share ids */
+    private function serviceForm(Booking $booking): FormInterface
+    {
+        return $this->container->get('form.factory')->createNamed('booking_service_'.$booking->getId(), ServiceLineFormType::class, new ServiceLineInput(), [
+            'action' => $this->generateUrl('admin_booking_add_service', ['id' => $booking->getId()]),
+        ]);
     }
 }

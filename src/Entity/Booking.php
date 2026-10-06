@@ -5,6 +5,8 @@ namespace App\Entity;
 use App\Enum\BookingStatus;
 use App\Repository\BookingRepository;
 use App\Service\MonthCalendar;
+use Doctrine\Common\Collections\ArrayCollection;
+use Doctrine\Common\Collections\Collection;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 
@@ -95,6 +97,15 @@ class Booking
     #[ORM\JoinColumn(onDelete: 'SET NULL')]
     private ?User $createdBy;
 
+    /**
+     * One-off services sold with the booking: layouts, printing, mounting.
+     *
+     * @var Collection<int, BookingServiceLine>
+     */
+    #[ORM\OneToMany(targetEntity: BookingServiceLine::class, mappedBy: 'booking', cascade: ['persist', 'remove'], orphanRemoval: true)]
+    #[ORM\OrderBy(['position' => 'ASC'])]
+    private Collection $serviceLines;
+
     public function __construct(
         ProductSide $side,
         \DateTimeImmutable $startDate,
@@ -117,6 +128,7 @@ class Booking
         $this->comment = $comment;
         $this->createdBy = $createdBy;
         $this->slotSeconds = null !== $slots ? $slotSeconds : null;
+        $this->serviceLines = new ArrayCollection();
     }
 
     public function getId(): ?int
@@ -315,10 +327,59 @@ class Booking
         return $this->soldPrice;
     }
 
+    /**
+     * The part of the sold price that falls on the period, by days: a booking for September–November
+     * sold for 90 000 brings 30 000 to October. Null when no price is set.
+     */
+    public function getSoldPriceWithin(\DateTimeInterface $from, \DateTimeInterface $to): ?int
+    {
+        if (null === $this->soldPrice) {
+            return null;
+        }
+        $start = max($this->startDate->format('Y-m-d'), $from->format('Y-m-d'));
+        $end = min($this->endDate->format('Y-m-d'), $to->format('Y-m-d'));
+        if ($start > $end) {
+            return 0;
+        }
+
+        return (int) round($this->soldPrice * MonthCalendar::days(new \DateTimeImmutable($start), new \DateTimeImmutable($end)) / $this->getDays());
+    }
+
     public function setSoldPrice(?int $soldPrice): static
     {
         $this->soldPrice = $soldPrice;
 
         return $this;
+    }
+
+    /**
+     * @return Collection<int, BookingServiceLine>
+     */
+    public function getServiceLines(): Collection
+    {
+        return $this->serviceLines;
+    }
+
+    public function addServiceLine(BookingServiceLine $line): static
+    {
+        if (!$this->serviceLines->contains($line)) {
+            $line->setPosition(\count($this->serviceLines))->setBooking($this);
+            $this->serviceLines->add($line);
+        }
+
+        return $this;
+    }
+
+    public function removeServiceLine(BookingServiceLine $line): static
+    {
+        $this->serviceLines->removeElement($line);
+
+        return $this;
+    }
+
+    /** Services sold with the booking, rubles; apart from the sold price of the placement */
+    public function getServicesTotal(): float
+    {
+        return array_sum($this->serviceLines->map(static fn (BookingServiceLine $line) => $line->getTotal())->toArray());
     }
 }

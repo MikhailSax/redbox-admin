@@ -8,8 +8,8 @@
     {% set free_items = problems|filter(p => p is null)|length %}
     {# Items whose side is not fixed yet: no booking, or one still waiting for confirmation #}
     {% set unconfirmed_items = plan.items|filter(i => i.booking is null or i.booking.status.value != 'confirmed')|length %}
-    {# Agents make proposals; bookings, payments and deleting plans are for managers #}
-    {% set can_book = is_granted('ROLE_SUPER_MANAGER') %}
+    {# Agents make proposals and book them (24h holds); confirming, payments and deleting plans are for managers #}
+    {% set is_manager = is_granted('ROLE_SUPER_MANAGER') %}
     {# Forms below update the page in place (assets/admin/ajax-forms.js): the [data-ajax-region] blocks are swapped #}
     <div data-ajax-forms>
 
@@ -35,7 +35,7 @@
         <div class="flex flex-wrap gap-2">
             <a href="{{ path('admin_media_plan_edit', {id: plan.id}) }}" class="btn btn-ghost">Параметры</a>
             <a href="{{ path('admin_media_plan_pdf', {id: plan.id}) }}" target="_blank" class="btn btn-secondary">{{ ui.icon('download', 'size-4') }} Скачать PDF</a>
-            {% if can_book and free_items > 0 %}
+            {% if free_items > 0 %}
                 <form method="post" action="{{ path('admin_media_plan_book', {id: plan.id}) }}"
                       data-confirm="Для {{ free_items }} свободных позиций будут созданы брони на клиента «{{ plan.clientName }}». Без подтверждения или оплаты они снимутся через 24 часа."
                       data-confirm-title="Забронировать медиаплан?" data-confirm-button="Забронировать" data-confirm-variant="primary">
@@ -43,7 +43,7 @@
                     <button type="submit" class="btn btn-primary">{{ ui.icon('calendar', 'size-4') }} Забронировать свободные ({{ free_items }})</button>
                 </form>
             {% endif %}
-            {% if can_book and unconfirmed_items > 0 and plan.items|length > 0 %}
+            {% if is_manager and unconfirmed_items > 0 and plan.items|length > 0 %}
                 <form method="post" action="{{ path('admin_media_plan_confirm_bookings', {id: plan.id}) }}"
                       data-confirm="Брони {{ unconfirmed_items }} позиций будут подтверждены и перестанут сниматься через 24 часа — оплату можно отметить позже (постоплата). Истёкшие и ещё не созданные брони будут созданы заново."
                       data-confirm-title="Подтвердить брони?" data-confirm-button="Подтвердить" data-confirm-variant="primary">
@@ -236,7 +236,7 @@
                 <p class="mt-4 whitespace-pre-line text-sm text-body">{{ plan.comment }}</p>
             {% endif %}
 
-            {% if can_book %}
+            {% if is_manager %}
             <div class="mt-5 border-t border-default pt-4">
                 {{ include('admin/_delete_form.html.twig', {
                     action: path('admin_media_plan_delete', {id: plan.id}),
@@ -258,7 +258,7 @@
                 <h2 class="text-base font-semibold text-heading">Услуги</h2>
                 <p class="text-sm text-body">Изготовление макетов, печать, монтаж. Разовые: на месяцы не умножаются, скидка на них не действует.</p>
             </div>
-            {% if can_book %}<a href="{{ path('admin_service_index') }}" class="btn btn-ghost btn-sm">Справочник услуг</a>{% endif %}
+            {% if is_manager %}<a href="{{ path('admin_service_index') }}" class="btn btn-ghost btn-sm">Справочник услуг</a>{% endif %}
         </div>
 
         {% if plan.serviceLines is not empty %}
@@ -319,7 +319,7 @@
         {{ include('admin/_service_units.html.twig') }}
     </div>
 
-    {% if can_book %}
+    {% if is_manager %}
     {# Payment schedule: when the client pays for the plan (PaymentScheduler, the payment calendar) #}
     <section id="payments" class="mb-6 scroll-mt-20" data-ajax-region>
         <div class="mb-3 flex flex-wrap items-center justify-between gap-3">

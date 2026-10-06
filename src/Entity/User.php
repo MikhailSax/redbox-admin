@@ -31,7 +31,7 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
 
     /**
      * Sells: adds clients, fills media plans, works the website's requests, sees the catalogue of structures
-     * and their occupancy, but changes no structure and makes no bookings or payments.
+     * and their occupancy, makes 24h holds; changes no structure, confirms no bookings and keeps no payments.
      */
     public const ROLE_AGENT = 'ROLE_AGENT';
 
