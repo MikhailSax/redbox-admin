@@ -319,6 +319,40 @@ final class BookingControllerTest extends AdminWebTestCase
         self::assertTrue($this->reload($booking)->isPaid());
     }
 
+    /** The bookings list goes by month: the current month opens first, a booking shows on every month it takes */
+    public function testBookingsAreShownByMonthTabs(): void
+    {
+        $this->hold($this->side($this->billboard, 'A'), '2026-09', 'Сентябрьский');
+        $november = $this->hold($this->side($this->billboard, 'B'), '2026-11', 'Ноябрьский');
+
+        $crawler = $this->client->request('GET', $this->url($this->billboard));
+        $tabs = $crawler->filter('nav[aria-label="Брони по месяцам"] a');
+        self::assertSame(['Все 2', 'Сентябрь 2026 1', 'Ноябрь 2026 1'], $tabs->each(fn ($a) => preg_replace('/\s+/', ' ', trim($a->text()))));
+        self::assertSame('Сентябрь 2026 1', preg_replace('/\s+/', ' ', trim($crawler->filter('nav[aria-label="Брони по месяцам"] a[aria-current="page"]')->text())));
+        $list = $crawler->filter('.table-card')->last();
+        self::assertStringContainsString('Сентябрьский', $list->text());
+        self::assertStringNotContainsString('Ноябрьский', $list->text());
+
+        $crawler = $this->client->request('GET', $this->url($this->billboard).'?month=2026-11');
+        $list = $crawler->filter('.table-card')->last();
+        self::assertStringContainsString('Ноябрьский', $list->text());
+        self::assertStringNotContainsString('Сентябрьский', $list->text());
+
+        // a month without bookings is not a tab: the current month opens instead
+        $crawler = $this->client->request('GET', $this->url($this->billboard).'?month=2026-10');
+        self::assertStringContainsString('Сентябрьский', $crawler->filter('.table-card')->last()->text());
+
+        $crawler = $this->client->request('GET', $this->url($this->billboard).'?month=all');
+        $list = $crawler->filter('.table-card')->last();
+        self::assertStringContainsString('Сентябрьский', $list->text());
+        self::assertStringContainsString('Ноябрьский', $list->text());
+
+        // an action brings back to the tab it was pressed on
+        $crawler = $this->client->request('GET', $this->url($this->billboard).'?month=2026-11');
+        $this->submitPostForm($crawler, 'form[action="/admin/bookings/'.$november->getId().'/confirm"]');
+        self::assertResponseRedirects($this->url($this->billboard).'?month=2026-11');
+    }
+
     /** Post-paying clients: the booking is confirmed first, the payment marked when the money comes */
     public function testConfirmThenPayThenUnpay(): void
     {

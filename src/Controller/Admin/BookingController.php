@@ -77,7 +77,7 @@ final class BookingController extends AbstractController
      * Agents see the grid only: they make no bookings.
      */
     #[Route('/admin/products/{id}/bookings', name: 'admin_booking_product', requirements: ['id' => Requirement::DIGITS], methods: ['GET', 'POST'])]
-    public function product(Request $request, Product $product, ClientCards $clientCards): Response
+    public function product(Request $request, Product $product, ClientCards $clientCards, #[MapQueryParameter] ?string $month = null): Response
     {
         if ($request->isMethod('POST')) {
             $this->denyAccessUnlessGranted(User::ROLE_SUPER_MANAGER);
@@ -142,11 +142,25 @@ final class BookingController extends AbstractController
             ];
         }
 
+        // The bookings list goes by month tabs: the current month and every month with a booking, or all at once
+        $bookings = $allBookings = $this->bookings->findForProduct($product);
+        $monthTabs = self::monthTabs($allBookings, $now);
+        $defaultTab = self::defaultMonthTab($monthTabs, $now);
+        $monthTab = 'all' === $month || isset($monthTabs[(string) $month]) ? $month : $defaultTab;
+        if ('all' !== $monthTab) {
+            $tabMonth = $monthTabs[$monthTab]['month'];
+            $bookings = array_values(array_filter($allBookings, static fn (Booking $b) => $b->overlaps($tabMonth, MonthCalendar::lastDay($tabMonth))));
+        }
+
         return $this->render('admin/booking/product.html.twig', [
             'product' => $product,
             'form' => $form,
             'grids' => $grids,
-            'bookings' => $this->bookings->findForProduct($product),
+            'bookings' => $bookings,
+            'allBookings' => \count($allBookings),
+            'monthTabs' => $monthTabs,
+            'monthTab' => $monthTab,
+            'defaultMonthTab' => $defaultTab,
             'availability' => $this->availability->forProduct($product->getId(), $now),
             'activeBookings' => $this->bookings->countActiveForProduct($product, $now),
             'airtime' => $airtime,
@@ -251,6 +265,44 @@ final class BookingController extends AbstractController
         return $columns;
     }
 
+    /**
+     * Month tabs over the product's bookings: the current month and every month a booking touches, in order.
+     *
+     * @param list<Booking> $bookings
+     *
+     * @return array<string, array{month: \DateTimeImmutable, count: int}> keyed "2026-10"
+     */
+    private static function monthTabs(array $bookings, \DateTimeImmutable $now): array
+    {
+        $tabs = [$now->format('Y-m') => ['month' => MonthCalendar::firstDay($now), 'count' => 0]];
+        foreach ($bookings as $booking) {
+            foreach (MonthCalendar::between($booking->getStartDate(), $booking->getEndDate()) as $month) {
+                $tabs[$month->format('Y-m')] ??= ['month' => $month, 'count' => 0];
+                ++$tabs[$month->format('Y-m')]['count'];
+            }
+        }
+        ksort($tabs);
+
+        return $tabs;
+    }
+
+    /**
+     * The tab that opens first: the current month if it has bookings, else the nearest month ahead that has,
+     * else all of them (only past bookings, or none).
+     *
+     * @param array<string, array{month: \DateTimeImmutable, count: int}> $tabs
+     */
+    private static function defaultMonthTab(array $tabs, \DateTimeImmutable $now): string
+    {
+        foreach ($tabs as $key => $tab) {
+            if ($key >= $now->format('Y-m') && $tab['count'] > 0) {
+                return $key;
+            }
+        }
+
+        return 'all';
+    }
+
     private function apply(Request $request, Booking $booking, callable $action, string $successMessage): Response
     {
         try {
@@ -269,6 +321,9 @@ final class BookingController extends AbstractController
             return $this->redirectToRoute('admin_booking_index', status: Response::HTTP_SEE_OTHER);
         }
 
-        return $this->redirectToRoute('admin_booking_product', ['id' => $booking->getProduct()->getId()], Response::HTTP_SEE_OTHER);
+        // ...on the month tab it was pressed on
+        $month = $request->getPayload()->getString('month');
+
+        return $this->redirectToRoute('admin_booking_product', array_filter(['id' => $booking->getProduct()->getId(), 'month' => $month]), Response::HTTP_SEE_OTHER);
     }
 }

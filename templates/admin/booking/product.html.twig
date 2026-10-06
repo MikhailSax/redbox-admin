@@ -1,5 +1,10 @@
 {% extends 'admin/layout.html.twig' %}
 
+{# Number of bookings on a month tab #}
+{% macro tab_count(count) %}
+    <span class="inline-flex items-center justify-center min-w-5 h-5 px-1 text-xs font-semibold rounded-full {{ count ? 'bg-brand-softer text-fg-brand-strong' : 'bg-neutral-tertiary text-body-subtle' }}">{{ count }}</span>
+{% endmacro %}
+
 {% block title %}Бронирование: {{ product.name }} — {{ parent() }}{% endblock %}
 
 {% block content %}
@@ -156,7 +161,32 @@
     </div>
 
     {# All bookings of the product #}
-    <h2 class="text-xl font-semibold text-heading mb-4">Брони конструкции</h2>
+    <h2 id="bookings" class="text-xl font-semibold text-heading mb-4 scroll-mt-4">Брони конструкции</h2>
+    {# Month tabs: bookings that take at least a day of the month; "Все" — the whole list #}
+    {% set tab_css = 'inline-flex items-center gap-2 px-4 py-3 border-b-2 rounded-t-base' %}
+    {% set tab_active = 'text-fg-brand border-brand' %}
+    {% set tab_inactive = 'border-transparent text-body hover:text-heading hover:border-default-strong' %}
+    <nav class="mb-4 overflow-x-auto overflow-y-hidden border-b border-default" aria-label="Брони по месяцам">
+        <ul class="flex -mb-px text-sm font-medium text-center whitespace-nowrap">
+            <li class="me-1">
+                <a href="{{ path('admin_booking_product', {id: product.id, month: 'all'}) }}#bookings"
+                   class="{{ tab_css }} {{ monthTab == 'all' ? tab_active : tab_inactive }}"{% if monthTab == 'all' %} aria-current="page"{% endif %}>
+                    Все {{ _self.tab_count(allBookings) }}
+                </a>
+            </li>
+            {% for key, tab in monthTabs %}
+                <li class="me-1">
+                    <a href="{{ path('admin_booking_product', {id: product.id, month: key}) }}#bookings"
+                       class="{{ tab_css }} {{ key == monthTab ? tab_active : tab_inactive }}"{% if key == monthTab %} aria-current="page"{% endif %}
+                       {% if key == now|date('Y-m') %}title="Текущий месяц"{% endif %}>
+                        {{ tab.month|month_label }} {{ _self.tab_count(tab.count) }}
+                    </a>
+                </li>
+            {% endfor %}
+        </ul>
+    </nav>
+    {# the tab that opens by default needs no carrying back after an action #}
+    {% set return_month = monthTab != defaultMonthTab ? monthTab %}
     <div class="table-card">
         <table class="data-table">
             <thead>
@@ -184,7 +214,7 @@
                         <td class="px-4 py-3">{{ include('admin/booking/_actions.html.twig', {return: 'product'}) }}</td>
                     </tr>
                 {% else %}
-                    <tr><td colspan="6" class="px-4 py-8 text-center">Броней пока нет.</td></tr>
+                    <tr><td colspan="6" class="px-4 py-8 text-center">{{ monthTab == 'all' or allBookings == 0 ? 'Броней пока нет.' : 'В этом месяце броней нет.' }}</td></tr>
                 {% endfor %}
             </tbody>
         </table>

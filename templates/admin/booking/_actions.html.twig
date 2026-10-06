@@ -1,10 +1,11 @@
-{# Confirm / pay / cancel buttons for `booking` as of `now`; `return` = 'list' | 'product' | 'dashboard' #}
+{# Confirm / pay / cancel buttons for `booking` as of `now`; `return` = 'list' | 'product' | 'dashboard', `return_month`? = the month tab of the product page #}
 {% set status = booking.statusAt(now) %}
-{% macro action(booking, route, token, label, return, confirm, title, button, variant = 'primary', css = 'btn-primary') %}
+{% macro action(booking, route, token, label, return, confirm, title, button, variant = 'primary', css = 'btn-primary', month = null) %}
     <form method="post" action="{{ path(route, {id: booking.id}) }}"
           data-confirm="{{ confirm }}" data-confirm-title="{{ title }}" data-confirm-button="{{ button }}" data-confirm-variant="{{ variant }}">
         <input type="hidden" name="_token" value="{{ csrf_token(token ~ '-booking-' ~ booking.id) }}">
         <input type="hidden" name="return" value="{{ return }}">
+        {% if month %}<input type="hidden" name="month" value="{{ month }}">{% endif %}
         <button type="submit" class="btn {{ css }} btn-sm">{{ label }}</button>
     </form>
 {% endmacro %}
@@ -14,6 +15,7 @@
         <form method="post" action="{{ path('admin_booking_slots', {id: booking.id}) }}" class="flex items-center gap-1">
             <input type="hidden" name="_token" value="{{ csrf_token('slots-booking-' ~ booking.id) }}">
             <input type="hidden" name="return" value="{{ return }}">
+            {% if return_month|default(null) %}<input type="hidden" name="month" value="{{ return_month }}">{% endif %}
             <label class="sr-only" for="booking-slots-{{ booking.id }}">Слотов в брони</label>
             <input type="number" id="booking-slots-{{ booking.id }}" name="slots" value="{{ booking.slots }}" min="1" max="{{ booking.side.slotCount }}"
                    class="input h-8 !w-16 !px-2 text-sm tabular-nums" title="Слотов из {{ booking.side.slotCount }} по {{ booking.side.slotSeconds }} сек">
@@ -23,21 +25,21 @@
     {% if status.value == 'hold' %}
         {{ _self.action(booking, 'admin_booking_confirm', 'confirm', 'Подтвердить', return,
             'Бронь клиента ' ~ booking.clientTitle ~ ' будет закреплена и больше не снимется автоматически. Оплату можно отметить позже — для постоплатников.',
-            'Подтвердить бронь', 'Да, подтвердить') }}
+            'Подтвердить бронь', 'Да, подтвердить', month: return_month|default(null)) }}
     {% endif %}
     {% if status.value in ['hold', 'confirmed'] and not booking.paid %}
         {{ _self.action(booking, 'admin_booking_pay', 'pay', 'Оплачено', return,
             'Клиент ' ~ booking.clientTitle ~ ' оплатил бронь?' ~ (status.value == 'hold' ? ' Она будет подтверждена и закреплена.' : ''),
-            'Отметить оплату', 'Да, оплачено', 'primary', status.value == 'hold' ? 'btn-secondary' : 'btn-primary') }}
+            'Отметить оплату', 'Да, оплачено', 'primary', status.value == 'hold' ? 'btn-secondary' : 'btn-primary', month: return_month|default(null)) }}
     {% endif %}
     {% if status.value == 'confirmed' and booking.paid %}
         {{ _self.action(booking, 'admin_booking_unpay', 'unpay', 'Снять оплату', return,
             'Отметка об оплате брони клиента ' ~ booking.clientTitle ~ ' будет снята. Бронь останется подтверждённой.',
-            'Снять отметку об оплате?', 'Да, снять', 'primary', 'btn-secondary') }}
+            'Снять отметку об оплате?', 'Да, снять', 'primary', 'btn-secondary', month: return_month|default(null)) }}
     {% endif %}
     {% if status.value in ['hold', 'confirmed'] %}
         {{ _self.action(booking, 'admin_booking_cancel', 'cancel', 'Отменить', return,
             'Бронь клиента ' ~ booking.clientTitle ~ ' будет отменена, место освободится.',
-            'Отменить бронь?', 'Да, отменить', 'danger', 'btn-danger-outline') }}
+            'Отменить бронь?', 'Да, отменить', 'danger', 'btn-danger-outline', month: return_month|default(null)) }}
     {% endif %}
 </div>
