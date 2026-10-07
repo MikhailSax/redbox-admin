@@ -204,6 +204,28 @@ class Booking
         return $this->slotSeconds;
     }
 
+    /**
+     * Another side (of the same structure), period or airtime; checked by BookingManager::update().
+     * $slots = null for a whole side.
+     */
+    public function reschedule(ProductSide $side, \DateTimeImmutable $startDate, \DateTimeImmutable $endDate, ?int $slots, ?int $slotSeconds = null): void
+    {
+        $this->side = $side;
+        $this->startDate = $startDate->setTime(0, 0);
+        $this->endDate = $endDate->setTime(0, 0);
+        $this->slots = $slots;
+        $this->slotSeconds = null !== $slots ? $slotSeconds : null;
+    }
+
+    /** Who the side is taken by, the contact of this booking and the manager's comment */
+    public function changeClient(?User $client, string $clientName, string $clientPhone, ?string $comment): void
+    {
+        $this->client = $client;
+        $this->clientName = $clientName;
+        $this->clientPhone = $clientPhone;
+        $this->comment = $comment;
+    }
+
     public function getStatus(): BookingStatus
     {
         return $this->status;

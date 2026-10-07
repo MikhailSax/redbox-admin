@@ -1,0 +1,65 @@
+{% extends 'admin/layout.html.twig' %}
+
+{% block title %}Изменить бронь №{{ booking.id }} — {{ parent() }}{% endblock %}
+
+{% block content %}
+    <nav class="breadcrumbs">
+        <a href="{{ path('admin_booking_index') }}">Брони</a>
+        <span class="text-body-subtle">/</span>
+        <a href="{{ path('admin_booking_show', {id: booking.id}) }}">Бронь №{{ booking.id }}</a>
+        <span class="text-body-subtle">/</span>
+        <span class="text-heading">Изменить</span>
+    </nav>
+    <div class="page-header">
+        <div>
+            <h1 class="page-title">Изменить бронь №{{ booking.id }}</h1>
+            <p class="page-subtitle">{{ product.name }}. Другую сторону, период или слоты можно выбрать, пока они свободны. Статус, оплата и услуги не меняются.</p>
+        </div>
+    </div>
+
+    <div class="card max-w-4xl">
+        {% form_theme form 'admin/form/theme.html.twig' %}
+        {{ form_start(form, {attr: {novalidate: 'novalidate'}}) }}
+            {% if form.vars.errors|length %}
+                <div class="mb-5 flex items-start gap-3 rounded-sm border border-danger-subtle bg-danger-soft p-3 text-sm text-fg-danger-strong" role="alert">
+                    {{ form_errors(form) }}
+                </div>
+            {% endif %}
+            {# When sides are booked differently, assets/admin/booking-mode.js shows the fields of the chosen side #}
+            {% set airtime_row = mixed ? {row_attr: {'data-booking-mode': 'airtime'}} : {} %}
+            {% set whole_row = mixed ? {row_attr: {'data-booking-mode': 'side'}} : {} %}
+            <div class="grid gap-x-6 md:grid-cols-3">
+                {{ form_row(form.side, mixed ? {attr: {'data-booking-mode-source': ''}} : {}) }}
+                {% if form.startDate is defined %}
+                    {{ form_row(form.startDate, airtime_row) }}
+                    {{ form_row(form.endDate, airtime_row) }}
+                {% endif %}
+                {% if form.startMonth is defined %}
+                    {{ form_row(form.startMonth, whole_row) }}
+                    {{ form_row(form.months, whole_row) }}
+                {% endif %}
+            </div>
+            {% if form.slots is defined %}
+                <div class="grid gap-x-6 md:grid-cols-3">
+                    {{ form_row(form.slots, airtime_row) }}
+                    {% if form.slotSeconds is defined %}
+                        <div class="md:col-span-2">{{ form_row(form.slotSeconds, airtime_row) }}</div>
+                    {% endif %}
+                </div>
+            {% endif %}
+            {{ form_row(form.client) }}
+            {{ include('admin/_new_client_fields.html.twig', {form: form}) }}
+            <div class="grid gap-x-6 md:grid-cols-2">
+                {{ form_row(form.clientName) }}
+                {{ form_row(form.clientPhone) }}
+            </div>
+            {{ form_row(form.comment) }}
+            {{ form_row(form.soldPrice, {help: 'Итоговая сумма за весь период, со скидками.'}) }}
+
+            <div class="flex flex-wrap items-center gap-2">
+                <button type="submit" class="btn btn-primary">Сохранить</button>
+                <a href="{{ path('admin_booking_show', {id: booking.id}) }}" class="btn btn-secondary">Отмена</a>
+            </div>
+        {{ form_end(form) }}
+    </div>
+{% endblock %}

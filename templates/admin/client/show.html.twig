@@ -152,10 +152,10 @@
                         {% for booking in bookings %}
                             <tr>
                                 <th scope="row" class="px-4 py-3 font-medium text-heading">
-                                    <a href="{{ path('admin_booking_product', {id: booking.product.id}) }}" class="hover:underline">{{ booking.product.name }}</a>
+                                    <a href="{{ path('admin_booking_product', {id: booking.product.id, month: booking.startDate|date('Y-m')}) }}#booking-{{ booking.id }}" class="hover:underline">{{ booking.product.name }}</a>
                                     <div class="text-xs font-normal text-body-subtle">Сторона {{ booking.side.name }}</div>
                                 </th>
-                                <td class="px-4 py-3 whitespace-nowrap">{{ include('admin/booking/_period.html.twig') }}</td>
+                                <td class="px-4 py-3 whitespace-nowrap"><a href="{{ path('admin_booking_show', {id: booking.id}) }}" class="group block" title="Открыть карточку брони"><span class="font-medium text-heading group-hover:underline">{{ include('admin/booking/_period.html.twig') }}</span></a></td>
                                 <td class="px-4 py-3">{{ include('admin/booking/_status.html.twig') }}</td>
                                 <td class="px-4 py-3">
                                     <div class="text-heading">{{ booking.clientName }}</div>

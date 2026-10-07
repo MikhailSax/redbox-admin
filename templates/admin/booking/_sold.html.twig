@@ -1,5 +1,5 @@
-{# "Продано за" of `booking`: super managers type the final price right in the list; `return` = 'list' | 'product', `return_month`? = the month tab of the product page #}
-{% if is_granted('ROLE_SUPER_MANAGER') %}
+{# "Продано за" of `booking`: super managers type the final price right in the list while the booking is in force; `return` = 'list' | 'product', `return_month`? = the month tab of the product page #}
+{% if is_granted('ROLE_SUPER_MANAGER') and booking.statusAt(now).value in ['hold', 'confirmed'] %}
     <form method="post" action="{{ path('admin_booking_price', {id: booking.id}) }}" class="flex items-center gap-1">
         <input type="hidden" name="_token" value="{{ csrf_token('price-booking-' ~ booking.id) }}">
         <input type="hidden" name="return" value="{{ return }}">

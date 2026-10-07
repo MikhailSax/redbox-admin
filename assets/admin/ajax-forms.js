@@ -8,7 +8,8 @@
  *
  * Flash messages of the answer become toasts. A redirect to another page (e.g. after deleting), an error
  * or an expired session falls back to a normal page load. Confirmations (confirm.js) run first: their
- * requestSubmit() comes back here once confirmed.
+ * requestSubmit() comes back here once confirmed. Once the regions are swapped, "ajax-forms:updated" is
+ * dispatched on the document.
  */
 function showToasts(doc) {
     const container = document.querySelector('[aria-live="polite"]');
@@ -60,6 +61,7 @@ document.addEventListener('submit', async (event) => {
             }
         });
         showToasts(doc);
+        document.dispatchEvent(new CustomEvent('ajax-forms:updated'));
         // e.g. the structure picker: "✓" on the sides just added, with the search the manager typed
         document.querySelectorAll('form[data-live-filter]').forEach((filter) => filter.requestSubmit());
     } catch {

@@ -96,6 +96,59 @@ class BookingManager
     }
 
     /**
+     * Changes a booking in force: the client and the contact, the comment, the price, and the side (of the same
+     * structure), the period or the slots — those only while the new ones are free (the booking's own days don't count).
+     * The status, the hold's deadline, the payment mark and the services stay as they are.
+     *
+     * @throws BookingException
+     */
+    public function update(Booking $booking, BookingRequest $request): void
+    {
+        $now = $this->clock->now();
+        $this->assertHoldLive($booking, $now);
+        if (!$booking->isActiveAt($now)) {
+            throw new BookingException('Эта бронь уже не действует — её не изменить. Создайте новую.');
+        }
+        if (null === $request->client) {
+            throw new BookingException('Выберите клиента — бронь закрепляется за карточкой клиента.');
+        }
+
+        $side = $request->side;
+        if ($side->getProduct() !== $booking->getProduct()) {
+            throw new BookingException('Сторону можно выбрать только у той же конструкции.');
+        }
+        if ($side !== $booking->getSide() && !$side->isWorking()) {
+            throw new BookingException(\sprintf('Не работает: %s — новые брони на эту сторону не принимаются.', $side->getNotWorkingLabel()));
+        }
+        [$start, $end] = $request->period();
+        $slots = $this->isAirtime($side) ? $request->slots : null;
+        $seconds = null !== $slots ? $side->secondsPerSlot($request->slotSeconds) : null;
+        if ($this->isAirtime($side) && (null === $slots || $slots < 1 || $slots > $side->getSlotCount())) {
+            throw new BookingException(\sprintf('Сторона %s продаётся эфиром — укажите число слотов: от 1 до %d.', $side->getName(), $side->getSlotCount()));
+        }
+        if (MonthCalendar::days($start, $end) < BookingMode::MIN_DAYS) {
+            throw new BookingException(\sprintf('Минимальное размещение — %d дней.', BookingMode::MIN_DAYS));
+        }
+        // a running booking keeps its first day; a moved one can't start in the past
+        if ($request->isByDays() && $start->format('Y-m-d') !== $booking->getStartDate()->format('Y-m-d') && $start < $now->setTime(0, 0)) {
+            throw new BookingException('Первый день брони уже прошёл — выберите сегодня или позже.');
+        }
+
+        $lock = $this->lockFactory->createLock('booking-side-'.$side->getId(), 30);
+        $lock->acquire(true);
+
+        try {
+            $this->assertAvailable($side, $start, $end, $slots, $seconds, $now, $booking);
+            $booking->reschedule($side, $start, $end, $slots, $seconds);
+            $booking->changeClient($request->client, $request->contactName(), $request->contactPhone(), '' !== trim((string) $request->comment) ? trim((string) $request->comment) : null);
+            $booking->setSoldPrice($request->soldPrice);
+            $this->entityManager->flush();
+        } finally {
+            $lock->release();
+        }
+    }
+
+    /**
      * The hold becomes the client's for good, paid or not (post-paying clients pay later).
      *
      * @throws BookingException

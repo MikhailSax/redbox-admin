@@ -69,7 +69,7 @@ final class ProductOutOfOrderTest extends AdminWebTestCase
         self::assertSame('Не работает: B', trim($row->filter('span[title]:contains("Не работает")')->text()));
         self::assertSame('Сторона B: ремонт подсветки', $row->filter('span[title]:contains("Не работает")')->attr('title'));
         self::assertStringContainsString('line-through', $row->filter('td span[title^="Сторона B"]')->attr('class'));
-        self::assertStringNotContainsString('line-through', $row->filter('td span[title^="Сторона A"]')->attr('class'));
+        self::assertStringNotContainsString('line-through', $row->filter('td [title^="Сторона A"]')->attr('class'));
         self::assertCount(0, $crawler->filter('tbody tr:contains("Щит на Ленина") span[title]:contains("Не работает")'));
         $names = fn (string $query) => $this->client->request('GET', '/admin/products'.$query)->filter('tbody tr th')->each(static fn ($th) => $th->filter('span.block')->first()->text());
         self::assertSame(['Щит на Мира'], $names('?working=no'));

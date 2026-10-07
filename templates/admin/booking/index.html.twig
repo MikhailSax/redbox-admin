@@ -11,32 +11,63 @@
         </div>
     </div>
 
-    <form method="get" action="{{ path('admin_booking_index') }}" data-live-filter="booking-results" class="mb-4 max-w-md">
-        <label class="search-field">
+    {# Filters apply as you type / choose (assets/admin/live-filter.js); without JS the form still submits normally #}
+    <form method="get" action="{{ path('admin_booking_index') }}" data-live-filter="booking-results"
+          class="mb-4 flex flex-wrap items-center gap-2">
+        <label class="search-field w-full sm:w-64">
             <span class="sr-only">Поиск</span>
             {{ ui.icon('search') }}
-            <input type="search" name="q" value="{{ q }}" class="input" autocomplete="off" placeholder="Клиент, телефон или конструкция…">
+            <input type="search" name="q" value="{{ query.q }}" class="input" autocomplete="off" placeholder="Клиент, телефон или конструкция…">
         </label>
-        <input type="hidden" name="status" value="{{ unpaid ? 'unpaid' : (filter ? filter.value : '') }}">
-        <input type="hidden" name="sort" value="{{ sort != 'created' ? sort : '' }}">
-        <input type="hidden" name="dir" value="{{ descending != (sort == 'created') ? (descending ? 'desc' : 'asc') : '' }}">
+        <select name="month" class="filter" aria-label="Месяц">
+            <option value="">Любой месяц</option>
+            {% for m in months %}
+                <option value="{{ m|date('Y-m') }}" {{ query.month == m|date('Y-m') ? 'selected' }}>{{ m|month_label }}{{ m|date('Y-m') == now|date('Y-m') ? ' · сейчас' }}</option>
+            {% endfor %}
+        </select>
+        <select name="kind" class="filter" aria-label="Как продаётся">
+            <option value="">Экраны и статика</option>
+            <option value="airtime" {{ query.kind == 'airtime' ? 'selected' }}>Экраны — эфир по дням</option>
+            <option value="side" {{ query.kind == 'side' ? 'selected' }}>Статика — стороны на месяц</option>
+        </select>
+        <select name="author" class="filter" aria-label="Кто оформил">
+            <option value="">Оформил кто угодно</option>
+            {% for author in authors %}
+                <option value="{{ author.id }}" {{ query.author == author.id ? 'selected' }}>{{ author.name ?: author.email }}{{ author == app.user ? ' (я)' }}</option>
+            {% endfor %}
+        </select>
+        <input type="hidden" name="status" value="{{ query.status }}">
+        <input type="hidden" name="sort" value="{{ query.sortKey != 'created' ? query.sortKey : '' }}">
+        <input type="hidden" name="dir" value="{{ query.isDescending != (query.sortKey == 'created') ? (query.isDescending ? 'desc' : 'asc') : '' }}">
+        <noscript><button type="submit" class="btn btn-primary">Найти</button></noscript>
     </form>
 
+    {# Actions in the list (confirm, pay, price…) are sent without a reload (assets/admin/ajax-forms.js), the list is then refreshed with its filters #}
+    <div data-ajax-forms>
     <div id="booking-results">
         {% block results %}
             {# Imported here too: renderBlock() (live filter) renders this block without the template top level #}
             {% import 'admin/_icons.html.twig' as ui %}
+            {% set sort = query.sortKey %}
+            {% set descending = query.isDescending %}
+            {% set filters = {q: query.q, month: query.month, kind: query.kind, author: query.author}|filter(v => v is not null and v != '') %}
             {% set sorting = (sort != 'created' ? {sort: sort} : {})|merge(descending != (sort == 'created') ? {dir: descending ? 'desc' : 'asc'} : {}) %}
-            {% set base = (q ? {q: q} : {})|merge(sorting) %}
-            {% set status_query = unpaid ? {status: 'unpaid'} : (filter ? {status: filter.value} : {}) %}
-            <div class="mb-4 flex flex-wrap gap-2">
-                {% set chip = 'inline-flex h-8 items-center rounded-full border px-3 text-sm font-medium transition-colors' %}
-                {% for tab in [{value: null, label: 'Все'}]|merge(enum_cases('App\\Enum\\BookingStatus')|map(s => {value: s, label: s.label})) %}
-                    <a href="{{ path('admin_booking_index', tab.value ? base|merge({status: tab.value.value}) : base) }}" data-live-link
-                       class="{{ chip }} {{ tab.value == filter and not unpaid ? 'border-zinc-900 bg-zinc-900 text-white' : 'border-default bg-white text-body hover:text-heading' }}">{{ tab.label }}</a>
+            {% set status_query = query.status ? {status: query.status} : {} %}
+            <div class="mb-4 flex flex-wrap items-center gap-2">
+                {% set chip = 'chip' %}
+                {% set chip_on = 'chip-on' %}
+                {% set chip_off = '' %}
+                {% set statuses = enum_cases('App\\Enum\\BookingStatus') %}
+                {% set total = statuses|reduce((sum, s) => sum + statusCounts[s.value], 0) %}
+                {% for tab in [{value: null, label: 'Все', count: total}]|merge(statuses|map(s => {value: s.value, label: s.label, count: statusCounts[s.value]})) %}
+                    <a href="{{ path('admin_booking_index', filters|merge(tab.value ? {status: tab.value} : {})|merge(sorting)) }}" data-live-link
+                       class="{{ chip }} {{ tab.value == query.status ? chip_on : chip_off }}">{{ tab.label }} <span class="chip-count">{{ tab.count }}</span></a>
                 {% endfor %}
-                <a href="{{ path('admin_booking_index', base|merge({status: 'unpaid'})) }}" data-live-link title="Подтверждённые брони постоплатников, по которым ещё нет оплаты"
-                   class="{{ chip }} {{ unpaid ? 'border-zinc-900 bg-zinc-900 text-white' : 'border-default bg-white text-body hover:text-heading' }}">Подтверждены, не оплачены</a>
+                <a href="{{ path('admin_booking_index', filters|merge({status: 'unpaid'})|merge(sorting)) }}" data-live-link title="Подтверждённые брони постоплатников, по которым ещё нет оплаты"
+                   class="{{ chip }} {{ query.isUnpaid ? chip_on : chip_off }}">Подтверждены, не оплачены <span class="chip-count">{{ statusCounts.unpaid }}</span></a>
+                {% if filters is not empty or query.status %}
+                    <a href="{{ path('admin_booking_index') }}" data-live-link class="ms-auto text-sm font-medium text-body hover:text-heading hover:underline">Сбросить фильтры</a>
+                {% endif %}
             </div>
 
             <div class="table-card">
@@ -56,11 +87,11 @@
                                 {% set active = sort == column.key %}
                                 {# the newest first by the creation date, A to Z / the earliest first by the others #}
                                 {% set next_desc = active ? not descending : column.key == 'created' %}
-                                {% set query = (q ? {q: q} : {})|merge(status_query)
+                                {% set link_query = filters|merge(status_query)
                                     |merge(column.key != 'created' ? {sort: column.key} : {})
                                     |merge(next_desc != (column.key == 'created') ? {dir: next_desc ? 'desc' : 'asc'} : {}) %}
                                 <th scope="col" class="px-4 py-2.5" {% if active %}aria-sort="{{ descending ? 'descending' : 'ascending' }}"{% endif %}>
-                                    <a href="{{ path('admin_booking_index', query) }}" data-live-link class="inline-flex items-center gap-1 hover:text-heading {{ active ? 'text-heading' : '' }}">
+                                    <a href="{{ path('admin_booking_index', link_query) }}" data-live-link class="inline-flex items-center gap-1 hover:text-heading {{ active ? 'text-heading' : '' }}">
                                         {{- column.label -}}
                                         <span aria-hidden="true" class="{{ active ? '' : 'opacity-30' }}">{{ active and descending ? '↓' : '↑' }}</span>
                                     </a>
@@ -73,13 +104,13 @@
                         {% for booking in bookings %}
                             <tr>
                                 <th scope="row" class="px-4 py-3 font-medium text-heading">
-                                    <a href="{{ path('admin_booking_product', {id: booking.product.id}) }}" class="hover:underline">{{ booking.product.name|highlight(q) }}</a>
+                                    <a href="{{ path('admin_booking_product', {id: booking.product.id, month: booking.startDate|date('Y-m')}) }}#booking-{{ booking.id }}" class="hover:underline">{{ booking.product.name|highlight(query.q) }}</a>
                                 </th>
                                 <td class="px-4 py-3 whitespace-nowrap">
                                     <span class="inline-flex min-w-7 justify-center rounded-md bg-zinc-100 px-1.5 py-0.5 text-sm font-semibold text-heading ring-1 ring-zinc-200">{{ booking.side.name }}</span>
                                 </td>
-                                <td class="px-4 py-3 whitespace-nowrap">{{ include('admin/booking/_period.html.twig') }}</td>
-                                <td class="px-4 py-3">{{ include('admin/booking/_client.html.twig') }}</td>
+                                <td class="px-4 py-3 whitespace-nowrap"><a href="{{ path('admin_booking_show', {id: booking.id}) }}" class="group block" title="Открыть карточку брони"><span class="font-medium text-heading group-hover:underline">{{ include('admin/booking/_period.html.twig') }}</span></a></td>
+                                <td class="px-4 py-3">{{ include('admin/booking/_client.html.twig', {q: query.q}) }}</td>
                                 <td class="px-4 py-3">{{ include('admin/booking/_status.html.twig') }}</td>
                                 <td class="px-4 py-3">{{ include('admin/booking/_sold.html.twig', {return: 'list'}) }}</td>
                                 <td class="px-4 py-3 whitespace-nowrap">
@@ -92,7 +123,7 @@
                             <tr>
                                 <td colspan="8" class="px-4 py-16 text-center">
                                     <span class="mx-auto mb-3 grid size-12 place-items-center rounded-full bg-zinc-100 text-zinc-400">{{ ui.icon('calendar') }}</span>
-                                    <p class="font-medium text-heading">{{ q or filter or unpaid ? 'Ничего не найдено' : 'Броней пока нет' }}</p>
+                                    <p class="font-medium text-heading">{{ filters is not empty or query.status ? 'Ничего не найдено' : 'Броней пока нет' }}</p>
                                     <p class="mt-1 text-sm text-body">Забронировать конструкцию можно из её карточки — вкладка «Бронирование».</p>
                                 </td>
                             </tr>
@@ -101,5 +132,6 @@
                 </table>
             </div>
         {% endblock %}
+    </div>
     </div>
 {% endblock %}

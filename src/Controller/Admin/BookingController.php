@@ -2,6 +2,7 @@
 
 namespace App\Controller\Admin;
 
+use App\Dto\BookingListQuery;
 use App\Dto\BookingRequest;
 use App\Dto\ServiceLineInput;
 use App\Entity\Booking;
@@ -29,6 +30,7 @@ use Symfony\Component\Form\FormInterface;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Attribute\MapQueryParameter;
+use Symfony\Component\HttpKernel\Attribute\MapQueryString;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Routing\Requirement\Requirement;
 use Symfony\Component\Security\Http\Attribute\IsCsrfTokenValid;
@@ -51,21 +53,12 @@ final class BookingController extends AbstractController
 
     #[Route('/admin/bookings', name: 'admin_booking_index', methods: ['GET'])]
     #[IsGranted(User::ROLE_SUPER_MANAGER)]
-    public function index(Request $request, #[MapQueryParameter] ?string $status = null, #[MapQueryParameter] ?string $q = null, #[MapQueryParameter] ?string $sort = null, #[MapQueryParameter] ?string $dir = null): Response
+    public function index(Request $request, #[MapQueryString] BookingListQuery $query = new BookingListQuery()): Response
     {
-        // "unpaid" is not a status: confirmed bookings of post-paying clients still waiting for the money
-        $unpaid = 'unpaid' === $status;
-        $filter = null !== $status && !$unpaid ? BookingStatus::tryFrom($status) : null;
-        // by the creation date the newest come first, by any other column A to Z, the earliest first
-        $sort = isset(BookingRepository::LIST_SORTS[(string) $sort]) ? $sort : 'created';
-        $descending = 'desc' === $dir || (null === $dir && 'created' === $sort);
         $params = [
-            'bookings' => $this->bookings->findForList($filter, $q, unpaid: $unpaid, sort: $sort, descending: $descending),
-            'filter' => $filter,
-            'unpaid' => $unpaid,
-            'q' => $q,
-            'sort' => $sort,
-            'descending' => $descending,
+            'bookings' => $this->bookings->findForList($query),
+            'statusCounts' => $this->bookings->countByStatus($query),
+            'query' => $query,
             'now' => $this->clock->now(),
         ];
 
@@ -73,7 +66,11 @@ final class BookingController extends AbstractController
             return $this->renderBlock('admin/booking/index.html.twig', 'results', $params);
         }
 
-        return $this->render('admin/booking/index.html.twig', $params);
+        return $this->render('admin/booking/index.html.twig', $params + [
+            // half a year back for the bookings sold, a year ahead for the ones to come
+            'months' => MonthCalendar::range($this->clock->now()->modify('-6 months'), 18),
+            'authors' => $this->bookings->findAuthors(),
+        ]);
     }
 
     /**
@@ -81,8 +78,15 @@ final class BookingController extends AbstractController
      * Agents book too (a 24h hold); confirming, payments, cancelling and the price stay with managers.
      */
     #[Route('/admin/products/{id}/bookings', name: 'admin_booking_product', requirements: ['id' => Requirement::DIGITS], methods: ['GET', 'POST'])]
-    public function product(Request $request, Product $product, ClientCards $clientCards, #[MapQueryParameter] ?string $month = null): Response
-    {
+    public function product(
+        Request $request,
+        Product $product,
+        ClientCards $clientCards,
+        #[MapQueryParameter] ?string $month = null,
+        // the side and the month picked in the structures list: the new booking form starts with them
+        #[MapQueryParameter] ?int $side = null,
+        #[MapQueryParameter(filter: \FILTER_VALIDATE_REGEXP, options: ['regexp' => '/^\d{4}-(0[1-9]|1[0-2])$/'])] ?string $from = null,
+    ): Response {
         $now = $this->clock->now();
         // Each side is booked by its own type: airtime sides by days, the others by months
         $airtime = $product->hasAirtimeSides();
@@ -97,9 +101,18 @@ final class BookingController extends AbstractController
         if (1 === $working->count()) {
             $bookingRequest->side = $working->first();
         }
+        $picked = $working->findFirst(static fn (int $i, ProductSide $s) => $s->getId() === $side);
+        if (null !== $picked) {
+            $bookingRequest->side = $picked;
+        }
+        // a month ahead starts the booking on its 1st, the current one today
+        $start = null !== $from && $from > $now->format('Y-m') ? MonthCalendar::parse($from) : $now->setTime(0, 0);
         if ($airtime) {
-            $bookingRequest->startDate = $now->setTime(0, 0);
-            $bookingRequest->endDate = $now->setTime(0, 0)->modify(\sprintf('+%d days', BookingMode::MIN_DAYS - 1));
+            $bookingRequest->startDate = $start;
+            $bookingRequest->endDate = $start->modify(\sprintf('+%d days', BookingMode::MIN_DAYS - 1));
+        }
+        if ($whole && null !== $from && $from >= $now->format('Y-m')) {
+            $bookingRequest->startMonth = $from;
         }
 
         $form = $this->createForm(BookingFormType::class, $bookingRequest, ['product' => $product, 'now' => $now]);
@@ -123,7 +136,8 @@ final class BookingController extends AbstractController
                     $this->addFlash('success', \sprintf($created ? 'Клиент «%s» добавлен в базу клиентов' : 'Клиент «%s» уже был в базе — бронь на его карточке', $booking->getClientTitle()));
                 }
 
-                return $this->redirectToRoute('admin_booking_product', ['id' => $product->getId()], Response::HTTP_SEE_OTHER);
+                // straight to the new booking's card: what was made, and what to do with it next
+                return $this->redirectToRoute('admin_booking_show', ['id' => $booking->getId()], Response::HTTP_SEE_OTHER);
             } catch (BookingException $e) {
                 $form->addError(new FormError($e->getMessage()));
             } catch (ClientCardException $e) {
@@ -191,6 +205,73 @@ final class BookingController extends AbstractController
             'whole' => $whole,
             'mixed' => $airtime && $whole,
             'minDays' => BookingMode::MIN_DAYS,
+            'now' => $now,
+        ]);
+    }
+
+    /**
+     * The booking's card: everything about it, its services and what can be done with it.
+     * Agents see it read-only, like the structure's bookings.
+     */
+    #[Route('/admin/bookings/{id}', name: 'admin_booking_show', requirements: ['id' => Requirement::DIGITS], methods: ['GET'])]
+    public function show(Booking $booking): Response
+    {
+        $now = $this->clock->now();
+
+        return $this->render('admin/booking/show.html.twig', [
+            'booking' => $booking,
+            'product' => $booking->getProduct(),
+            'serviceForm' => $booking->isActiveAt($now) && $this->isGranted(User::ROLE_SUPER_MANAGER) ? $this->serviceForm($booking)->createView() : null,
+            'now' => $now,
+        ]);
+    }
+
+    /**
+     * Changes a booking in force: client, contact, comment, price, side, period, slots.
+     * Saved, it comes back to its card.
+     */
+    #[Route('/admin/bookings/{id}/edit', name: 'admin_booking_edit', requirements: ['id' => Requirement::DIGITS], methods: ['GET', 'POST'])]
+    #[IsGranted(User::ROLE_SUPER_MANAGER)]
+    public function edit(Request $request, Booking $booking, ClientCards $clientCards): Response
+    {
+        $now = $this->clock->now();
+        if (!$booking->isActiveAt($now)) {
+            $this->addFlash('error', 'Эта бронь уже не действует — её не изменить. Создайте новую.');
+
+            return $this->redirectToRoute('admin_booking_show', ['id' => $booking->getId()], Response::HTTP_SEE_OTHER);
+        }
+
+        $product = $booking->getProduct();
+        $bookingRequest = BookingRequest::fromBooking($booking);
+        $form = $this->createForm(BookingFormType::class, $bookingRequest, ['product' => $product, 'now' => $now, 'booking' => $booking]);
+        $form->handleRequest($request);
+
+        if ($form->isSubmitted() && $form->isValid()) {
+            try {
+                // "Новый клиент" instead of one from the list: its card is made first
+                $newClient = null === $bookingRequest->client ? NewClientFields::data($form) : null;
+                if (null !== $newClient) {
+                    [$bookingRequest->client] = $clientCards->findOrCreate($newClient['title'], $newClient['phone'], $newClient['email'], $newClient['inn'], type: $newClient['type']);
+                }
+                $this->bookingManager->update($booking, $bookingRequest);
+                $this->addFlash('success', 'Бронь изменена');
+
+                return $this->redirectToRoute('admin_booking_show', ['id' => $booking->getId()], Response::HTTP_SEE_OTHER);
+            } catch (BookingException $e) {
+                $form->addError(new FormError($e->getMessage()));
+            } catch (ClientCardException $e) {
+                $form->get('newClient')->addError(new FormError($e->getMessage()));
+            }
+        }
+
+        $airtime = $product->hasAirtimeSides();
+        $whole = $product->hasWholeSides();
+
+        return $this->render('admin/booking/edit.html.twig', [
+            'booking' => $booking,
+            'product' => $product,
+            'form' => $form,
+            'mixed' => $airtime && $whole,
             'now' => $now,
         ]);
     }
@@ -369,8 +450,11 @@ final class BookingController extends AbstractController
             $this->addFlash('error', $e->getMessage());
         }
 
-        // Back to where the button was pressed: dashboard, the global list or the product's booking page
+        // Back to where the button was pressed: dashboard, the global list, the booking's card or the product's booking page
         $return = $request->getPayload()->getString('return');
+        if ('card' === $return) {
+            return $this->redirectToRoute('admin_booking_show', ['id' => $booking->getId()], Response::HTTP_SEE_OTHER);
+        }
         if ('dashboard' === $return) {
             return $this->redirectToRoute('admin_dashboard', status: Response::HTTP_SEE_OTHER);
         }
@@ -384,6 +468,10 @@ final class BookingController extends AbstractController
     /** The product's booking page, on the month tab the button was pressed on */
     private function backToProduct(Request $request, Booking $booking): Response
     {
+        // services are added and removed on the booking's card too
+        if ('card' === $request->getPayload()->getString('return')) {
+            return $this->redirectToRoute('admin_booking_show', ['id' => $booking->getId()], Response::HTTP_SEE_OTHER);
+        }
         $month = $request->getPayload()->getString('month');
 
         return $this->redirectToRoute('admin_booking_product', array_filter(['id' => $booking->getProduct()->getId(), 'month' => $month]), Response::HTTP_SEE_OTHER);

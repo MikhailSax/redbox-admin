@@ -29,9 +29,17 @@ class ProductRepository extends ServiceEntityRepository
     public function findMatchingIds(ProductListQuery $query, bool $workingOnly = false): array
     {
         $qb = $this->createQueryBuilder('p')
-            ->select('p.id')
-            ->orderBy('p.updatedAt', 'DESC')
-            ->addOrderBy('p.id', 'DESC');
+            ->select('p.id');
+
+        // the status is computed from bookings: ProductListing sorts by it in PHP, keeping this order within a status
+        $direction = $query->isDescending() ? 'DESC' : 'ASC';
+        match ($query->sort) {
+            'name' => $qb->orderBy('p.name', $direction),
+            'district' => $qb->leftJoin('p.district', 'od')->orderBy('od.name', $direction)->addOrderBy('p.name', 'ASC'),
+            'price' => $qb->orderBy('p.price', $direction)->addOrderBy('p.name', 'ASC'),
+            default => $qb->orderBy('p.updatedAt', 'DESC'),
+        };
+        $qb->addOrderBy('p.id', 'DESC');
 
         if (null !== $query->q && '' !== trim($query->q)) {
             $this->applySearch($qb, $query->q);

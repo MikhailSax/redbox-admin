@@ -2,6 +2,7 @@
 
 namespace App\Service;
 
+use App\Dto\BookingListQuery;
 use App\Entity\Booking;
 use App\Entity\Lead;
 use App\Entity\Category;
@@ -105,10 +106,10 @@ class GlobalSearch
             return [
                 'title' => $booking->getClientTitle().' · '.$booking->getClientPhone(),
                 'subtitle' => \sprintf('%s, сторона %s · %s', $booking->getProduct()?->getName(), $booking->getSide()->getName(), MonthCalendar::periodLabel($booking->getStartDate(), $booking->getEndDate())),
-                'url' => $this->urls->generate('admin_booking_product', ['id' => $booking->getProduct()?->getId()]),
+                'url' => $this->urls->generate('admin_booking_show', ['id' => $booking->getId()]),
                 'badge' => ['label' => $status->label(), 'tone' => $status->value],
             ];
-        }, $this->bookings->findForList(null, $term, 5));
+        }, $this->bookings->findForList(new BookingListQuery(q: $term), 5));
     }
 
     /**

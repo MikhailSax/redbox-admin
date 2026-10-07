@@ -1,0 +1,136 @@
+{% extends 'admin/layout.html.twig' %}
+{% import 'admin/_icons.html.twig' as ui %}
+
+{% block title %}Бронь №{{ booking.id }} — {{ parent() }}{% endblock %}
+
+{% block content %}
+    {% set status = booking.statusAt(now) %}
+    {% set is_manager = is_granted('ROLE_SUPER_MANAGER') %}
+    {% set active = booking.activeAt(now) %}
+
+    <nav class="breadcrumbs">
+        {% if is_manager %}<a href="{{ path('admin_booking_index') }}">Брони</a>{% else %}<a href="{{ path('admin_product_index') }}">Конструкции</a>{% endif %}
+        <span class="text-body-subtle">/</span>
+        <a href="{{ path('admin_booking_product', {id: product.id, month: booking.startDate|date('Y-m')}) }}#booking-{{ booking.id }}">{{ product.name }}</a>
+        <span class="text-body-subtle">/</span>
+        <span class="text-heading">Бронь №{{ booking.id }}</span>
+    </nav>
+
+    <div class="page-header !items-start">
+        <div class="min-w-0">
+            <div class="flex flex-wrap items-center gap-3">
+                <h1 class="page-title">{{ product.name }}, сторона {{ booking.side.name }}</h1>
+                {{ include('admin/booking/_status.html.twig') }}
+            </div>
+            <p class="page-subtitle">{{ period_label(booking.startDate, booking.endDate) }} · {{ booking.clientTitle }}</p>
+        </div>
+        {% if is_manager %}
+            <div class="flex flex-wrap items-start gap-2">
+                {% if active %}
+                    <a href="{{ path('admin_booking_edit', {id: booking.id}) }}" class="btn btn-secondary">{{ ui.icon('pencil', 'size-4') }} Изменить</a>
+                {% endif %}
+                {{ include('admin/booking/_actions.html.twig', {return: 'card'}) }}
+            </div>
+        {% endif %}
+    </div>
+
+    <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
+        <div class="min-w-0 space-y-6">
+            {# What is booked #}
+            <section class="card">
+                <h2 class="mb-4 text-base font-semibold text-heading">Размещение</h2>
+                <dl class="grid gap-x-6 gap-y-4 text-sm sm:grid-cols-2">
+                    <div>
+                        <dt class="text-xs font-semibold text-body-subtle">Конструкция</dt>
+                        <dd><a href="{{ path('admin_product_edit', {id: product.id}) }}" class="font-medium text-heading hover:underline">{{ product.name }}</a>
+                            <div class="text-xs text-body-subtle">{{ product.typeLabel }}{% if product.district %} · {{ product.district.name }}{% endif %}</div></dd>
+                    </div>
+                    <div>
+                        <dt class="text-xs font-semibold text-body-subtle">Сторона</dt>
+                        <dd class="text-heading">{{ booking.side.name }}{% if not booking.side.working %} <span class="lozenge lozenge-danger ms-1">не работает</span>{% endif %}</dd>
+                    </div>
+                    <div>
+                        <dt class="text-xs font-semibold text-body-subtle">Период</dt>
+                        <dd class="text-heading">{{ include('admin/booking/_period.html.twig') }}</dd>
+                    </div>
+                    {% if booking.slots %}
+                        <div>
+                            <dt class="text-xs font-semibold text-body-subtle">Эфир</dt>
+                            <dd class="text-heading">{{ airtime_label(booking) }} из {{ booking.side.slotCount }} по {{ booking.side.slotSeconds }} сек</dd>
+                        </div>
+                    {% endif %}
+                </dl>
+            </section>
+
+            {# Whose it is #}
+            <section class="card">
+                <h2 class="mb-4 text-base font-semibold text-heading">Клиент</h2>
+                <dl class="grid gap-x-6 gap-y-4 text-sm sm:grid-cols-2">
+                    <div>
+                        <dt class="text-xs font-semibold text-body-subtle">Карточка клиента</dt>
+                        <dd>
+                            {% if booking.client %}
+                                <a href="{{ path('admin_client_show', {id: booking.client.id}) }}" class="font-medium text-heading hover:underline">{{ booking.client.clientTitle }}</a>
+                            {% else %}
+                                <span class="text-heading">{{ booking.clientName }}</span> <span class="text-xs text-fg-warning">без карточки</span>
+                            {% endif %}
+                        </dd>
+                    </div>
+                    <div>
+                        <dt class="text-xs font-semibold text-body-subtle">Контакт по брони</dt>
+                        <dd class="text-heading">{{ booking.clientName }}
+                            <div><a href="tel:{{ booking.clientPhone }}" class="hover:underline">{{ booking.clientPhone }}</a></div></dd>
+                    </div>
+                    <div class="sm:col-span-2">
+                        <dt class="text-xs font-semibold text-body-subtle">Комментарий</dt>
+                        <dd class="whitespace-pre-line text-heading">{{ booking.comment ?: '—' }}</dd>
+                    </div>
+                </dl>
+            </section>
+
+            {# Money: the price and the services #}
+            <section class="card">
+                <h2 class="mb-4 text-base font-semibold text-heading">Деньги</h2>
+                <div class="grid gap-6 sm:grid-cols-2">
+                    <div>
+                        <div class="mb-1 text-xs font-semibold text-body-subtle">Продано за</div>
+                        {{ include('admin/booking/_sold.html.twig', {return: 'card'}) }}
+                    </div>
+                    <div>
+                        <div class="mb-1 text-xs font-semibold text-body-subtle">Услуги</div>
+                        {{ include('admin/booking/_services.html.twig', {service_form: serviceForm, return: 'card'}) }}
+                    </div>
+                </div>
+                {% set total = (booking.soldPrice ?? 0) + booking.servicesTotal %}
+                {% if total > 0 %}
+                    <div class="mt-5 flex items-baseline justify-between border-t border-default pt-3">
+                        <span class="text-sm text-body">Итого с услугами</span>
+                        <span class="text-lg font-semibold tabular-nums text-heading">{{ total|number_format(0, ',', ' ') }}&nbsp;₽</span>
+                    </div>
+                {% endif %}
+            </section>
+        </div>
+
+        {# Details column, as in an issue view #}
+        <aside class="space-y-4">
+            <section class="rounded-md border border-default p-4">
+                <h2 class="mb-3 text-sm font-semibold text-heading">Детали</h2>
+                <dl class="space-y-3 text-sm">
+                    <div class="flex justify-between gap-3"><dt class="text-body-subtle">Статус</dt><dd>{{ include('admin/booking/_status.html.twig') }}</dd></div>
+                    <div class="flex justify-between gap-3">
+                        <dt class="text-body-subtle">Оформил(а)</dt>
+                        <dd class="flex items-center gap-2 text-heading">
+                            {% if booking.createdBy %}<span class="avatar">{{ booking.createdBy.name|initials }}</span>{{ booking.createdBy.name }}{% else %}—{% endif %}
+                        </dd>
+                    </div>
+                    <div class="flex justify-between gap-3"><dt class="text-body-subtle">Создана</dt><dd class="text-heading tabular-nums">{{ booking.createdAt|date('d.m.Y H:i') }}</dd></div>
+                    {% if booking.confirmedAt %}<div class="flex justify-between gap-3"><dt class="text-body-subtle">Подтверждена</dt><dd class="text-heading tabular-nums">{{ booking.confirmedAt|date('d.m.Y H:i') }}</dd></div>{% endif %}
+                    {% if booking.paidAt %}<div class="flex justify-between gap-3"><dt class="text-body-subtle">Оплачена</dt><dd class="text-heading tabular-nums">{{ booking.paidAt|date('d.m.Y H:i') }}</dd></div>{% endif %}
+                    {% if status.value == 'hold' %}<div class="flex justify-between gap-3"><dt class="text-body-subtle">Снимется</dt><dd class="text-fg-warning tabular-nums">{{ booking.expiresAt|date('d.m.Y H:i') }}</dd></div>{% endif %}
+                    <div class="flex justify-between gap-3"><dt class="text-body-subtle">Изменена</dt><dd class="text-heading tabular-nums">{{ booking.updatedAt|date('d.m.Y H:i') }}</dd></div>
+                </dl>
+            </section>
+            <a href="{{ path('admin_booking_product', {id: product.id, month: booking.startDate|date('Y-m')}) }}#booking-{{ booking.id }}" class="btn btn-ghost w-full justify-start">{{ ui.icon('calendar', 'size-4') }} Занятость конструкции</a>
+        </aside>
+    </div>
+{% endblock %}

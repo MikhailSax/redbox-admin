@@ -16,43 +16,45 @@
 
     {# Filters apply as you type / choose (assets/admin/live-filter.js); without JS the form still submits normally #}
     <form method="get" action="{{ path('admin_product_index') }}" data-live-filter="product-results"
-          class="mb-4 grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(12rem,1fr)_10rem_10rem_11rem_13rem]">
-        <label class="search-field">
+          class="mb-4 flex flex-wrap items-center gap-2">
+        <label class="search-field w-full sm:w-64">
             <span class="sr-only">Поиск</span>
             {{ ui.icon('search') }}
             <input type="search" name="q" value="{{ query.q }}" class="input" autocomplete="off"
                    placeholder="Название, район, категория…" data-live-filter-input>
         </label>
-        <select name="category" class="input" aria-label="Категория">
+        <select name="category" class="filter" aria-label="Категория">
             <option value="">Все категории</option>
             {% for category in categories %}
                 <option value="{{ category.id }}" {{ query.category == category.id ? 'selected' }}>{{ category.name }}</option>
             {% endfor %}
         </select>
-        <select name="type" class="input" aria-label="Тип">
+        <select name="type" class="filter" aria-label="Тип">
             <option value="">Все типы</option>
             {% for type in types %}
                 <option value="{{ type.id }}" {{ query.type == type.id ? 'selected' }}>{{ type.name }}</option>
             {% endfor %}
         </select>
-        <select name="owner" class="input" aria-label="Владелец">
+        <select name="owner" class="filter" aria-label="Владелец">
             <option value="">Все владельцы</option>
             <option value="own" {{ query.owner == "own" ? "selected" }}>Свои конструкции</option>
             {% for partner in partners %}
                 <option value="{{ partner.id }}" {{ query.owner == partner.id ~ "" ? "selected" }}>{{ partner.name }}</option>
             {% endfor %}
         </select>
-        <select name="working" class="input" aria-label="Работает">
+        <select name="working" class="filter" aria-label="Работает">
             <option value="">Работающие и нет</option>
             <option value="yes" {{ query.working == 'yes' ? 'selected' }}>Работают</option>
             <option value="no" {{ query.working == 'no' ? 'selected' }}>Не работают</option>
         </select>
-        <select name="month" class="input" aria-label="Статус на месяц">
+        <select name="month" class="filter" aria-label="Статус на месяц">
             {% for m in months %}
                 <option value="{{ loop.first ? '' : m|date('Y-m') }}" {{ m|date('Y-m') == month|date('Y-m') ? 'selected' }}>{{ loop.first ? 'Сейчас · ' : '' }}{{ m|month_label }}</option>
             {% endfor %}
         </select>
         <input type="hidden" name="status" value="{{ query.status }}">
+        <input type="hidden" name="sort" value="{{ query.sort }}">
+        <input type="hidden" name="dir" value="{{ query.dir }}">
         <noscript><button type="submit" class="btn btn-primary">Найти</button></noscript>
     </form>
 
@@ -68,7 +70,10 @@
                 type: query.type,
                 month: selected_month != months|first|date('Y-m') ? selected_month : null,
                 owner: query.owner,
+                working: query.working,
                 status: query.status,
+                sort: query.sort,
+                dir: query.dir,
             }|filter(v => v is not null and v != '') %}
             {% set tones = {
                 free: 'bg-success-soft border-success-subtle text-fg-success-strong',
@@ -79,18 +84,18 @@
 
             {# Status chips with counts #}
             <div class="mb-4 flex flex-wrap items-center gap-2">
-                {% set chip = 'inline-flex h-8 items-center gap-2 rounded-full border px-3 text-sm font-medium transition-colors' %}
+                {% set chip = 'chip' %}
                 <a href="{{ path('admin_product_index', filters|filter((v, k) => k != 'status')) }}" data-live-link
-                   class="{{ chip }} {{ query.status ? 'border-default bg-white text-body hover:text-heading' : 'border-zinc-900 bg-zinc-900 text-white' }}">
-                    Все <span class="tabular-nums opacity-60">{{ statusCounts|reduce((sum, n) => sum + n, 0) }}</span>
+                   class="{{ chip }} {{ query.status ? '' : 'chip-on' }}">
+                    Все <span class="chip-count">{{ statusCounts|reduce((sum, n) => sum + n, 0) }}</span>
                 </a>
                 {% for status in enum_cases('App\\Enum\\AvailabilityStatus') %}
                     {% set active = query.status == status.value %}
                     <a href="{{ path('admin_product_index', filters|merge({status: status.value})) }}" data-live-link
-                       class="{{ chip }} {{ active ? tones[status.value] ~ ' ring-2 ring-current/20' : 'border-default bg-white text-body hover:text-heading' }}">
+                       class="{{ chip }} {{ active ? 'chip-on' : '' }}">
                         <span class="size-2 rounded-full {{ dots[status.value] }}"></span>
                         {{ {free: 'Свободны', booked: 'Забронированы', occupied: 'Заняты'}[status.value] }}
-                        <span class="tabular-nums opacity-60">{{ statusCounts[status.value] }}</span>
+                        <span class="chip-count">{{ statusCounts[status.value] }}</span>
                     </a>
                 {% endfor %}
                 <span class="ms-auto text-sm text-body-subtle">
@@ -103,11 +108,28 @@
                 <table class="data-table">
                     <thead>
                         <tr>
-                            <th scope="col" class="px-4 py-2.5">Конструкция</th>
-                            <th scope="col" class="px-4 py-2.5">Статус</th>
-                            <th scope="col" class="px-4 py-2.5">Стороны</th>
-                            <th scope="col" class="px-4 py-2.5">Район</th>
-                            <th scope="col" class="px-4 py-2.5 text-right">Цена / мес.</th>
+                            {# Sortable columns: a click sorts A to Z (free first, the cheapest first), a second click turns it around, a third goes back to the recently updated #}
+                            {% for column in [
+                                {key: 'name', label: 'Конструкция'},
+                                {key: 'status', label: 'Статус'},
+                                {key: null, label: 'Стороны'},
+                                {key: 'district', label: 'Район'},
+                                {key: 'price', label: 'Цена / мес.', css: 'text-right'},
+                            ] %}
+                                {% set active = column.key and query.sort == column.key %}
+                                <th scope="col" class="px-4 py-2.5 {{ column.css|default('') }}" {% if active %}aria-sort="{{ query.dir == 'desc' ? 'descending' : 'ascending' }}"{% endif %}>
+                                    {% if column.key %}
+                                        {% set sorting = not active ? {sort: column.key} : (query.dir != 'desc' ? {sort: column.key, dir: 'desc'} : {}) %}
+                                        <a href="{{ path('admin_product_index', filters|filter((v, k) => k not in ['sort', 'dir', 'page'])|merge(sorting)) }}" data-live-link
+                                           class="inline-flex items-center gap-1 hover:text-heading {{ active ? 'text-heading' : '' }}">
+                                            {{- column.label -}}
+                                            <span aria-hidden="true" class="{{ active ? '' : 'opacity-30' }}">{{ active and query.dir == 'desc' ? '↓' : '↑' }}</span>
+                                        </a>
+                                    {% else %}
+                                        {{ column.label }}
+                                    {% endif %}
+                                </th>
+                            {% endfor %}
                             <th scope="col" class="px-4 py-2.5"><span class="sr-only">Действия</span></th>
                         </tr>
                     </thead>
@@ -153,11 +175,16 @@
                                     <div class="flex gap-1">
                                         {% for side in item.sides %}
                                             {% set side_status = side.status %}
-                                            {# a side out of order: struck through, it is not for sale #}
-                                            <span class="inline-flex h-6 min-w-6 items-center justify-center rounded-md border px-1.5 text-xs font-medium {{ tones[side_status.value] }} {{ side.working ? '' : 'line-through opacity-50' }}"
-                                                  title="Сторона {{ side.sideName }}: {{ side.working ? '' : 'не работает, ' }}{{ side_status.label|lower }}{{ side.airtime ? ', занято слотов: ' ~ side.usedSlotsLabel ~ ' из ' ~ side.slotCount ~ ', свободно ' ~ side.freeSeconds ~ ' сек' : '' }}">
-                                                {{ side.sideName }}{% if side.airtime %}<span class="ms-1 opacity-70 tabular-nums">{{ side.usedSlotsLabel }}/{{ side.slotCount }}</span>{% endif %}
-                                            </span>
+                                            {# a side out of order: struck through, it is not for sale; a working one opens its booking form on the month shown #}
+                                            {% set chip_css = 'inline-flex h-6 min-w-6 items-center justify-center rounded-md border px-1.5 text-xs font-medium ' ~ tones[side_status.value] %}
+                                            {% set chip_title = 'Сторона ' ~ side.sideName ~ ': ' ~ (side.working ? '' : 'не работает, ') ~ side_status.label|lower ~ (side.airtime ? ', занято слотов: ' ~ side.usedSlotsLabel ~ ' из ' ~ side.slotCount ~ ', свободно ' ~ side.freeSeconds ~ ' сек' : '') %}
+                                            {% set chip_label %}{{ side.sideName }}{% if side.airtime %}<span class="ms-1 opacity-70 tabular-nums">{{ side.usedSlotsLabel }}/{{ side.slotCount }}</span>{% endif %}{% endset %}
+                                            {% if side.working %}
+                                                <a href="{{ path('admin_booking_product', {id: product.id, side: side.sideId, from: selected_month}) }}#new-booking"
+                                                   class="{{ chip_css }} hover:ring-2 hover:ring-current/30" title="{{ chip_title }}&#10;Нажмите — забронировать с месяца «{{ month|month_label|lower }}»">{{ chip_label }}</a>
+                                            {% else %}
+                                                <span class="{{ chip_css }} line-through opacity-50" title="{{ chip_title }}">{{ chip_label }}</span>
+                                            {% endif %}
                                         {% else %}
                                             <span class="text-body-subtle">—</span>
                                         {% endfor %}
@@ -176,14 +203,14 @@
                                 <td class="px-4 py-3">
                                     <div class="flex justify-end gap-1">
                                         {% set can_manage = is_granted('ROLE_SUPER_MANAGER') %}
-                                        <a href="{{ path('admin_booking_product', {id: product.id}) }}" class="btn btn-ghost btn-sm">Брони</a>
-                                        <a href="{{ path('admin_product_edit', {id: product.id}) }}" class="btn btn-secondary btn-sm">Открыть</a>
+                                        {# the name opens the card; here what is done most: booking #}
+                                        <a href="{{ path('admin_booking_product', {id: product.id, from: selected_month}) }}" class="btn btn-secondary btn-sm">Бронирование</a>
                                         {% if can_manage %}
                                             <form method="post" action="{{ path('admin_product_delete', {id: product.id}) }}"
                                                   data-confirm="Конструкция «{{ product.name }}» будет удалена вместе со сторонами и фотографиями."
                                                   data-confirm-title="Удалить конструкцию?">
                                                 <input type="hidden" name="_token" value="{{ csrf_token('delete-product-' ~ product.id) }}">
-                                                <button type="submit" class="btn btn-ghost btn-sm text-fg-danger hover:bg-danger-soft hover:text-fg-danger-strong">Удалить</button>
+                                                <button type="submit" class="btn btn-ghost btn-sm text-body-subtle hover:bg-danger-soft hover:text-fg-danger-strong" title="Удалить конструкцию" aria-label="Удалить конструкцию «{{ product.name }}»">{{ ui.icon('x', 'size-4') }}</button>
                                             </form>
                                         {% endif %}
                                     </div>

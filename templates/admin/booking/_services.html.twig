@@ -1,7 +1,7 @@
 {#
     Services sold with `booking` in the product's bookings list: the lines, "×" to remove one and a folded
     "add a service" form. `service_form` = its ServiceLineFormType view, null when the booking is no longer in force;
-    `return_month`? = the month tab to come back to.
+    `return_month`? = the month tab to come back to; `return`? = 'card' on the booking's card.
 #}
 {% if booking.serviceLines is not empty %}
     <ul class="space-y-1 text-xs mb-1">
@@ -16,6 +16,7 @@
                           data-confirm="Услуга «{{ line.name }}» будет убрана из брони клиента {{ booking.clientTitle }}." data-confirm-title="Убрать услугу?" data-confirm-button="Убрать">
                         <input type="hidden" name="_token" value="{{ csrf_token('service-booking-' ~ booking.id) }}">
                         {% if return_month|default(null) %}<input type="hidden" name="month" value="{{ return_month }}">{% endif %}
+                        {% if return|default(null) %}<input type="hidden" name="return" value="{{ return }}">{% endif %}
                         <button type="submit" class="grid size-5 place-items-center rounded text-body-subtle hover:bg-danger-soft hover:text-fg-danger" title="Убрать">×</button>
                     </form>
                 {% endif %}
@@ -32,6 +33,7 @@
         {% form_theme service_form 'admin/form/theme.html.twig' %}
         {{ form_start(service_form, {attr: {class: 'mt-2 grid gap-2 w-64', novalidate: 'novalidate'}}) }}
             {% if return_month|default(null) %}<input type="hidden" name="month" value="{{ return_month }}">{% endif %}
+            {% if return|default(null) %}<input type="hidden" name="return" value="{{ return }}">{% endif %}
             {{ form_row(service_form.service, {row_attr: {class: 'mb-0'}}) }}
             {{ form_row(service_form.name, {row_attr: {class: 'mb-0'}}) }}
             <div class="grid grid-cols-[1fr_1fr] gap-2">

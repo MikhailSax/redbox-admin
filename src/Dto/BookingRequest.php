@@ -2,6 +2,7 @@
 
 namespace App\Dto;
 
+use App\Entity\Booking;
 use App\Entity\ProductSide;
 use App\Entity\User;
 use App\Enum\BookingMode;
@@ -69,6 +70,29 @@ final class BookingRequest
      */
     #[Assert\Valid]
     public array $services = [];
+
+    /**
+     * The form of a booking being changed, filled with what it is now. Both sets of period fields are filled,
+     * so switching to a side sold the other way still starts from the booking's own days.
+     */
+    public static function fromBooking(Booking $booking): self
+    {
+        $request = new self();
+        $request->side = $booking->getSide();
+        $request->startDate = $booking->getStartDate();
+        $request->endDate = $booking->getEndDate();
+        $request->startMonth = $booking->getStartDate()->format('Y-m');
+        $request->months = min(12, max(1, $booking->getMonthCount()));
+        $request->slots = $booking->getSlots() ?? 1;
+        $request->slotSeconds = $booking->getSlotSeconds();
+        $request->client = $booking->getClient();
+        $request->clientName = $booking->getClientName();
+        $request->clientPhone = '—' !== $booking->getClientPhone() ? $booking->getClientPhone() : null;
+        $request->comment = $booking->getComment();
+        $request->soldPrice = $booking->getSoldPrice();
+
+        return $request;
+    }
 
     /** What goes into the booking: the typed-in contact, or the contact person of the client card */
     public function contactName(): string

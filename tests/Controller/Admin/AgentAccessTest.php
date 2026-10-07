@@ -110,9 +110,16 @@ final class AgentAccessTest extends AdminWebTestCase
         $values['booking_form']['months'] = '1';
         $values['booking_form']['client'] = (string) $customer->getId();
         $this->submit($uri, $values);
-        self::assertResponseRedirects('/admin/products/'.$this->billboard->getId().'/bookings');
-
         $booking = $this->em->getRepository(Booking::class)->findOneBy([]);
+        self::assertResponseRedirects('/admin/bookings/'.$booking->getId());
+        // the agent sees the card read-only: no editing, no manager's buttons
+        $crawler = $this->client->followRedirect();
+        self::assertResponseIsSuccessful();
+        self::assertSelectorNotExists('a[href="/admin/bookings/'.$booking->getId().'/edit"]');
+        self::assertCount(0, $crawler->filter('main form[action^="/admin/bookings/"]'));
+        $this->client->request('GET', '/admin/bookings/'.$booking->getId().'/edit');
+        self::assertResponseStatusCodeSame(403);
+
         self::assertSame(BookingStatus::Hold, $booking->getStatus());
         self::assertSame('me@redbox.local', $booking->getCreatedBy()?->getEmail());
 

@@ -3,6 +3,7 @@
 namespace App\Form;
 
 use App\Dto\BookingRequest;
+use App\Entity\Booking;
 use App\Entity\Product;
 use App\Entity\ProductSide;
 use App\Entity\User;
@@ -39,17 +40,26 @@ class BookingFormType extends AbstractType
             $whole = !$airtime;
         }
         $mixed = $airtime && $whole;
+        // Changing a booking: its own side stays on offer even out of order, its running month too; services live on its card
+        /** @var Booking|null $editing */
+        $editing = $options['booking'];
 
         $builder
             ->add('side', EntityType::class, [
                 'label' => 'Сторона',
                 'class' => ProductSide::class,
-                'query_builder' => static fn (EntityRepository $r): QueryBuilder => $r->createQueryBuilder('s')
-                    ->andWhere('s.product = :product')
-                    // a side out of order takes no new bookings
-                    ->andWhere('s.working = true')
-                    ->setParameter('product', $product)
-                    ->orderBy('s.name', 'ASC'),
+                'query_builder' => static function (EntityRepository $r) use ($product, $editing): QueryBuilder {
+                    $qb = $r->createQueryBuilder('s')
+                        ->andWhere('s.product = :product')
+                        ->setParameter('product', $product)
+                        ->orderBy('s.name', 'ASC');
+                    // a side out of order takes no new bookings; a booking being changed keeps its own
+                    if (null !== $editing) {
+                        return $qb->andWhere('s.working = true OR s = :current')->setParameter('current', $editing->getSide());
+                    }
+
+                    return $qb->andWhere('s.working = true');
+                },
                 'choice_label' => static fn (ProductSide $side): string => 'Сторона '.$side->getName().($side->isAirtime() ? \sprintf(' · %s по %d сек', AdminExtension::plural($side->getSlotCount(), 'слот', 'слота', 'слотов'), $side->getSlotSeconds()) : ($mixed ? ' · на месяц' : '')),
                 'choice_attr' => static fn (ProductSide $side): array => ['data-booking-mode' => $side->getBookingMode()->value],
                 'placeholder' => $product->getSides()->filter(static fn (ProductSide $side) => $side->isWorking())->count() > 1 ? 'Выберите сторону' : false,
@@ -95,9 +105,11 @@ class BookingFormType extends AbstractType
                 'required' => false,
                 'attr' => ['min' => 0, 'step' => 1000, 'placeholder' => 'Например, 45000'],
                 'help' => 'Итоговая сумма за весь период, со скидками. Не знаете сейчас — впишите позже в списке броней.',
-            ])
+            ]);
+
+        if (null === $editing) {
             // rows are added and removed by assets/admin/collection.js, a catalog pick prefills one (service-line.js)
-            ->add('services', CollectionType::class, [
+            $builder->add('services', CollectionType::class, [
                 'label' => false,
                 'entry_type' => ServiceLineFormType::class,
                 'entry_options' => ['label' => false],
@@ -105,10 +117,14 @@ class BookingFormType extends AbstractType
                 'allow_delete' => true,
                 'prototype' => true,
             ]);
+        }
 
         if ($airtime) {
-            // Airtime is sold by days, two weeks at least
+            // Airtime is sold by days, two weeks at least; a running booking keeps its first day in the past
             $today = \DateTimeImmutable::createFromInterface($options['now'])->format('Y-m-d');
+            if (null !== $editing && $editing->getStartDate()->format('Y-m-d') < $today) {
+                $today = $editing->getStartDate()->format('Y-m-d');
+            }
             $builder
                 ->add('startDate', DateType::class, [
                     'label' => 'С',
@@ -129,7 +145,10 @@ class BookingFormType extends AbstractType
         if ($whole) {
             // Whole sides are sold by calendar months
             $months = [];
-            foreach (MonthCalendar::range($options['now'], 12) as $month) {
+            // a running booking: from its first month on
+            $first = null !== $editing && $editing->getStartDate() < MonthCalendar::firstDay($options['now']) ? $editing->getStartDate() : $options['now'];
+            $count = 11 + \count(MonthCalendar::between(MonthCalendar::firstDay($first), MonthCalendar::firstDay($options['now'])));
+            foreach (MonthCalendar::range($first, $count) as $month) {
                 $months[MonthCalendar::label($month)] = $month->format('Y-m');
             }
             $builder
@@ -180,10 +199,13 @@ class BookingFormType extends AbstractType
     {
         $resolver->setDefaults([
             'data_class' => BookingRequest::class,
+            // the booking being changed; null for a new one
+            'booking' => null,
         ]);
         $resolver->setRequired(['product', 'now']);
         $resolver->setAllowedTypes('product', Product::class);
         $resolver->setAllowedTypes('now', \DateTimeInterface::class);
+        $resolver->setAllowedTypes('booking', ['null', Booking::class]);
     }
 
     private static function monthWord(int $n): string

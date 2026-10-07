@@ -23,6 +23,7 @@ import './admin/dependent-fields.js';
 import './admin/booking-mode.js';
 import './admin/side-airtime.js';
 import './admin/booking-client.js';
+import './admin/booking-grid.js';
 import './admin/sidebar.js';
 import './admin/checklist-filter.js';
 

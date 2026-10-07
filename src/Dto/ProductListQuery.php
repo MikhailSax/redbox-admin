@@ -12,6 +12,9 @@ final readonly class ProductListQuery
 {
     public const OWNER_OWN = 'own';
 
+    /** Columns the list is sorted by; without one the recently updated come first */
+    public const SORTS = ['name', 'district', 'price', 'status'];
+
     public function __construct(
         #[Assert\Length(max: 100)]
         public ?string $q = null,
@@ -38,7 +41,17 @@ final readonly class ProductListQuery
         public ?string $month = null,
         #[Assert\Positive]
         public int $page = 1,
+        /** One of SORTS */
+        #[Assert\Choice(choices: self::SORTS)]
+        public ?string $sort = null,
+        #[Assert\Choice(choices: ['asc', 'desc'])]
+        public ?string $dir = null,
     ) {
+    }
+
+    public function isDescending(): bool
+    {
+        return 'desc' === $this->dir;
     }
 
     public function statusFilter(): ?AvailabilityStatus

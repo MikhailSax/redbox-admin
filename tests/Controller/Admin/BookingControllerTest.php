@@ -63,14 +63,15 @@ final class BookingControllerTest extends AdminWebTestCase
         $values['booking_form']['client'] = (string) $this->customer->getId();
         $this->submit($uri, $values);
 
-        self::assertResponseRedirects($this->url($this->billboard));
+        // saved, it opens the new booking's card
+        $booking = $this->em->getRepository(Booking::class)->findOneBy([]);
+        self::assertResponseRedirects('/admin/bookings/'.$booking->getId());
         $crawler = $this->client->followRedirect();
         self::assertSelectorTextContains('[role=alert]', 'ждёт подтверждения до 11.09.2026 12:00');
         self::assertSelectorTextContains('main', 'ООО Ромашка');
         // the client card is linked, not just named
-        self::assertSelectorExists('tbody a[href="/admin/clients/'.$this->customer->getId().'"]');
+        self::assertSelectorExists('main a[href="/admin/clients/'.$this->customer->getId().'"]');
 
-        $booking = $this->em->getRepository(Booking::class)->findOneBy([]);
         self::assertSame('B', $booking->getSide()->getName());
         self::assertSame(2, $booking->getMonthCount());
         self::assertSame($this->customer->getId(), $booking->getClient()?->getId());
@@ -115,7 +116,9 @@ final class BookingControllerTest extends AdminWebTestCase
         $bookings = $crawler->filter('#tab-bookings');
         self::assertStringContainsString('Щит на Ленина', $bookings->text());
         self::assertStringContainsString('Сентябрь 2026', $bookings->text());
-        self::assertSame('/admin/products/'.$this->billboard->getId().'/bookings', $bookings->filter('tbody a')->attr('href'));
+        // straight to the booking's row, on the tab of its first month
+        $booking = $this->em->getRepository(Booking::class)->findOneBy([]);
+        self::assertSame('/admin/products/'.$this->billboard->getId().'/bookings?month=2026-09#booking-'.$booking->getId(), $bookings->filter('tbody a')->attr('href'));
     }
 
     public function testTakenSideShowsError(): void
@@ -193,7 +196,8 @@ final class BookingControllerTest extends AdminWebTestCase
         $values['booking_form']['endDate'] = '2026-09-25';
         $this->submit($uri, $values);
         self::assertResponseRedirects();
-        $crawler = $this->client->followRedirect();
+        $this->client->followRedirect();
+        $crawler = $this->client->request('GET', $this->url($this->screen));
 
         $booking = $this->em->getRepository(Booking::class)->findOneBy([]);
         self::assertSame(14, $booking->getDays());
@@ -204,7 +208,10 @@ final class BookingControllerTest extends AdminWebTestCase
         $cells = $crawler->filter('tbody')->first()->filter('tr td');
         self::assertSame('0/12', trim($cells->eq(0)->text())); // 10th
         self::assertSame('2/12', trim($cells->eq(2)->text())); // 12th
-        self::assertStringStartsWith('Занято слотов: 2 из 12', $cells->eq(2)->filter('div')->attr('title'));
+        // a day with slots left books the screen from that day
+        $day = $cells->eq(2)->filter('button[data-book-from]');
+        self::assertSame('2026-09-12', $day->attr('data-book-from'));
+        self::assertStringStartsWith('Занято слотов: 2 из 12', $day->attr('title'));
         self::assertSame('0/12', trim($cells->eq(16)->text())); // 26th
     }
 
@@ -295,10 +302,10 @@ final class BookingControllerTest extends AdminWebTestCase
         // the list: the screen's side chip shows the slots taken, a whole side doesn't
         $crawler = $this->client->request('GET', '/admin/products');
         $screenRow = $crawler->filter('tbody tr')->reduce(static fn ($row) => str_contains($row->text(), 'Экран на площади'));
-        self::assertSame('A3/12', trim($screenRow->filter('span[title^="Сторона A"]')->text())); // side name, then the slots (spaced by CSS)
-        self::assertStringContainsString('занято слотов: 3 из 12', $screenRow->filter('span[title^="Сторона A"]')->attr('title'));
+        self::assertSame('A3/12', trim($screenRow->filter('[title^="Сторона A"]')->text())); // side name, then the slots (spaced by CSS)
+        self::assertStringContainsString('занято слотов: 3 из 12', $screenRow->filter('[title^="Сторона A"]')->attr('title'));
         $billboardRow = $crawler->filter('tbody tr')->reduce(static fn ($row) => str_contains($row->text(), 'Щит на Ленина'));
-        self::assertStringNotContainsString('/', $billboardRow->filter('span[title^="Сторона A"]')->text());
+        self::assertStringNotContainsString('/', $billboardRow->filter('[title^="Сторона A"]')->text());
 
         // the structure card: slots and a progress bar
         $this->client->request('GET', '/admin/products/'.$this->screen->getId().'/edit');
@@ -401,9 +408,9 @@ final class BookingControllerTest extends AdminWebTestCase
             ['service' => '', 'name' => 'Дизайн макета', 'quantity' => '1', 'unit' => 'макет', 'unitPrice' => '2500'],
         ];
         $this->submit($uri, $values);
-        self::assertResponseRedirects($this->url($this->billboard));
-
         $booking = $this->em->getRepository(Booking::class)->findOneBy([]);
+        self::assertResponseRedirects('/admin/bookings/'.$booking->getId());
+
         $lines = $booking->getServiceLines()->getValues();
         self::assertSame(['Печать баннера', 'Дизайн макета'], array_map(fn ($l) => $l->getName(), $lines));
         self::assertSame('м²', $lines[0]->getUnit());
@@ -503,7 +510,7 @@ final class BookingControllerTest extends AdminWebTestCase
             $values['booking_form']['client'] = (string) $this->customer->getId();
             $values['booking_form']['comment'] = $title;
             $this->submit($uri, $values);
-            self::assertResponseRedirects($this->url($this->screen));
+            self::assertStringStartsWith('/admin/bookings/', $this->client->getResponse()->headers->get('Location'));
         }
 
         // the 10-second slot is sold out by two halves: the grid shows it full, a third half doesn't fit
@@ -741,7 +748,8 @@ final class BookingControllerTest extends AdminWebTestCase
 
         $values['booking_form']['slots'] = '9';
         $this->submit($uri, $values);
-        $crawler = $this->client->followRedirect();
+        self::assertResponseRedirects();
+        $crawler = $this->client->request('GET', $this->url($this->screen));
         self::assertSame('9/9', trim($crawler->filter('table tbody')->eq(0)->filter('td')->eq(2)->text()));
 
         // the side form: on sale fewer than in the block, not the other way round
@@ -843,6 +851,219 @@ final class BookingControllerTest extends AdminWebTestCase
         self::assertStringNotContainsString('слот', $crawler->filter('main')->text());
         $sideA = $product->getSides()->findFirst(static fn ($i, ProductSide $s) => 'A' === $s->getName());
         self::assertNotNull(static::getContainer()->get(BookingManager::class)->availabilityProblem($sideA, new \DateTimeImmutable('2026-09-01'), new \DateTimeImmutable('2026-09-30'), null));
+    }
+
+    public function testListFiltersByMonthKindAndAuthorAndCountsStatuses(): void
+    {
+        $this->hold($this->side($this->billboard, 'A'), '2026-10', 'Октябрь');
+        $this->hold($this->side($this->billboard, 'B'), '2026-12', 'Декабрь', months: 2);
+        $request = new BookingRequest();
+        $request->side = $this->side($this->screen, 'A');
+        $request->startDate = new \DateTimeImmutable('2026-10-20');
+        $request->endDate = new \DateTimeImmutable('2026-11-05');
+        $request->client = $this->customer;
+        $request->clientName = 'Экранный';
+        $request->clientPhone = '+7 900 000-00-00';
+        $me = $this->em->getRepository(User::class)->findOneBy(['email' => 'me@redbox.local']);
+        $manager = static::getContainer()->get(BookingManager::class);
+        $manager->confirm($manager->hold($request, $me));
+
+        $names = fn (string $query): array => $this->client->request('GET', '/admin/bookings'.$query)->filter('tbody tr')
+            ->each(static fn ($row) => trim($row->filter('td')->eq(2)->filter('.text-xs')->last()->text()));
+        $clients = fn (string $query): array => array_map(static fn (string $text) => explode(' · ', $text)[0], $names($query));
+
+        // a booking is in a month it takes at least a day of
+        self::assertSame(['Экранный', 'Октябрь'], $clients('?month=2026-10'));
+        self::assertSame(['Экранный'], $clients('?month=2026-11'));
+        self::assertSame(['Декабрь'], $clients('?month=2027-01'));
+        self::assertSame(['Экранный'], $clients('?kind=airtime'));
+        self::assertSame(['Декабрь', 'Октябрь'], $clients('?kind=side'));
+        self::assertSame(['Экранный'], $clients('?author='.$me->getId()));
+
+        // the chips count under the other filters
+        $crawler = $this->client->request('GET', '/admin/bookings?month=2026-10');
+        self::assertSame('Все 2', trim($crawler->filter('a[data-live-link]:contains("Все")')->text()));
+        self::assertSame('Ждёт подтверждения 1', trim($crawler->filter('a[data-live-link]:contains("Ждёт")')->text()));
+        self::assertSame('Подтверждена 1', trim($crawler->filter('a[data-live-link]:contains("Подтверждена")')->text()));
+        self::assertSame('/admin/bookings?month=2026-10&status=hold', $crawler->filter('a[data-live-link]:contains("Ждёт")')->attr('href'));
+        self::assertSame($me->getId().'', $crawler->filter('select[name="author"] option')->eq(1)->attr('value'));
+        // the actions in the list are sent without a reload
+        self::assertSelectorExists('[data-ajax-forms] #booking-results');
+
+        $this->client->request('GET', '/admin/bookings?kind=nonsense');
+        self::assertResponseStatusCodeSame(404);
+    }
+
+    public function testGridCellsBookOrLeadToTheirBooking(): void
+    {
+        $booking = $this->hold($this->side($this->billboard, 'A'), '2026-10');
+
+        $crawler = $this->client->request('GET', $this->url($this->billboard));
+        $rowA = $crawler->filter('tbody')->first()->filter('tr')->eq(0);
+        // September is free: a click fills the form with side A from that month
+        $free = $rowA->filter('button[data-book-from="2026-09"]');
+        self::assertSame((string) $this->side($this->billboard, 'A')->getId(), $free->attr('data-book-side'));
+        // October is taken: a link to the booking's row on the October tab
+        self::assertSame($this->url($this->billboard).'?month=2026-10#booking-'.$booking->getId(), $rowA->filter('a[data-booking-link]')->attr('href'));
+        $crawler = $this->client->request('GET', $this->url($this->billboard).'?month=2026-10');
+        self::assertCount(1, $crawler->filter('#booking-'.$booking->getId()));
+        self::assertSelectorExists('form[data-booking-form][data-min-days]');
+        // the grids and the list are swapped in place after an action, the new booking form is not
+        self::assertSelectorExists('#booking-grids[data-ajax-region]');
+        self::assertSelectorExists('#booking-list[data-ajax-region][data-ajax-forms]');
+        self::assertCount(0, $crawler->filter('[data-ajax-forms] form[data-booking-form]'));
+
+        // a side out of order: nothing to click
+        // found anew: a request in between resets the entity manager
+        $this->em->find(ProductSide::class, $this->side($this->billboard, 'B')->getId())->setWorking(false);
+        $this->em->flush();
+        $crawler = $this->client->request('GET', $this->url($this->billboard));
+        self::assertCount(0, $crawler->filter('tbody')->first()->filter('tr')->eq(1)->filter('button[data-book-from]'));
+    }
+
+    public function testStructuresListLeadsToTheBookingOfASide(): void
+    {
+        $sideB = $this->side($this->billboard, 'B');
+
+        $crawler = $this->client->request('GET', '/admin/products?month=2026-11');
+        $chip = $crawler->filter('tbody tr:contains("Щит на Ленина") a:contains("B")');
+        self::assertSame($this->url($this->billboard).'?side='.$sideB->getId().'&from=2026-11#new-booking', $chip->attr('href'));
+
+        // the form starts with that side and month
+        $crawler = $this->client->request('GET', $this->url($this->billboard).'?side='.$sideB->getId().'&from=2026-11');
+        self::assertSame((string) $sideB->getId(), $crawler->filter('select[name="booking_form[side]"] option[selected]')->attr('value'));
+        self::assertSame('2026-11', $crawler->filter('select[name="booking_form[startMonth]"] option[selected]')->attr('value'));
+        // a screen starts on the 1st of a month ahead
+        $crawler = $this->client->request('GET', $this->url($this->screen).'?from=2026-11');
+        self::assertSame('2026-11-01', $crawler->filter('input[name="booking_form[startDate]"]')->attr('value'));
+        self::assertSame('2026-11-14', $crawler->filter('input[name="booking_form[endDate]"]')->attr('value'));
+    }
+
+    public function testStructuresListSortsByColumns(): void
+    {
+        $manager = static::getContainer()->get(BookingManager::class);
+        $manager->markPaid($this->hold($this->side($this->billboard, 'A'), '2026-09'));
+        $manager->markPaid($this->hold($this->side($this->billboard, 'B'), '2026-09'));
+        $this->screen->setPrice('50000');
+        $this->em->flush();
+
+        $names = fn (string $query): array => $this->client->request('GET', '/admin/products'.$query)->filter('tbody tr')
+            ->each(static fn ($row) => trim($row->filter('th .font-medium')->first()->text()));
+
+        self::assertSame(['Щит на Ленина', 'Экран на площади'], $names('?sort=name'));
+        self::assertSame(['Экран на площади', 'Щит на Ленина'], $names('?sort=name&dir=desc'));
+        self::assertSame(['Экран на площади', 'Щит на Ленина'], $names('?sort=status')); // free first
+        self::assertSame(['Щит на Ленина', 'Экран на площади'], $names('?sort=status&dir=desc'));
+        self::assertSame(['Щит на Ленина', 'Экран на площади'], $names('?sort=price'));
+
+        // the header: the active column turns around, then back to the recently updated; filters stay
+        $crawler = $this->client->request('GET', '/admin/products?status=occupied&sort=price');
+        self::assertSame('/admin/products?status=occupied&sort=price&dir=desc', $crawler->filter('thead a:contains("Цена")')->attr('href'));
+        self::assertSame('/admin/products?status=occupied&sort=name', $crawler->filter('thead a:contains("Конструкция")')->attr('href'));
+        $crawler = $this->client->request('GET', '/admin/products?sort=price&dir=desc');
+        self::assertSame('/admin/products', $crawler->filter('thead a:contains("Цена")')->attr('href'));
+    }
+
+    public function testBookingCardShowsEverythingAndActsInPlace(): void
+    {
+        $booking = $this->hold($this->side($this->billboard, 'A'), '2026-10', 'Иван', months: 2);
+
+        $crawler = $this->client->request('GET', '/admin/bookings/'.$booking->getId());
+        self::assertResponseIsSuccessful();
+        self::assertSelectorTextContains('h1', 'Щит на Ленина, сторона A');
+        self::assertSelectorTextContains('main', 'Октябрь 2026 — Ноябрь 2026');
+        self::assertSelectorTextContains('main', 'ООО Ромашка');
+        self::assertSelectorExists('a[href="/admin/bookings/'.$booking->getId().'/edit"]');
+        // the lists lead here
+        $list = $this->client->request('GET', '/admin/bookings');
+        self::assertCount(1, $list->filter('tbody a[href="/admin/bookings/'.$booking->getId().'"]'));
+
+        // the buttons come back to the card
+        $this->submitPostForm($crawler, 'form[action$="/confirm"]');
+        self::assertResponseRedirects('/admin/bookings/'.$booking->getId());
+        $crawler = $this->client->followRedirect();
+        self::assertSelectorTextContains('main', 'Подтверждена');
+        $form = $crawler->filter('form[action="/admin/bookings/'.$booking->getId().'/services"]')->form();
+        $values = $form->getPhpValues();
+        $values['booking_service_'.$booking->getId()]['name'] = 'Монтаж';
+        $values['booking_service_'.$booking->getId()]['quantity'] = '1';
+        $values['booking_service_'.$booking->getId()]['unit'] = 'шт';
+        $values['booking_service_'.$booking->getId()]['unitPrice'] = '3000';
+        $this->submit($form->getUri(), $values);
+        self::assertResponseRedirects('/admin/bookings/'.$booking->getId());
+        self::assertSame(3000.0, $this->reload($booking)->getServicesTotal());
+    }
+
+    public function testBookingIsChangedOnItsCard(): void
+    {
+        $booking = $this->hold($this->side($this->billboard, 'A'), '2026-10', 'Иван');
+        static::getContainer()->get(BookingManager::class)->confirm($booking);
+        $this->hold($this->side($this->billboard, 'B'), '2026-12', 'Сосед');
+
+        $crawler = $this->client->request('GET', '/admin/bookings/'.$booking->getId().'/edit');
+        self::assertResponseIsSuccessful();
+        [$values, $uri] = $this->formValues($crawler, 'Сохранить');
+        self::assertSame('2026-10', $values['booking_form']['startMonth']);
+        self::assertArrayNotHasKey('services', $values['booking_form']);
+
+        // side B is taken in December
+        $values['booking_form']['side'] = (string) $this->side($this->billboard, 'B')->getId();
+        $values['booking_form']['startMonth'] = '2026-11';
+        $values['booking_form']['months'] = '2';
+        $this->submit($uri, $values);
+        self::assertResponseStatusCodeSame(422);
+        self::assertSelectorTextContains('[role=alert]', 'Сторона B уже забронирована');
+        self::assertSame('A', $this->reload($booking)->getSide()->getName());
+
+        // November only: free; the contact, the comment and the price change too
+        $values['booking_form']['months'] = '1';
+        $values['booking_form']['clientName'] = 'Пётр';
+        $values['booking_form']['clientPhone'] = '+7 900 555-44-33';
+        $values['booking_form']['comment'] = 'Перенесли на ноябрь';
+        $values['booking_form']['soldPrice'] = '42000';
+        $this->submit($uri, $values);
+        self::assertResponseRedirects('/admin/bookings/'.$booking->getId());
+        $this->client->followRedirect();
+        self::assertSelectorTextContains('[role=alert]', 'Бронь изменена');
+
+        $booking = $this->reload($booking);
+        self::assertSame(['B', '2026-11-01', '2026-11-30', 'Пётр', '+7 900 555-44-33', 'Перенесли на ноябрь', 42000, BookingStatus::Confirmed],
+            [$booking->getSide()->getName(), $booking->getStartDate()->format('Y-m-d'), $booking->getEndDate()->format('Y-m-d'), $booking->getClientName(), $booking->getClientPhone(), $booking->getComment(), $booking->getSoldPrice(), $booking->getStatus()]);
+    }
+
+    public function testScreenBookingChangesItsDaysAndSlots(): void
+    {
+        $request = new BookingRequest();
+        $request->side = $this->side($this->screen, 'A');
+        $request->startDate = new \DateTimeImmutable('2026-09-12');
+        $request->endDate = new \DateTimeImmutable('2026-09-25');
+        $request->slots = 1;
+        $request->client = $this->customer;
+        $booking = static::getContainer()->get(BookingManager::class)->hold($request);
+
+        $crawler = $this->client->request('GET', '/admin/bookings/'.$booking->getId().'/edit');
+        [$values, $uri] = $this->formValues($crawler, 'Сохранить');
+        self::assertSame('2026-09-12', $values['booking_form']['startDate']);
+        $values['booking_form']['endDate'] = '2026-09-30';
+        $values['booking_form']['slots'] = '3';
+        $this->submit($uri, $values);
+        self::assertResponseRedirects('/admin/bookings/'.$booking->getId());
+
+        $booking = $this->reload($booking);
+        self::assertSame([19, 3, BookingStatus::Hold], [$booking->getDays(), $booking->getSlots(), $booking->getStatus()]);
+    }
+
+    public function testBookingNoLongerInForceIsNotChanged(): void
+    {
+        $booking = $this->hold($this->side($this->billboard, 'A'), '2026-10');
+        static::getContainer()->get(BookingManager::class)->cancel($booking);
+
+        $crawler = $this->client->request('GET', '/admin/bookings/'.$booking->getId());
+        self::assertSelectorNotExists('a[href="/admin/bookings/'.$booking->getId().'/edit"]');
+        $this->client->request('GET', '/admin/bookings/'.$booking->getId().'/edit');
+        self::assertResponseRedirects('/admin/bookings/'.$booking->getId());
+        $this->client->followRedirect();
+        self::assertSelectorTextContains('[role=alert]', 'Эта бронь уже не действует');
     }
 
     private function product(string $name, Category $category, ProductType $type, District $district, array $sides): Product

@@ -8,7 +8,13 @@
 {% block title %}Бронирование: {{ product.name }} — {{ parent() }}{% endblock %}
 
 {% block content %}
-    {{ include('admin/product/_card_header.html.twig', {active_tab: 'booking', in_form: false}) }}
+    {#
+        Buttons in the grids and the bookings list (confirm, pay, price, services…) are sent without a reload
+        (assets/admin/ajax-forms.js): the [data-ajax-region] blocks are swapped. The new booking form reloads the page.
+    #}
+    <div id="booking-header" data-ajax-region>
+        {{ include('admin/product/_card_header.html.twig', {active_tab: 'booking', in_form: false}) }}
+    </div>
 
     <p class="text-sm text-body mb-4">
         {% if mixed %}
@@ -18,7 +24,9 @@
         {% endif %}
     </p>
 
-    {# Occupancy grids: airtime sides × days, whole sides × months #}
+    {# Occupancy grids: airtime sides × days, whole sides × months. A free cell fills the new booking form (assets/admin/booking-grid.js) #}
+    {% set can_book = product.working %}
+    <div id="booking-grids" data-ajax-region>
     {% for group in grids %}
     {% set grid_airtime = group.airtime %}
     <div class="card !p-0 mb-6 overflow-hidden">
@@ -54,23 +62,42 @@
                             {% for key, column in group.columns %}
                                 {% set cell = group.cells[side.id][key] %}
                                 {% set clients = cell.bookings|map(b => b.clientTitle ~ (airtime_label(b) ? ' (' ~ airtime_label(b) ~ ')' : '') ~ ' — ' ~ b.statusAt(now).label)|join("\n") %}
+                                {# A cell with room left fills the form; a taken one leads to its booking in the list #}
+                                {% set bookable = can_book and side.working %}
+                                {% set booking = cell.bookings|first %}
+                                {% set month_key = key|slice(0, 7) %}
+                                {% set cell_link = booking ? path('admin_booking_product', {id: product.id, month: month_key}) ~ '#booking-' ~ booking.id %}
                                 <td class="p-1">
                                     {% if grid_airtime %}
                                         {# cell.used is seconds of the block: half a 10-second slot sold leaves the other half free #}
                                         {% set used = min(cell.used, side.blockSeconds) %}
                                         {% set percent = (used * 100 / side.blockSeconds)|round(0, 'floor') %}
-                                        <div class="rounded-sm border px-1.5 py-1 text-center {{ used >= side.blockSeconds ? 'bg-danger-soft border-danger-subtle text-fg-danger-strong' : (used > 0 ? 'bg-warning-soft border-warning-subtle text-fg-warning' : 'bg-success-soft border-success-subtle text-fg-success-strong') }}"
-                                             title="Занято слотов: {{ slots_label(used, side.slotSeconds) }} из {{ side.slotCount }} ({{ used }} из {{ side.blockSeconds }} сек){{ clients ? "\n" ~ clients }}">
+                                        {% set tone = used >= side.blockSeconds ? 'bg-danger-soft border-danger-subtle text-fg-danger-strong' : (used > 0 ? 'bg-warning-soft border-warning-subtle text-fg-warning' : 'bg-success-soft border-success-subtle text-fg-success-strong') %}
+                                        {% set title = 'Занято слотов: ' ~ slots_label(used, side.slotSeconds) ~ ' из ' ~ side.slotCount ~ ' (' ~ used ~ ' из ' ~ side.blockSeconds ~ ' сек)' ~ (clients ? "\n" ~ clients) %}
+                                        {% set content %}
                                             <div class="text-xs font-medium whitespace-nowrap tabular-nums">{{ slots_label(used, side.slotSeconds) }}/{{ side.slotCount }}</div>
                                             <div class="mt-1 h-1 rounded-full bg-neutral-tertiary-medium overflow-hidden"><div class="h-full bg-current" style="width: {{ percent }}%"></div></div>
-                                        </div>
+                                        {% endset %}
+                                        {% if bookable and used < side.blockSeconds %}
+                                            <button type="button" data-book-side="{{ side.id }}" data-book-from="{{ key }}"
+                                                    class="block w-full rounded-sm border px-1.5 py-1 text-center cursor-pointer hover:ring-2 hover:ring-brand/40 {{ tone }}"
+                                                    title="{{ title }}&#10;Нажмите — бронь с этого дня, ещё раз на другом дне — по какой">{{ content }}</button>
+                                        {% elseif booking %}
+                                            <a href="{{ cell_link }}" data-booking-link="booking-{{ booking.id }}" class="block rounded-sm border px-1.5 py-1 text-center hover:ring-2 hover:ring-current/30 {{ tone }}" title="{{ title }}">{{ content }}</a>
+                                        {% else %}
+                                            <div class="rounded-sm border px-1.5 py-1 text-center {{ tone }}" title="{{ title }}">{{ content }}</div>
+                                        {% endif %}
                                     {% else %}
-                                        {% set booking = cell.bookings|first %}
                                         {% if booking %}
                                             {% set confirmed = booking.status.value == 'confirmed' %}
-                                            <div class="rounded-sm border px-1.5 py-1 text-center text-xs font-medium truncate max-w-28 {{ confirmed ? 'bg-danger-soft border-danger-subtle text-fg-danger-strong' : 'bg-warning-soft border-warning-subtle text-fg-warning' }}" title="{{ clients }}">
+                                            <a href="{{ cell_link }}" data-booking-link="booking-{{ booking.id }}"
+                                               class="block rounded-sm border px-1.5 py-1 text-center text-xs font-medium truncate max-w-28 hover:ring-2 hover:ring-current/30 {{ confirmed ? 'bg-danger-soft border-danger-subtle text-fg-danger-strong' : 'bg-warning-soft border-warning-subtle text-fg-warning' }}" title="{{ clients }}&#10;Нажмите — к брони в списке">
                                                 {{ booking.clientTitle }}
-                                            </div>
+                                            </a>
+                                        {% elseif bookable %}
+                                            <button type="button" data-book-side="{{ side.id }}" data-book-from="{{ key }}"
+                                                    class="block w-full rounded-sm border px-1.5 py-1 text-center text-xs cursor-pointer hover:ring-2 hover:ring-brand/40 bg-success-soft border-success-subtle text-fg-success-strong"
+                                                    title="Нажмите — бронь с этого месяца, ещё раз на другом месяце — по какой">свободно</button>
                                         {% else %}
                                             <div class="rounded-sm border px-1.5 py-1 text-center text-xs bg-success-soft border-success-subtle text-fg-success-strong">свободно</div>
                                         {% endif %}
@@ -86,6 +113,21 @@
         </div>
     </div>
     {% endfor %}
+    </div>
+
+    {% if can_book %}
+        {# What was picked in the grid, kept in view while scrolling to the form (assets/admin/booking-grid.js) #}
+        <div data-booking-pick class="hidden sticky bottom-4 z-30 mb-6 flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-default bg-neutral-primary-soft px-4 py-3 text-sm shadow-lg" aria-live="polite">
+            <div class="min-w-0">
+                <div data-booking-pick-text class="font-medium text-heading"></div>
+                <div class="text-xs text-body">Нажмите на ячейку той же стороны дальше по сетке — это будет конец брони</div>
+            </div>
+            <div class="ms-auto flex gap-2">
+                <button type="button" class="btn btn-ghost btn-sm" data-booking-pick-reset>Сбросить</button>
+                <button type="button" class="btn btn-primary btn-sm" data-booking-pick-go>Оформить бронь</button>
+            </div>
+        </div>
+    {% endif %}
 
     {% set not_working = product.notWorkingSides %}
     {% if not_working is not empty %}
@@ -102,10 +144,10 @@
     {% if product.working %}
     <div class="grid gap-6 lg:grid-cols-3 mb-6">
         {# New booking #}
-        <div class="card lg:col-span-2">
+        <div id="new-booking" class="card lg:col-span-2 scroll-mt-4">
             <h2 class="text-lg font-semibold text-heading mb-4">Новая бронь</h2>
             {% form_theme form 'admin/form/theme.html.twig' %}
-            {{ form_start(form, {attr: {novalidate: 'novalidate'}}) }}
+            {{ form_start(form, {attr: {novalidate: 'novalidate', 'data-booking-form': '', 'data-min-days': minDays}}) }}
                 {% if form.vars.errors|length %}
                     <div class="flex items-start gap-3 p-4 mb-5 text-sm rounded-base border text-fg-danger-strong bg-danger-soft border-danger-subtle" role="alert">
                         {{ form_errors(form) }}
@@ -184,7 +226,8 @@
         </div>
     </div>
 
-    {# All bookings of the product #}
+    {# All bookings of the product; a row is the target of its cell in the grid (#booking-ID) #}
+    <section id="booking-list" data-ajax-forms data-ajax-region>
     <h2 id="bookings" class="text-xl font-semibold text-heading mb-4 scroll-mt-4">Брони конструкции</h2>
     {# Month tabs: bookings that take at least a day of the month; "Все" — the whole list #}
     {% set tab_css = 'inline-flex items-center gap-2 px-4 py-3 border-b-2 rounded-t-base' %}
@@ -228,9 +271,9 @@
             </thead>
             <tbody>
                 {% for booking in bookings %}
-                    <tr>
+                    <tr id="booking-{{ booking.id }}" class="scroll-mt-24 target:bg-brand-softer">
                         <td class="px-4 py-3 font-medium text-heading">{{ booking.side.name }}</td>
-                        <td class="px-4 py-3 whitespace-nowrap">{{ include('admin/booking/_period.html.twig') }}</td>
+                        <td class="px-4 py-3 whitespace-nowrap"><a href="{{ path('admin_booking_show', {id: booking.id}) }}" class="group block" title="Открыть карточку брони"><span class="font-medium text-heading group-hover:underline">{{ include('admin/booking/_period.html.twig') }}</span></a></td>
                         <td class="px-4 py-3">
                             {{ include('admin/booking/_client.html.twig') }}
                             {% if booking.createdBy %}<div class="text-xs text-body-subtle">оформил(а) {{ booking.createdBy.name }}</div>{% endif %}
@@ -271,5 +314,6 @@
             {% endif %}
         </table>
     </div>
+    </section>
     {% endif %}
 {% endblock %}

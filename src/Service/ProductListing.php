@@ -94,6 +94,22 @@ class ProductListing
             $availability = array_intersect_key($availability, array_flip($ids));
         }
 
+        // Free first (or last), then booked, then occupied; structures without a status at the end
+        if ('status' === $query->sort) {
+            $rank = array_flip(array_map(static fn (AvailabilityStatus $s) => $s->value, AvailabilityStatus::cases()));
+            $position = array_flip($ids);
+            $sign = $query->isDescending() ? -1 : 1;
+            usort($ids, static function (int $a, int $b) use ($availability, $rank, $position, $sign): int {
+                $ra = $rank[$availability[$a]->status()?->value] ?? null;
+                $rb = $rank[$availability[$b]->status()?->value] ?? null;
+                if ($ra === $rb) {
+                    return $position[$a] <=> $position[$b];
+                }
+
+                return null === $ra ? 1 : (null === $rb ? -1 : $sign * ($ra <=> $rb));
+            });
+        }
+
         return ['ids' => $ids, 'availability' => $availability, 'statusCounts' => $statusCounts, 'month' => $month];
     }
 }
