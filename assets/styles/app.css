@@ -19,9 +19,10 @@
 
 /*
  * Redbox CRM design tokens, overriding Flowbite's defaults.
- * Reference: Linear / Vercel dashboards (shadcn/ui look) — neutral zinc surfaces, near-black primary
- * actions, thin borders, soft shadows, Inter. Redbox red is an accent (logo, active nav, highlights),
- * deliberately not the primary button colour so it never competes with destructive (danger) actions.
+ * Colours: neutral zinc surfaces, near-black primary actions; Redbox red is an accent (logo, active nav,
+ * highlights), deliberately not the primary button colour so it never competes with destructive actions.
+ * Shapes and density after Jira (Atlassian): flat surfaces without shadows, 3–4px corners, 32px controls,
+ * grey-filled default buttons, dense borderless tables, uppercase status lozenges.
  */
 @theme {
     --font-sans: 'Inter Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
@@ -59,7 +60,18 @@
     --color-default-medium: var(--color-zinc-200);
     --color-default-strong: var(--color-zinc-300);
 
-    --radius-base: 10px;
+    /* Jira's small corners: every rounded-* utility follows (rounded-full stays a pill) */
+    --radius-base: 4px;
+    --radius-xs: 2px;
+    --radius-sm: 3px;
+    --radius-md: 3px;
+    --radius-lg: 4px;
+    --radius-xl: 6px;
+    --radius-2xl: 8px;
+
+    /* Flat: only floating layers (menus, modals, toasts) keep a shadow */
+    --shadow-xs: 0 0 #0000;
+    --shadow-sm: 0 0 #0000;
 }
 
 @layer base {
@@ -68,7 +80,7 @@
         font-feature-settings: 'cv11', 'ss01';
     }
     body {
-        @apply bg-zinc-50 text-body;
+        @apply bg-white text-body;
     }
     ::selection {
         @apply bg-accent/20;
@@ -80,35 +92,35 @@
 
 /* Shared component styles, so templates stay readable */
 @layer components {
-    /* Buttons */
+    /* Buttons: Jira's grey-filled default, a dark primary, subtle (ghost) and danger */
     .btn {
-        @apply inline-flex h-9 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border px-3.5 text-sm font-medium leading-5 shadow-xs transition-colors cursor-pointer focus:outline-none focus-visible:ring-4 disabled:pointer-events-none disabled:opacity-50;
+        @apply inline-flex h-8 items-center justify-center gap-1.5 whitespace-nowrap rounded-sm border px-3 text-sm font-medium leading-5 transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 disabled:pointer-events-none disabled:opacity-50;
     }
     .btn-sm {
-        @apply h-8 px-2.5 text-xs;
+        @apply h-7 px-2 text-[13px];
     }
     .btn-primary {
-        @apply border-transparent bg-brand text-white hover:bg-brand-strong focus-visible:ring-zinc-900/15;
+        @apply border-transparent bg-brand text-white hover:bg-brand-strong active:bg-zinc-950 focus-visible:ring-zinc-900/40;
     }
     .btn-secondary {
-        @apply border-default bg-white text-heading hover:bg-zinc-50 focus-visible:ring-zinc-900/10;
+        @apply border-transparent bg-zinc-100 text-heading hover:bg-zinc-200 active:bg-zinc-300 focus-visible:ring-zinc-900/30;
     }
     .btn-ghost {
-        @apply border-transparent bg-transparent text-body shadow-none hover:bg-zinc-100 hover:text-heading;
+        @apply border-transparent bg-transparent text-body hover:bg-zinc-100 hover:text-heading active:bg-zinc-200;
     }
     .btn-danger {
-        @apply border-transparent bg-danger text-white hover:bg-danger-strong focus-visible:ring-danger/20;
+        @apply border-transparent bg-danger text-white hover:bg-danger-strong focus-visible:ring-danger/40;
     }
     .btn-danger-outline {
-        @apply border-default bg-white text-fg-danger hover:border-danger-subtle hover:bg-danger-soft focus-visible:ring-danger/15;
+        @apply border-transparent bg-zinc-100 text-fg-danger hover:bg-danger-soft focus-visible:ring-danger/30;
     }
 
     /* Surfaces */
     .card {
-        @apply rounded-xl border border-default bg-white p-6 shadow-xs;
+        @apply rounded-md border border-default bg-white p-5;
     }
     .page-header {
-        @apply mb-6 flex flex-wrap items-end justify-between gap-4;
+        @apply mb-5 flex flex-wrap items-end justify-between gap-4;
     }
     .page-title {
         @apply text-2xl font-semibold tracking-tight text-heading;
@@ -117,32 +129,79 @@
         @apply mt-1 text-sm text-body;
     }
 
-    /* Form controls */
+    /* Form controls: Jira's light grey field that turns white with a dark 2px edge on focus */
     .input {
-        @apply block w-full rounded-lg border border-default bg-white px-3 py-2 text-sm text-heading shadow-xs transition placeholder:text-zinc-400 focus:border-zinc-400 focus:outline-none focus:ring-4 focus:ring-zinc-900/5;
+        @apply block w-full rounded-sm border border-zinc-300 bg-zinc-50 px-2.5 py-1.5 text-sm text-heading transition-colors placeholder:text-zinc-400 hover:bg-zinc-100 focus:border-zinc-900 focus:bg-white focus:outline-none focus:ring-1 focus:ring-zinc-900;
     }
     .input-file {
-        @apply block w-full cursor-pointer rounded-lg border border-default bg-white text-sm text-heading shadow-xs file:me-3 file:cursor-pointer file:border-0 file:border-e file:border-default file:bg-zinc-50 file:px-4 file:py-2 file:font-medium file:text-heading hover:file:bg-zinc-100;
+        @apply block w-full cursor-pointer rounded-sm border border-zinc-300 bg-zinc-50 text-sm text-heading file:me-3 file:cursor-pointer file:border-0 file:border-e file:border-zinc-300 file:bg-zinc-100 file:px-3 file:py-1.5 file:font-medium file:text-heading hover:file:bg-zinc-200;
     }
     .checkbox {
-        @apply h-4 w-4 rounded border-zinc-300 text-brand shadow-xs focus:ring-2 focus:ring-zinc-900/10;
+        @apply h-4 w-4 rounded-xs border-zinc-400 text-brand focus:ring-2 focus:ring-zinc-900/20;
     }
 
-    /* Tables */
+    /*
+     * Filter bar selects look like Jira's filter buttons: grey, and dark once something is chosen
+     * (an option other than the first, empty one).
+     */
+    select.filter {
+        @apply h-8 w-auto cursor-pointer rounded-sm border-transparent bg-zinc-100 py-0 ps-3 pe-8 text-sm font-medium text-heading hover:bg-zinc-200 focus:border-transparent focus:ring-2 focus:ring-zinc-900/30;
+    }
+    select.filter:has(option:checked:not([value=''])) {
+        @apply bg-zinc-800 text-white hover:bg-zinc-700;
+        background-image: url("data:image/svg+xml,%3csvg aria-hidden='true' xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 10 6'%3e%3cpath stroke='white' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m1 1 4 4 4-4'/%3e%3c/svg%3e");
+    }
+
+    /* Toggle chips (status filters): grey like a button, dark when on */
+    .chip {
+        @apply inline-flex h-8 items-center gap-2 rounded-sm bg-zinc-100 px-3 text-sm font-medium text-heading transition-colors hover:bg-zinc-200;
+    }
+    .chip-on {
+        @apply bg-zinc-800 text-white hover:bg-zinc-700;
+    }
+    .chip-count {
+        @apply text-xs tabular-nums opacity-60;
+    }
+
+    /* Status lozenges: a pale fill, the strong shade for the text, uppercase */
+    .lozenge {
+        @apply inline-flex h-5 items-center gap-1 whitespace-nowrap rounded-sm px-1.5 text-[11px] font-bold uppercase leading-none tracking-wide;
+    }
+    .lozenge-neutral { @apply bg-zinc-200 text-zinc-700; }
+    .lozenge-info { @apply bg-sky-100 text-sky-800; }
+    .lozenge-success { @apply bg-success-soft text-fg-success-strong; }
+    .lozenge-warning { @apply bg-warning-soft text-fg-warning; }
+    .lozenge-danger { @apply bg-danger-soft text-fg-danger-strong; }
+    .lozenge-new { @apply bg-violet-100 text-violet-800; }
+
+    /* Breadcrumbs above a page title */
+    .breadcrumbs {
+        @apply mb-1 flex flex-wrap items-center gap-1 text-sm text-body;
+    }
+    .breadcrumbs a {
+        @apply hover:text-heading hover:underline;
+    }
+
+    /* Initials of a person (who made a booking, the assignee) */
+    .avatar {
+        @apply inline-grid size-6 shrink-0 place-items-center rounded-full bg-zinc-200 text-[10px] font-semibold text-zinc-700;
+    }
+
+    /* Tables: no frame around, a heavier line under the head, thin lines between dense rows */
     .table-card {
-        @apply relative overflow-x-auto rounded-xl border border-default bg-white shadow-xs;
+        @apply relative overflow-x-auto;
     }
     .data-table {
         @apply w-full text-left text-sm text-body;
     }
     .data-table thead {
-        @apply border-b border-default bg-zinc-50/70 text-xs uppercase tracking-wide text-body-subtle;
+        @apply border-b-2 border-default text-xs text-body-subtle;
     }
     .data-table thead th {
-        @apply font-medium;
+        @apply font-semibold;
     }
     .data-table tbody tr {
-        @apply border-b border-default transition-colors last:border-0 hover:bg-zinc-50/70;
+        @apply border-b border-default-subtle transition-colors hover:bg-zinc-50;
     }
 
     /* Search field with icon (live filters, command palette trigger) */
@@ -150,15 +209,25 @@
         @apply relative;
     }
     .search-field > svg {
-        @apply pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400;
+        @apply pointer-events-none absolute start-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400;
     }
     .search-field > .input {
-        @apply ps-9;
+        @apply ps-8;
     }
 
     mark.hl {
-        @apply rounded-[3px] bg-amber-100 px-0.5 text-inherit;
+        @apply rounded-[2px] bg-amber-100 px-0.5 text-inherit;
     }
+}
+
+/*
+ * Jira's dense rows whatever padding a template gives its cells: unlayered, so it wins over the py-* utilities.
+ * The cells keep their own horizontal padding.
+ */
+.data-table > thead > tr > th,
+.data-table > tbody > tr > :is(td, th) {
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
 }
 
 /* Maps (assets/admin/map.js) */

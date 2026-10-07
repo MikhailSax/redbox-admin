@@ -1,12 +1,7 @@
 {# Status badge of `booking` as of `now`, plus the payment mark of a confirmed booking #}
 {% set status = booking.statusAt(now) %}
-{% set classes = {
-    hold: 'bg-warning-soft border-warning-subtle text-fg-warning',
-    confirmed: 'bg-success-soft border-success-subtle text-fg-success-strong',
-    cancelled: 'bg-neutral-secondary-medium border-default-medium text-body',
-    expired: 'bg-neutral-secondary-medium border-default-medium text-body',
-} %}
-<span class="inline-flex items-center whitespace-nowrap text-xs font-medium px-1.5 py-0.5 rounded-sm border {{ classes[status.value] }}">{{ status.label }}</span>
+{% set tones = {hold: 'warning', confirmed: 'success', cancelled: 'neutral', expired: 'neutral'} %}
+<span class="lozenge lozenge-{{ tones[status.value] }}">{{ status.label }}</span>
 {% if status.value == 'hold' %}
     {% set hours_left = ((booking.expiresAt.timestamp - now.timestamp) / 3600)|round(0, 'floor') %}
     <div class="text-xs text-body mt-1 whitespace-nowrap" title="Без подтверждения или оплаты бронь снимется автоматически">

@@ -35,13 +35,13 @@
             {% set state_labels = {active: 'Действует', scheduled: 'Запланирована', finished: 'Завершена', disabled: 'Выключена'} %}
 
             <div class="mb-4 flex flex-wrap gap-2">
-                {% set chip = 'inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-sm font-medium transition-colors' %}
+                {% set chip = 'chip' %}
                 <a href="{{ path('admin_promotion_index', base) }}" data-live-link
-                   class="{{ chip }} {{ state is null ? 'border-zinc-900 bg-zinc-900 text-white' : 'border-default bg-white text-body hover:text-heading' }}">Все</a>
+                   class="{{ chip }} {{ state is null ? 'chip-on' : '' }}">Все</a>
                 {% for key, label in states %}
                     <a href="{{ path('admin_promotion_index', base|merge({state: key})) }}" data-live-link
-                       class="{{ chip }} {{ key == state ? 'border-zinc-900 bg-zinc-900 text-white' : 'border-default bg-white text-body hover:text-heading' }}">
-                        {{ label }} <span class="tabular-nums opacity-60">{{ stateCounts[key] }}</span>
+                       class="{{ chip }} {{ key == state ? 'chip-on' : '' }}">
+                        {{ label }} <span class="chip-count">{{ stateCounts[key] }}</span>
                     </a>
                 {% endfor %}
             </div>

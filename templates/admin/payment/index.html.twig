@@ -55,10 +55,10 @@
             <input type="search" name="q" value="{{ q }}" class="input" autocomplete="off" placeholder="Клиент, ИНН или назначение…">
         </label>
         <div class="flex flex-wrap gap-2">
-            {% set chip = 'inline-flex h-8 items-center rounded-full border px-3 text-sm font-medium transition-colors' %}
+            {% set chip = 'chip' %}
             {% for option in [{value: null, label: 'Все клиенты'}]|merge(enum_cases('App\\Enum\\ClientType')|map(t => {value: t, label: t.label})) %}
                 <a href="{{ path('admin_payment_index', filters|merge({month: month_key, type: option.value ? option.value.value : null})|filter(v => v is not null)) }}"
-                   class="{{ chip }} {{ option.value == type ? 'border-zinc-900 bg-zinc-900 text-white' : 'border-default bg-white text-body hover:text-heading' }}">{{ option.label }}</a>
+                   class="{{ chip }} {{ option.value == type ? 'chip-on' : '' }}">{{ option.label }}</a>
             {% endfor %}
         </div>
     </form>
@@ -134,10 +134,10 @@
         <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
             <h2 class="text-lg font-semibold text-heading">Платежи за {{ month|month_label|lower }}</h2>
             <div class="flex flex-wrap gap-2">
-                {% set chip = 'inline-flex h-8 items-center rounded-full border px-3 text-sm font-medium transition-colors' %}
+                {% set chip = 'chip' %}
                 {% for option in [{value: null, label: 'Все'}]|merge(enum_cases('App\\Enum\\PaymentStatus')|map(s => {value: s, label: s.label})) %}
                     <a href="{{ path('admin_payment_index', filters|merge({month: month_key, status: option.value ? option.value.value : null})|filter(v => v is not null)) }}#list"
-                       class="{{ chip }} {{ option.value == status ? 'border-zinc-900 bg-zinc-900 text-white' : 'border-default bg-white text-body hover:text-heading' }}">{{ option.label }}</a>
+                       class="{{ chip }} {{ option.value == status ? 'chip-on' : '' }}">{{ option.label }}</a>
                 {% endfor %}
             </div>
         </div>

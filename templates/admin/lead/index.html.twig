@@ -25,21 +25,17 @@
             {# Imported here too: renderBlock() (live filter) renders this block without the template top level #}
             {% import 'admin/_icons.html.twig' as ui %}
             {% set base = q ? {q: q} : {} %}
-            {% set tones = {
-                accent: 'bg-accent-soft text-accent-strong ring-accent/20',
-                warning: 'bg-warning-soft text-fg-warning ring-warning-subtle',
-                success: 'bg-success-soft text-fg-success-strong ring-success-subtle',
-                danger: 'bg-danger-soft text-fg-danger-strong ring-danger-subtle',
-            } %}
+            {# Status lozenges: a new request in violet, then the status tones #}
+            {% set tones = {accent: 'new', warning: 'warning', success: 'success', danger: 'danger'} %}
 
             <div class="mb-4 flex flex-wrap gap-2">
-                {% set chip = 'inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-sm font-medium transition-colors' %}
+                {% set chip = 'chip' %}
                 <a href="{{ path('admin_lead_index', base) }}" data-live-link
-                   class="{{ chip }} {{ filter is null ? 'border-zinc-900 bg-zinc-900 text-white' : 'border-default bg-white text-body hover:text-heading' }}">Все</a>
+                   class="{{ chip }} {{ filter is null ? 'chip-on' : '' }}">Все</a>
                 {% for status in enum_cases('App\\Enum\\LeadStatus') %}
                     <a href="{{ path('admin_lead_index', base|merge({status: status.value})) }}" data-live-link
-                       class="{{ chip }} {{ status == filter ? 'border-zinc-900 bg-zinc-900 text-white' : 'border-default bg-white text-body hover:text-heading' }}">
-                        {{ status.label }} <span class="tabular-nums opacity-60">{{ counts[status.value] }}</span>
+                       class="{{ chip }} {{ status == filter ? 'chip-on' : '' }}">
+                        {{ status.label }} <span class="chip-count">{{ counts[status.value] }}</span>
                     </a>
                 {% endfor %}
             </div>
@@ -73,7 +69,7 @@
                                 </td>
                                 <td class="px-4 py-3 text-right tabular-nums whitespace-nowrap">{{ lead.estimate > 0 ? (lead.estimate|number_format(0, ',', ' ') ~ ' ₽') : '—' }}</td>
                                 <td class="px-4 py-3">
-                                    <span class="inline-flex h-6 items-center rounded-md px-2 text-xs font-medium ring-1 ring-inset {{ tones[lead.status.tone] }}">{{ lead.status.label }}</span>
+                                    <span class="lozenge lozenge-{{ tones[lead.status.tone] }}">{{ lead.status.label }}</span>
                                     {% if lead.assignee %}<div class="mt-0.5 text-xs text-body-subtle">{{ lead.assignee.name }}</div>{% endif %}
                                 </td>
                                 <td class="px-4 py-3">

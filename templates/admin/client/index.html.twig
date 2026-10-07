@@ -20,10 +20,10 @@
         </label>
         {% if type %}<input type="hidden" name="type" value="{{ type.value }}">{% endif %}
         <div class="flex flex-wrap gap-2">
-            {% set chip = 'inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-sm font-medium transition-colors' %}
+            {% set chip = 'chip' %}
             {% for option in [{value: null, label: 'Все', count: typeCounts|reduce((s, n) => s + n, 0)}]|merge(enum_cases('App\\Enum\\ClientType')|map(t => {value: t, label: t.label, count: typeCounts[t.value]})) %}
                 <a href="{{ path('admin_client_index', {q: q ?: null, type: option.value ? option.value.value : null}|filter(v => v is not null)) }}"
-                   class="{{ chip }} {{ option.value == type ? 'border-zinc-900 bg-zinc-900 text-white' : 'border-default bg-white text-body hover:text-heading' }}">{{ option.label }} <span class="tabular-nums opacity-60">{{ option.count }}</span></a>
+                   class="{{ chip }} {{ option.value == type ? 'chip-on' : '' }}">{{ option.label }} <span class="chip-count">{{ option.count }}</span></a>
             {% endfor %}
         </div>
     </form>
