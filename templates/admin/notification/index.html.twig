@@ -1,0 +1,29 @@
+{% extends 'admin/layout.html.twig' %}
+{% import 'admin/_icons.html.twig' as ui %}
+
+{% block title %}Уведомления — {{ parent() }}{% endblock %}
+
+{% block content %}
+    <div class="page-header">
+        <div>
+            <h1 class="page-title">Уведомления</h1>
+            <p class="page-subtitle">Новые клиенты с сайта, подтверждённые почты и заявки. Письмом приходят регистрации и подтверждения</p>
+        </div>
+        {% if notifications|filter(n => not n.read)|length %}
+            <form method="post" action="{{ path('admin_notification_read_all') }}">
+                <input type="hidden" name="_token" value="{{ csrf_token('notifications-read') }}">
+                <button class="btn btn-secondary btn-sm">{{ ui.icon('check', 'size-4') }} Прочитать все</button>
+            </form>
+        {% endif %}
+    </div>
+
+    <div class="table-card">
+        <ul class="divide-y divide-zinc-100">
+            {% for notification in notifications %}
+                <li>{{ include('admin/notification/_item.html.twig') }}</li>
+            {% else %}
+                <li class="px-4 py-12 text-center text-sm text-body-subtle">Уведомлений пока нет</li>
+            {% endfor %}
+        </ul>
+    </div>
+{% endblock %}

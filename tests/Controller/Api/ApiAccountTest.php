@@ -10,6 +10,7 @@ use App\Entity\Lead;
 use App\Entity\LeadItem;
 use App\Entity\MediaPlan;
 use App\Entity\MediaPlanItem;
+use App\Entity\Notification;
 use App\Entity\Payment;
 use App\Entity\PhotoReport;
 use App\Entity\PhotoReportPhoto;
@@ -20,6 +21,7 @@ use App\Entity\RefreshToken;
 use App\Entity\User;
 use App\Enum\ClientDocumentType;
 use App\Enum\ClientType;
+use App\Enum\NotificationType;
 use App\Tests\Controller\Admin\AdminWebTestCase;
 use Symfony\Component\Filesystem\Filesystem;
 
@@ -222,7 +224,8 @@ final class ApiAccountTest extends AdminWebTestCase
 
         $asked = $this->call('POST', '/api/v1/auth/forgot-password', ['email' => ' Anna@CityPark.ru ']);
         self::assertSame(202, $asked['status']);
-        self::assertQueuedEmailCount(1);
+        // sent right away: no worker empties a queue on the hosting
+        self::assertEmailCount(1);
         $email = self::getMailerMessage();
         self::assertEmailAddressContains($email, 'to', 'anna@citypark.ru');
         self::assertEmailHtmlBodyContains($email, 'Сменить пароль');
@@ -327,6 +330,126 @@ final class ApiAccountTest extends AdminWebTestCase
         $reset = $this->call('POST', '/api/v1/auth/reset-password', ['token' => urldecode($match[1]), 'password' => 'brand-new-password']);
 
         self::assertTrue($this->call('GET', '/api/v1/me', token: $reset['body']['token'])['body']['emailVerified']);
+    }
+
+    public function testSignUpAndConfirmationReachStaffAndWelcomeTheClient(): void
+    {
+        $manager = $this->createUser('manager@redbox.local', User::ROLE_SUPER_MANAGER);
+        $agent = $this->createUser('agent@redbox.local', User::ROLE_AGENT);
+
+        $signUp = $this->call('POST', '/api/v1/auth/register', ['name' => 'Анна', 'email' => 'anna@citypark.ru', 'phone' => '+7 983', 'password' => 'long-enough-password', 'agree' => true]);
+        self::assertSame(201, $signUp['status']);
+        self::assertSame(0, $signUp['body']['user']['unreadNotifications']);
+
+        self::assertEmailCount(2);
+        [$confirmation, $staffMail] = self::getMailerMessages();
+        self::assertEmailAddressContains($confirmation, 'to', 'anna@citypark.ru');
+        self::assertEmailSubjectContains($staffMail, 'Новый клиент на сайте: Анна');
+        self::assertEmailAddressContains($staffMail, 'to', 'manager@redbox.local');
+        self::assertEmailAddressContains($staffMail, 'to', 'agent@redbox.local');
+        self::assertEmailHtmlBodyContains($staffMail, 'anna@citypark.ru');
+
+        $client = $this->em->getRepository(User::class)->findOneBy(['email' => 'anna@citypark.ru']);
+        foreach ([$manager, $agent] as $staff) {
+            $bell = $this->notificationsOf($staff);
+            self::assertCount(1, $bell);
+            self::assertSame(NotificationType::ClientRegistered, $bell[0]->getType());
+            self::assertSame('/admin/clients/'.$client->getId(), $bell[0]->getLink());
+        }
+
+        preg_match('~verify-email\?(\S+)~', (string) $confirmation->getTextBody(), $match);
+        parse_str($match[1], $query);
+        self::assertSame(200, $this->call('POST', '/api/v1/auth/verify-email', $query)['status']);
+
+        // a new request: the mailer counts from zero again
+        self::assertEmailCount(2);
+        [$staffMail, $welcome] = self::getMailerMessages();
+        self::assertEmailSubjectContains($staffMail, 'Клиент подтвердил почту');
+        self::assertEmailAddressContains($welcome, 'to', 'anna@citypark.ru');
+        self::assertEmailHtmlBodyContains($welcome, 'http://localhost:3000/account');
+        self::assertSame(NotificationType::ClientEmailVerified, $this->notificationsOf($manager)[0]->getType());
+
+        // the same link once more confirms nothing new: nobody hears about it twice
+        $this->call('POST', '/api/v1/auth/verify-email', $query);
+        self::assertEmailCount(0);
+        self::assertCount(2, $this->notificationsOf($manager));
+
+        $token = $signUp['body']['token'];
+        self::assertSame(1, $this->call('GET', '/api/v1/me', token: $token)['body']['unreadNotifications']);
+        $feed = $this->call('GET', '/api/v1/me/notifications', token: $token)['body'];
+        self::assertSame(1, $feed['unread']);
+        self::assertSame(['welcome', 'Добро пожаловать в личный кабинет', '/account', false], [$feed['items'][0]['type'], $feed['items'][0]['title'], $feed['items'][0]['link'], $feed['items'][0]['read']]);
+
+        self::assertSame(['unread' => 0], $this->call('POST', '/api/v1/me/notifications/read', token: $token)['body']);
+        self::assertTrue($this->call('GET', '/api/v1/me/notifications', token: $token)['body']['items'][0]['read']);
+    }
+
+    public function testOrderReachesStaffAndTheClient(): void
+    {
+        $manager = $this->createUser('manager@redbox.local', User::ROLE_ADMIN);
+        $me = $this->client('anna@citypark.ru');
+        [$side] = $this->plan($me, 'Осень');
+        $token = $this->signIn('anna@citypark.ru');
+
+        $order = $this->call('POST', '/api/v1/orders', [
+            'contactName' => 'Анна', 'phone' => '+7 983 000-00-00', 'email' => 'orders@citypark.ru', 'agree' => true,
+            'items' => [['sideId' => $side->getId(), 'from' => '2026-12-01', 'to' => '2026-12-31']],
+        ], $token);
+        self::assertSame(201, $order['status']);
+        $id = $order['body']['id'];
+
+        // staff: only the bell; the client: an e-mail to the address of the request and a line in the account
+        self::assertEmailCount(1);
+        $email = self::getMailerMessage();
+        self::assertEmailAddressContains($email, 'to', 'orders@citypark.ru');
+        self::assertEmailSubjectContains($email, \sprintf('Заявка №%d принята', $id));
+        self::assertEmailHtmlBodyContains($email, 'Щит на Ленина');
+        self::assertEmailHtmlBodyContains($email, 'http://localhost:3000/account/requests');
+
+        $bell = $this->notificationsOf($manager);
+        self::assertSame(NotificationType::LeadReceived, $bell[0]->getType());
+        self::assertSame('/admin/leads/'.$id, $bell[0]->getLink());
+        self::assertStringContainsString('1 позиция', (string) $bell[0]->getBody());
+
+        $feed = $this->call('GET', '/api/v1/me/notifications', token: $token)['body'];
+        self::assertSame(\sprintf('Заявка №%d принята', $id), $feed['items'][0]['title']);
+        self::assertSame('/account/requests', $feed['items'][0]['link']);
+    }
+
+    public function testOrderOfAVisitorIsConfirmedByEmail(): void
+    {
+        [$side] = $this->plan($this->client('anna@citypark.ru'), 'Осень');
+
+        $this->call('POST', '/api/v1/orders', [
+            'contactName' => 'Борис', 'phone' => '+7 983 000-00-00', 'email' => 'boris@vector.ru', 'agree' => true,
+            'items' => [['sideId' => $side->getId(), 'from' => '2026-12-01', 'to' => '2026-12-31']],
+        ]);
+
+        self::assertEmailCount(1);
+        self::assertEmailAddressContains(self::getMailerMessage(), 'to', 'boris@vector.ru');
+        self::assertEmailHtmlBodyContains(self::getMailerMessage(), 'http://localhost:3000/catalog');
+    }
+
+    public function testClientReadsOnlyTheirOwnNotifications(): void
+    {
+        $anna = $this->client('anna@citypark.ru');
+        $this->client('boris@vector.ru');
+        $hers = new Notification($anna, NotificationType::Welcome, 'Добро пожаловать', null, '/account', new \DateTimeImmutable());
+        $this->em->persist($hers);
+        $this->em->flush();
+
+        $token = $this->signIn('boris@vector.ru');
+        self::assertSame(['unread' => 0, 'items' => []], $this->call('GET', '/api/v1/me/notifications', token: $token)['body']);
+        self::assertSame(404, $this->call('POST', '/api/v1/me/notifications/'.$hers->getId().'/read', token: $token)['status']);
+
+        $token = $this->signIn('anna@citypark.ru');
+        self::assertSame(['unread' => 0], $this->call('POST', '/api/v1/me/notifications/'.$hers->getId().'/read', token: $token)['body']);
+    }
+
+    /** @return list<Notification> newest first */
+    private function notificationsOf(User $user): array
+    {
+        return $this->em->getRepository(Notification::class)->findBy(['recipient' => $user], ['id' => 'DESC']);
     }
 
     private function client(string $email): User

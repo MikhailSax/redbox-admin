@@ -8,12 +8,14 @@ use App\Entity\LeadItem;
 use App\Entity\MediaPlan;
 use App\Entity\MediaPlanItem;
 use App\Entity\MediaPlanServiceLine;
+use App\Entity\Notification;
 use App\Entity\Payment;
 use App\Entity\PhotoReport;
 use App\Entity\PhotoReportPhoto;
 use App\Entity\User;
 use App\Enum\BookingStatus;
 use App\Helpers\ProductHelper;
+use App\Repository\NotificationRepository;
 use App\Service\CityAudience;
 use Symfony\Component\Clock\ClockInterface;
 
@@ -26,6 +28,7 @@ class AccountPresenter
     public function __construct(
         private readonly ClockInterface $clock,
         private readonly CityAudience $audience,
+        private readonly NotificationRepository $notifications,
     ) {
     }
 
@@ -49,6 +52,26 @@ class AccountPresenter
             'kpp' => $user->getKpp(),
             'ogrn' => $user->getOgrn(),
             'legalAddress' => $user->getLegalAddress(),
+            // the badge of the bell in the account's header
+            'unreadNotifications' => null !== $user->getId() ? $this->notifications->countUnread($user) : 0,
+        ];
+    }
+
+    /**
+     * A line of the account's notifications; link is a path of the website ("/account/requests").
+     *
+     * @return array<string, mixed>
+     */
+    public function notification(Notification $notification): array
+    {
+        return [
+            'id' => $notification->getId(),
+            'type' => $notification->getType()->value,
+            'title' => $notification->getTitle(),
+            'body' => $notification->getBody(),
+            'link' => $notification->getLink(),
+            'read' => $notification->isRead(),
+            'createdAt' => $notification->getCreatedAt()->format(\DATE_ATOM),
         ];
     }
 

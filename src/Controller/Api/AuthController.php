@@ -7,6 +7,7 @@ use App\Entity\User;
 use App\Enum\ClientType;
 use App\Service\Api\AccountPresenter;
 use App\Service\EmailVerification;
+use App\Service\Notifications;
 use Doctrine\ORM\EntityManagerInterface;
 use Lexik\Bundle\JWTAuthenticationBundle\Security\Http\Authentication\AuthenticationSuccessHandler;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -61,6 +62,7 @@ final class AuthController extends AbstractController
         ValidatorInterface $validator,
         AccountPresenter $presenter,
         EmailVerification $emailVerification,
+        Notifications $notifications,
         #[Target('registrations')] RateLimiterFactoryInterface $registrationsLimiter,
         #[Autowire(service: 'lexik_jwt_authentication.handler.authentication_success')] AuthenticationSuccessHandler $authenticationSuccess,
     ): Response {
@@ -91,7 +93,9 @@ final class AuthController extends AbstractController
 
         $entityManager->persist($user);
         $entityManager->flush();
+        // a refused e-mail is logged: the account works, and the banner in it sends the link again
         $emailVerification->send($user);
+        $notifications->clientRegistered($user);
 
         // Same body as a sign-in (the refresh token is attached by gesdinet's success listener), plus the profile
         $response = $authenticationSuccess->handleAuthenticationSuccess($user, null, ['user' => $presenter->profile($user)]);

@@ -13,6 +13,7 @@ use App\Service\ClientCardException;
 use App\Service\ClientCards;
 use App\Service\MediaPlanManager;
 use App\Service\MonthCalendar;
+use App\Service\Notifications;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\Clock\ClockInterface;
@@ -38,6 +39,7 @@ final class LeadController extends AbstractController
         private readonly MediaPlanManager $mediaPlans,
         private readonly ClockInterface $clock,
         private readonly ClientCards $clientCards,
+        private readonly Notifications $notifications,
     ) {
     }
 
@@ -100,6 +102,7 @@ final class LeadController extends AbstractController
     public function update(Request $request, Lead $lead): Response
     {
         $payload = $request->getPayload();
+        $before = $lead->getStatus();
         $status = LeadStatus::tryFrom($payload->getString('status'));
         if (null !== $status) {
             $lead->setStatus($status);
@@ -113,6 +116,7 @@ final class LeadController extends AbstractController
         $lead->setManagerNote('' !== $note ? $note : null);
         $lead->touch();
         $this->entityManager->flush();
+        $this->notifications->leadStatusChanged($lead, $before);
         $this->addFlash('success', 'Заявка обновлена');
 
         return $this->redirectToRoute('admin_lead_show', ['id' => $lead->getId()], Response::HTTP_SEE_OTHER);
@@ -176,8 +180,10 @@ final class LeadController extends AbstractController
             $this->mediaPlans->addSide($plan, $item->getSide(), $item->getSlots());
         }
 
+        $before = $lead->getStatus();
         $lead->setMediaPlan($plan)->setStatus(LeadStatus::Quoted)->touch();
         $this->entityManager->flush();
+        $this->notifications->leadStatusChanged($lead, $before);
 
         $this->addFlash('success', \sprintf('Медиаплан создан из заявки №%d — проверьте цены и период', (int) $lead->getId()));
 

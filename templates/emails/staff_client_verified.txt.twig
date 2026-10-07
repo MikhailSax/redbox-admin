@@ -1,0 +1,9 @@
+Клиент подтвердил почту
+
+{{ client.clientTitle }} — почта личного кабинета подтверждена: теперь в кабинет можно выкладывать медиапланы, счета, документы и фотоотчёты.
+
+{{ client.clientType ? client.clientType.label }}
+{{ client.email }}{{ client.phone ? ' · ' ~ client.phone : '' }}
+{{ client.inn ? 'ИНН ' ~ client.inn : '' }}
+
+Карточка клиента: {{ url }}

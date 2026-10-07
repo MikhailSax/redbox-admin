@@ -17,6 +17,8 @@ use App\Repository\PaymentRepository;
 use App\Repository\PhotoReportRepository;
 use App\Repository\UserRepository;
 use App\Security\ClientFileVoter;
+use App\Service\EmailVerification;
+use App\Service\Notifications;
 use App\Service\PrivateFileStorage;
 use Doctrine\ORM\EntityManagerInterface;
 use Gesdinet\JWTRefreshTokenBundle\Model\RevokeRefreshTokenManagerInterface;
@@ -54,6 +56,7 @@ final class ClientController extends AbstractController
         private readonly UserPasswordHasherInterface $passwordHasher,
         private readonly ClockInterface $clock,
         private readonly RevokeRefreshTokenManagerInterface $refreshTokens,
+        private readonly Notifications $notifications,
     ) {
     }
 
@@ -120,11 +123,10 @@ final class ClientController extends AbstractController
     #[Route('/{id}/verify-email', name: 'verify_email', requirements: ['id' => Requirement::DIGITS], methods: ['POST'])]
     #[IsCsrfTokenValid(new Expression('"verify-email-" ~ args["client"].getId()'))]
     #[IsGranted(User::ROLE_SUPER_MANAGER)]
-    public function verifyEmail(User $client): Response
+    public function verifyEmail(User $client, EmailVerification $verification): Response
     {
         $this->assertClient($client);
-        $client->markEmailVerified($this->clock->now());
-        $this->entityManager->flush();
+        $verification->markVerified($client);
         $this->addFlash('success', \sprintf('Почта %s подтверждена — клиенту можно выкладывать документы и оформлять медиапланы', $client->getEmail()));
 
         return $this->redirectToRoute('admin_client_show', ['id' => $client->getId()], Response::HTTP_SEE_OTHER);
@@ -153,6 +155,7 @@ final class ClientController extends AbstractController
                 $this->entityManager->persist($document);
             }
             $this->entityManager->flush();
+            $this->notifications->documentsAdded($client, $upload->type, \count($upload->files));
             $this->addFlash('success', \sprintf('Загружено документов: %d. Клиент увидит их в личном кабинете.', \count($upload->files)));
         } else {
             $this->flashErrors($form);
@@ -211,6 +214,7 @@ final class ClientController extends AbstractController
             $report->setUploadedBy($this->currentUser());
             $this->entityManager->persist($report);
             $this->entityManager->flush();
+            $this->notifications->photoReportAdded($report);
             $this->addFlash('success', \sprintf('Фотоотчёт «%s» добавлен: фото — %d', $report->getTitle(), \count($photos)));
         } else {
             $this->flashErrors($form);

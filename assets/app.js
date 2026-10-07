@@ -26,6 +26,7 @@ import './admin/booking-client.js';
 import './admin/booking-grid.js';
 import './admin/sidebar.js';
 import './admin/checklist-filter.js';
+import './admin/notifications.js';
 
 // Map widgets (Yandex Maps) are only fetched on pages that show a map
 if (document.querySelector('[data-map], [data-coordinate-picker]')) {

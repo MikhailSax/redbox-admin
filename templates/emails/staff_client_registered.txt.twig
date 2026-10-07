@@ -1,0 +1,9 @@
+Новый клиент на сайте
+
+{{ client.clientTitle }} — новая регистрация в личном кабинете. Почта ещё не подтверждена: документы и медиапланы можно будет выложить после подтверждения.
+
+{{ client.clientType ? client.clientType.label }}
+{{ client.email }}{{ client.phone ? ' · ' ~ client.phone : '' }}
+{{ client.inn ? 'ИНН ' ~ client.inn : '' }}
+
+Карточка клиента: {{ url }}

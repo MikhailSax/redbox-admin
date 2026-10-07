@@ -6,11 +6,13 @@ use App\Dto\Api\PasswordRequest;
 use App\Dto\Api\ProfileRequest;
 use App\Entity\ClientDocument;
 use App\Entity\MediaPlan;
+use App\Entity\Notification;
 use App\Entity\PhotoReportPhoto;
 use App\Entity\User;
 use App\Repository\ClientDocumentRepository;
 use App\Repository\LeadRepository;
 use App\Repository\MediaPlanRepository;
+use App\Repository\NotificationRepository;
 use App\Repository\PaymentRepository;
 use App\Repository\PhotoReportRepository;
 use App\Security\ClientFileVoter;
@@ -20,6 +22,7 @@ use App\Service\PrivateFileStorage;
 use Doctrine\ORM\EntityManagerInterface;
 use Gesdinet\JWTRefreshTokenBundle\Model\RevokeRefreshTokenManagerInterface;
 use Lexik\Bundle\JWTAuthenticationBundle\Security\Http\Authentication\AuthenticationSuccessHandler;
+use Symfony\Component\Clock\ClockInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
@@ -155,6 +158,37 @@ final class AccountController extends AbstractController
     public function reports(#[CurrentUser] User $user, PhotoReportRepository $reports): JsonResponse
     {
         return $this->json(array_map($this->presenter->report(...), $reports->findForClient($user)));
+    }
+
+    /** {"unread": n, "items": [...]}: the latest 50, newest first */
+    #[Route('/notifications', name: 'notifications', methods: ['GET'])]
+    public function notifications(#[CurrentUser] User $user, NotificationRepository $notifications): JsonResponse
+    {
+        return $this->json([
+            'unread' => $notifications->countUnread($user),
+            'items' => array_map($this->presenter->notification(...), $notifications->findLatest($user)),
+        ]);
+    }
+
+    /** Marks every notification read (the account does it once the list has been shown) */
+    #[Route('/notifications/read', name: 'notifications_read', methods: ['POST'])]
+    public function readNotifications(#[CurrentUser] User $user, NotificationRepository $notifications, ClockInterface $clock): JsonResponse
+    {
+        $notifications->markAllRead($user, $clock->now());
+
+        return $this->json(['unread' => 0]);
+    }
+
+    #[Route('/notifications/{id}/read', name: 'notification_read', requirements: ['id' => Requirement::DIGITS], methods: ['POST'])]
+    public function readNotification(#[CurrentUser] User $user, Notification $notification, ClockInterface $clock, EntityManagerInterface $entityManager, NotificationRepository $notifications): JsonResponse
+    {
+        if ($notification->getRecipient()->getId() !== $user->getId()) {
+            throw $this->createNotFoundException('Уведомление не найдено');
+        }
+        $notification->markRead($clock->now());
+        $entityManager->flush();
+
+        return $this->json(['unread' => $notifications->countUnread($user)]);
     }
 
     #[Route('/photos/{photo}', name: 'photo', requirements: ['photo' => Requirement::DIGITS], methods: ['GET'])]

@@ -16,6 +16,7 @@ use App\Entity\ProductSide;
 use App\Entity\ProductSidePhoto;
 use App\Entity\Lead;
 use App\Entity\LeadItem;
+use App\Entity\Notification;
 use App\Entity\ProductType;
 use App\Entity\ClientDocument;
 use App\Entity\PhotoReport;
@@ -56,7 +57,7 @@ abstract class AdminWebTestCase extends WebTestCase
         // Login throttling state lives in a filesystem cache: reset it so failed logins don't leak between tests
         $container->get('cache.rate_limiter')->clear();
 
-        foreach ([Payment::class, LeadItem::class, Lead::class, MediaPlanServiceLine::class, MediaPlanItem::class, MediaPlan::class, Promotion::class, AdditionalService::class, PhotoReportPhoto::class, PhotoReport::class, ClientDocument::class, Booking::class, ProductSidePhoto::class, ProductSide::class, Product::class, Partner::class, ProductType::class, Category::class, District::class, User::class] as $class) {
+        foreach ([Notification::class, Payment::class, LeadItem::class, Lead::class, MediaPlanServiceLine::class, MediaPlanItem::class, MediaPlan::class, Promotion::class, AdditionalService::class, PhotoReportPhoto::class, PhotoReport::class, ClientDocument::class, Booking::class, ProductSidePhoto::class, ProductSide::class, Product::class, Partner::class, ProductType::class, Category::class, District::class, User::class] as $class) {
             $this->em->createQuery(\sprintf('DELETE FROM %s e', $class))->execute();
         }
 

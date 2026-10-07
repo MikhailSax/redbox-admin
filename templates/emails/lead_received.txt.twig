@@ -1,0 +1,15 @@
+Здравствуйте{{ name ? ', ' ~ name : '' }}!
+
+Заявка №{{ lead.id }} принята. Менеджер проверит, свободны ли конструкции в эти даты, и свяжется с вами.
+
+{% for item in lead.items %}
+- {{ item.productTitle }}{{ item.sideName ? ' · ' ~ item.sideName : '' }}, {{ item.startDate|date('d.m.Y') }} — {{ item.endDate|date('d.m.Y') }}
+{% endfor %}
+
+По прайсу: {{ lead.estimate|money }}
+Итоговую цену менеджер пришлёт в медиаплане: в ней будут скидки и услуги.
+
+{{ button }}: {{ url }}
+
+--
+Отдел размещения REDBOX · 8 (983) 436-67-77 · sales@redbox03.ru

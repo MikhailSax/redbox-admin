@@ -1,0 +1,17 @@
+{% extends 'emails/_layout.html.twig' %}
+
+{% set button = 'Карточка клиента' %}
+
+{% block kicker %}CRM{% endblock %}
+
+{% block title %}Клиент подтвердил почту{% endblock %}
+
+{% block body %}
+    <p style="margin:0 0 14px;font-size:15px;line-height:1.55"><b>{{ client.clientTitle }}</b> — почта личного кабинета подтверждена: теперь в кабинет можно выкладывать медиапланы, счета, документы и фотоотчёты.</p>
+    <p style="margin:0 0 14px;font-size:14px;line-height:1.6;color:#6b6866">
+        {% if client.clientType %}{{ client.clientType.label }}<br>{% endif %}
+        {% if client.name and client.name != client.clientTitle %}{{ client.name }}<br>{% endif %}
+        {{ client.email }}{% if client.phone %} · {{ client.phone }}{% endif %}
+        {% if client.inn %}<br>ИНН {{ client.inn }}{% endif %}
+    </p>
+{% endblock %}

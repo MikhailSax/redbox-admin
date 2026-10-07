@@ -1,0 +1,28 @@
+{# The bell of the top bar (NotificationController): unread badge and the latest few; assets/admin/notifications.js refreshes the badge #}
+{% import 'admin/_icons.html.twig' as ui %}
+{% set bell = admin_notifications() %}
+<button type="button" id="notifications-button" data-dropdown-toggle="notifications-menu" data-dropdown-placement="bottom-end"
+        class="relative grid size-9 place-items-center rounded-lg text-body hover:bg-zinc-100" aria-label="Уведомления">
+    {{ ui.icon('bell') }}
+    <span data-notifications-badge data-url="{{ path('admin_notification_unread') }}"
+          class="absolute -right-0.5 -top-0.5 min-w-4.5 rounded-full bg-red-600 px-1 text-center text-[11px] font-semibold leading-4.5 text-white {{ bell.unread ? '' : 'hidden' }}">{{ bell.unread > 99 ? '99+' : bell.unread }}</span>
+</button>
+<div id="notifications-menu" class="z-40 hidden w-96 max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-default bg-white shadow-lg ring-1 ring-black/5">
+    <div class="flex items-center justify-between border-b border-default px-4 py-2.5">
+        <span class="text-sm font-semibold text-heading">Уведомления</span>
+        {% if bell.unread %}
+            <form method="post" action="{{ path('admin_notification_read_all') }}">
+                <input type="hidden" name="_token" value="{{ csrf_token('notifications-read') }}">
+                <button class="text-xs font-medium text-fg-brand hover:underline">Прочитать все</button>
+            </form>
+        {% endif %}
+    </div>
+    <ul class="max-h-[60vh] divide-y divide-zinc-100 overflow-y-auto">
+        {% for notification in bell.latest %}
+            <li>{{ include('admin/notification/_item.html.twig') }}</li>
+        {% else %}
+            <li class="px-4 py-8 text-center text-sm text-body-subtle">Уведомлений пока нет</li>
+        {% endfor %}
+    </ul>
+    <a href="{{ path('admin_notification_index') }}" class="block border-t border-default px-4 py-2.5 text-center text-sm font-medium text-heading hover:bg-zinc-50">Все уведомления</a>
+</div>

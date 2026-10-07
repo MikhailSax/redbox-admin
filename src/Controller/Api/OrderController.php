@@ -10,6 +10,7 @@ use App\Entity\ProductSide;
 use App\Entity\User;
 use App\Service\MediaPlanManager;
 use App\Service\MonthCalendar;
+use App\Service\Notifications;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\DependencyInjection\Attribute\Target;
@@ -31,6 +32,7 @@ final class OrderController extends AbstractController
         private readonly EntityManagerInterface $entityManager,
         #[Target('orders')]
         private readonly RateLimiterFactoryInterface $ordersLimiter,
+        private readonly Notifications $notifications,
     ) {
     }
 
@@ -81,6 +83,7 @@ final class OrderController extends AbstractController
 
         $this->entityManager->persist($lead);
         $this->entityManager->flush();
+        $this->notifications->leadReceived($lead);
 
         return $this->json([
             'id' => $lead->getId(),

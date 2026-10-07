@@ -86,7 +86,7 @@ cat > .env.prod.local <<'EOF'
 APP_SECRET=ЗАМЕНИТЕ
 DATABASE_URL="mysql://ПОЛЬЗОВАТЕЛЬ:ПАРОЛЬ@localhost:3306/БАЗА?serverVersion=8.0&charset=utf8mb4"
 JWT_PASSPHRASE=ЗАМЕНИТЕ
-MAILER_DSN=smtp://noreply%40sibiradm.ru:ПАРОЛЬ@ВАШ_SMTP:465?encryption=ssl
+MAILER_DSN=smtps://noreply%40sibiradm.ru:ПАРОЛЬ@mail.hosting.reg.ru:465
 YANDEX_MAPS_API_KEY=КЛЮЧ_ЯНДЕКС_КАРТ
 EOF
 chmod 600 .env.prod.local
@@ -96,6 +96,12 @@ chmod 600 .env.prod.local
   Значения из `.env` — только для разработки, в прод их переносить нельзя.
 - `serverVersion` укажите свой: для MariaDB, например, `10.11.2-MariaDB`.
 - `YANDEX_MAPS_API_KEY` — тот же ключ, что в вашем локальном `.env.local`.
+- `MAILER_DSN` — ящик, с которого уходят письма (подтверждение почты, восстановление пароля, «заявка
+  принята», письма менеджерам о новых клиентах). Создайте его в панели reg.ru («Почта» → ящик
+  `noreply@sibiradm.ru`). Схема `smtps://` и порт 465 — SSL; `@` в логине пишется как `%40`, спецсимволы
+  пароля тоже кодируются (`php -r 'echo rawurlencode("ПАРОЛЬ"), "\n";'`). Адрес отправителя
+  `MAILER_FROM` в `.env.prod` должен быть этим же ящиком, иначе сервер отклонит письмо.
+  Письма уходят сразу, без очереди: воркер на хостинге не нужен. Проверка — шаг 5.
 - Пока сайта на Next.js нет, `WEBSITE_URL` и `CORS_ALLOW_ORIGIN` из `.env.prod` менять не нужно.
   Когда домен сайта появится, добавьте его в `CORS_ALLOW_ORIGIN` (это регулярное выражение) и
   поставьте в `WEBSITE_URL` — по нему строятся ссылки в письмах о восстановлении пароля.
@@ -164,6 +170,8 @@ chmod -R ug+rwX var public/uploads
 - `https://sibiradm.ru/.env` и `https://sibiradm.ru/var/log/prod.log` отдают 403 или 404.
 - На странице «Карта» видны конструкции — значит, ключ Яндекса принят.
 - В карточке клиента открывается документ — значит, доступ к приватному хранилищу работает.
+- `php bin/console app:mail:test ваш@ящик.ru --env=prod` пишет «Письмо принято SMTP-сервером», и
+  письмо пришло (загляните в «Спам»). Если нет — команда покажет ответ SMTP-сервера.
 - В `var/log/prod.log` нет ошибок.
 - `php bin/console about` показывает `Environment: prod` и `Debug: false` — значит, `.env.local` подхватился.
 
@@ -203,7 +211,7 @@ tar czf ~/backups/files-$(date +%F).tar.gz public/uploads var/storage
 | «Invalid Host» | Домен не совпал с `APP_TRUSTED_HOSTS` в `.env.prod` |
 | Стили и скрипты не грузятся | Не залит `public/build` (шаг 4.6) |
 | «The "intl" extension is required» | В панели не включено расширение `intl` |
-| Не приходят письма | Проверьте `MAILER_DSN`; у reg.ru бывает закрыт 25-й порт, используйте 465 с SSL |
+| Не приходят письма | `php bin/console app:mail:test ваш@ящик.ru --env=prod` покажет ошибку SMTP. Частые причины: закрыт 25-й порт (нужен `smtps://…:465`), `MAILER_FROM` не совпадает с ящиком, неэкранированный пароль. Неотправленные письма видны в `var/log/prod.log` («was not sent») |
 | Внизу страницы видна панель отладки, в ответах есть трассировки | Сервер работает в dev: проверьте, что в `.env.local` написано `APP_ENV=prod`, затем `cache:clear --env=prod` |
 | Изменения не видны | `php bin/console cache:clear --env=prod`, при включённом opcache — перезапуск PHP в панели |
 | Права на запись | `chmod -R ug+rwX var public/uploads` |

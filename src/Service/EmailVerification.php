@@ -4,11 +4,11 @@ namespace App\Service;
 
 use App\Entity\User;
 use App\Repository\UserRepository;
+use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bridge\Twig\Mime\TemplatedEmail;
 use Symfony\Component\Clock\ClockInterface;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\HttpFoundation\Request;
-use Symfony\Component\Mailer\MailerInterface;
 use Symfony\Component\Mime\Address;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 use SymfonyCasts\Bundle\VerifyEmail\Exception\ExpiredSignatureException;
@@ -32,22 +32,25 @@ class EmailVerification
 
     public function __construct(
         private readonly VerifyEmailHelperInterface $helper,
-        private readonly MailerInterface $mailer,
+        private readonly MailSender $mail,
+        private readonly Notifications $notifications,
+        private readonly EntityManagerInterface $entityManager,
         private readonly UrlGeneratorInterface $urls,
         private readonly UserRepository $users,
         private readonly ClockInterface $clock,
         #[Autowire('%env(WEBSITE_URL)%')] private readonly string $websiteUrl,
-        #[Autowire('%env(MAILER_FROM)%')] private readonly string $from,
     ) {
     }
 
-    public function send(User $user): void
+    /**
+     * @return bool false when the SMTP server did not take the e-mail (it is logged; the client can ask again)
+     */
+    public function send(User $user): bool
     {
         $signature = $this->helper->generateSignature(self::ROUTE, (string) $user->getId(), (string) $user->getEmail(), ['id' => $user->getId()]);
         $query = (string) parse_url($signature->getSignedUrl(), \PHP_URL_QUERY);
 
-        $this->mailer->send((new TemplatedEmail())
-            ->from(Address::create($this->from))
+        return $this->mail->send((new TemplatedEmail())
             ->to(new Address((string) $user->getEmail(), (string) $user->getName()))
             ->subject('Подтвердите почту — REDBOX')
             ->htmlTemplate('emails/verify_email.html.twig')
@@ -78,7 +81,24 @@ class EmailVerification
         $signed = Request::create($this->urls->generate(self::ROUTE, [], UrlGeneratorInterface::ABSOLUTE_URL).'?'.http_build_query($query));
         $this->helper->validateEmailConfirmationFromRequest($signed, (string) $user->getId(), (string) $user->getEmail());
 
-        return $user->markEmailVerified($this->clock->now());
+        return $this->markVerified($user);
+    }
+
+    /**
+     * Confirms the e-mail (by the link, by a password reset, or by a manager who checked it with the client)
+     * and saves it; the first time, staff hear about it and the client gets a welcome.
+     */
+    public function markVerified(User $user): User
+    {
+        $first = !$user->isEmailVerified();
+        $user->markEmailVerified($this->clock->now());
+        $this->entityManager->flush();
+
+        if ($first) {
+            $this->notifications->clientEmailVerified($user);
+        }
+
+        return $user;
     }
 
     public static function isExpired(VerifyEmailExceptionInterface $exception): bool

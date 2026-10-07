@@ -4,7 +4,6 @@ namespace App\Controller\Api;
 
 use App\Entity\User;
 use App\Service\EmailVerification;
-use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\DependencyInjection\Attribute\Target;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -22,7 +21,6 @@ final class EmailVerificationController extends AbstractController
 {
     public function __construct(
         private readonly EmailVerification $verification,
-        private readonly EntityManagerInterface $entityManager,
     ) {
     }
 
@@ -43,7 +41,6 @@ final class EmailVerificationController extends AbstractController
                     : 'Ссылка недействительна: её могли скопировать не полностью или почта аккаунта изменилась. Войдите в кабинет и отправьте письмо ещё раз.',
             ], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
-        $this->entityManager->flush();
 
         return $this->json(['message' => \sprintf('Почта %s подтверждена', $user->getEmail()), 'email' => $user->getEmail()]);
     }
@@ -64,7 +61,12 @@ final class EmailVerificationController extends AbstractController
             ], Response::HTTP_TOO_MANY_REQUESTS);
         }
 
-        $this->verification->send($user);
+        if (!$this->verification->send($user)) {
+            return $this->json([
+                'error' => 'mail_unavailable',
+                'message' => 'Не получилось отправить письмо. Попробуйте через несколько минут или позвоните нам.',
+            ], Response::HTTP_SERVICE_UNAVAILABLE);
+        }
 
         return $this->json(['message' => \sprintf('Письмо со ссылкой отправлено на %s', $user->getEmail())], Response::HTTP_ACCEPTED);
     }

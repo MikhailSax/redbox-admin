@@ -22,6 +22,7 @@
             </button>
 
             <div class="ms-auto flex shrink-0 items-center gap-2">
+                {{ include('admin/_notifications_bell.html.twig') }}
                 {% if is_granted('ROLE_SUPER_MANAGER') %}
                     <a href="{{ path('admin_product_new') }}" class="btn btn-primary btn-sm">
                         {{ ui.icon('plus', 'size-4') }}<span class="hidden sm:inline">Конструкция</span>

@@ -6,11 +6,14 @@ use App\Entity\Booking;
 use App\Entity\MediaPlanItem;
 use App\Entity\Product;
 use App\Entity\Promotion;
+use App\Entity\User;
 use App\Enum\BookingMode;
 use App\Repository\BookingRepository;
 use App\Repository\LeadRepository;
+use App\Repository\NotificationRepository;
 use App\Repository\PaymentRepository;
 use App\Service\PromotionResolver;
+use Symfony\Bundle\SecurityBundle\Security;
 use Symfony\Component\Clock\ClockInterface;
 use Twig\Attribute\AsTwigFilter;
 use Twig\Attribute\AsTwigFunction;
@@ -26,6 +29,8 @@ class AdminExtension
         private readonly PaymentRepository $payments,
         private readonly ClockInterface $clock,
         private readonly PromotionResolver $promotions,
+        private readonly NotificationRepository $notifications,
+        private readonly Security $security,
     ) {
     }
 
@@ -41,6 +46,25 @@ class AdminExtension
             'leads' => $this->leads->countNew(),
             'holds' => $this->bookings->countLiveHolds($this->clock->now()),
             'overduePayments' => $this->payments->countOverdue($this->clock->now()),
+        ];
+    }
+
+    /**
+     * The bell of the top bar: how many are unread and the latest few.
+     *
+     * @return array{unread: int, latest: list<\App\Entity\Notification>}
+     */
+    #[AsTwigFunction('admin_notifications')]
+    public function notifications(int $limit = 8): array
+    {
+        $user = $this->security->getUser();
+        if (!$user instanceof User) {
+            return ['unread' => 0, 'latest' => []];
+        }
+
+        return [
+            'unread' => $this->notifications->countUnread($user),
+            'latest' => $this->notifications->findLatest($user, $limit),
         ];
     }
 
