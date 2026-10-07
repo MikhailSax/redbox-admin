@@ -53,6 +53,7 @@
                 {% if is_manager %}
                     {{ _self.nav_item('Брони', path('admin_booking_index'), 'calendar', current_route == 'admin_booking_index', counters.holds ?: null, 'warning') }}
                     {{ _self.nav_item('Платежи', path('admin_payment_index'), 'banknotes', current_route starts with 'admin_payment_', counters.overduePayments ?: null, 'danger') }}
+                    {{ _self.nav_item('Отчёты', path('admin_report_index'), 'chart', current_route starts with 'admin_report_') }}
                 {% endif %}
                 {{ _self.nav_item('Медиапланы', path('admin_media_plan_index'), 'document', current_route starts with 'admin_media_plan_') }}
                 {{ _self.nav_item('Заявки', path('admin_lead_index'), 'inbox', current_route starts with 'admin_lead_', counters.leads ?: null, 'warning') }}

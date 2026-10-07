@@ -1,0 +1,176 @@
+{% extends 'admin/layout.html.twig' %}
+{% import 'admin/_icons.html.twig' as ui %}
+
+{% macro rub(amount) %}{{ amount|number_format(0, ',', ' ') }}&nbsp;₽{% endmacro %}
+
+{% block title %}Отчёты — {{ parent() }}{% endblock %}
+
+{% block content %}
+    <div class="page-header">
+        <div>
+            <h1 class="page-title">Отчёты</h1>
+            <p class="page-subtitle">Продажа — бронь, подтверждённая или оплаченная за период и не отменённая. Сумма — «Продано за» и услуги, целиком в месяц подтверждения.</p>
+        </div>
+    </div>
+
+    {# The period: a preset or months from — to; applied as you choose (assets/admin/live-filter.js) #}
+    <form method="get" action="{{ path('admin_report_index') }}" data-live-filter="report-results" class="mb-5 flex flex-wrap items-center gap-2">
+        <select name="from" class="filter" aria-label="С месяца">
+            {% for m in months %}
+                <option value="{{ m|date('Y-m') }}" {{ m|date('Y-m') == from|date('Y-m') ? 'selected' }}>с {{ m|month_label|lower }}</option>
+            {% endfor %}
+        </select>
+        <select name="to" class="filter" aria-label="По месяц">
+            {% for m in months %}
+                <option value="{{ m|date('Y-m') }}" {{ m|date('Y-m') == to|date('Y-m') ? 'selected' }}>по {{ m|month_label|lower }}</option>
+            {% endfor %}
+        </select>
+        <noscript><button type="submit" class="btn btn-primary">Показать</button></noscript>
+    </form>
+
+    <div id="report-results">
+        {% block results %}
+            {% import _self as fmt %}
+            {% import 'admin/_icons.html.twig' as ui %}
+            <div class="mb-6 flex flex-wrap gap-2">
+                {% for label, range in presets %}
+                    {% set on = range[0]|date('Y-m') == from|date('Y-m') and range[1]|date('Y-m') == to|date('Y-m') %}
+                    <a href="{{ path('admin_report_index', {from: range[0]|date('Y-m'), to: range[1]|date('Y-m')}) }}" data-live-link class="chip {{ on ? 'chip-on' }}">{{ label }}</a>
+                {% endfor %}
+            </div>
+
+            {# Totals of the period #}
+            <dl class="mb-8 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                {% for tile in [
+                    {label: 'Продаж', value: totals.sales, hint: totals.unpriced ? 'без суммы: ' ~ totals.unpriced : null},
+                    {label: 'Продано на', value: fmt.rub(totals.total), hint: 'размещение ' ~ totals.placement|number_format(0, ',', ' ') ~ ' ₽ · услуги ' ~ totals.services|number_format(0, ',', ' ') ~ ' ₽'},
+                    {label: 'Оплачено', value: fmt.rub(totals.paid), hint: totals.total > 0 ? (totals.paid * 100 / totals.total)|round ~ '% от проданного' : null},
+                    {label: 'Средний чек', value: fmt.rub(totals.average), hint: null},
+                    {label: 'Продавались конструкции', value: totals.products ~ ' из ' ~ totals.allProducts, hint: totals.allProducts ? (totals.products * 100 / totals.allProducts)|round ~ '% конструкций' : null},
+                ] %}
+                    <div class="rounded-md bg-zinc-100 px-4 py-3" data-total="{{ loop.index }}">
+                        <dt class="text-xs font-semibold text-body-subtle">{{ tile.label }}</dt>
+                        <dd class="mt-1 text-xl font-semibold tabular-nums text-heading">{{ tile.value }}</dd>
+                        {% if tile.hint %}<dd class="mt-0.5 text-xs text-body">{{ tile.hint }}</dd>{% endif %}
+                    </div>
+                {% endfor %}
+            </dl>
+
+            {# By structure #}
+            <h2 class="mb-2 text-lg font-semibold text-heading">По конструкциям</h2>
+            <div class="table-card mb-3">
+                <table class="data-table" id="report-products">
+                    <thead>
+                        <tr>
+                            <th scope="col" class="px-3">Конструкция</th>
+                            <th scope="col" class="px-3">Стороны</th>
+                            <th scope="col" class="px-3 text-right">Продаж</th>
+                            <th scope="col" class="px-3 text-right" title="Статика — месяцев сторон, экраны — дней эфира">Срок</th>
+                            <th scope="col" class="px-3 text-right">Размещение</th>
+                            <th scope="col" class="px-3 text-right">Услуги</th>
+                            <th scope="col" class="px-3 text-right">Итого</th>
+                            <th scope="col" class="px-3">Доля</th>
+                            <th scope="col" class="px-3 text-right">Оплачено</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in products %}
+                            <tr>
+                                <th scope="row" class="px-3 font-normal">
+                                    <a href="{{ path('admin_booking_product', {id: row.product.id}) }}" class="font-medium text-heading hover:underline">{{ row.product.name }}</a>
+                                    <div class="text-xs text-body-subtle">{{ row.product.typeLabel }}{% if row.product.district %} · {{ row.product.district.name }}{% endif %}</div>
+                                </th>
+                                <td class="px-3">
+                                    <div class="flex gap-1">
+                                        {% for side in row.sides %}<span class="inline-flex h-5 min-w-5 items-center justify-center rounded-sm bg-zinc-100 px-1 text-xs font-semibold text-heading">{{ side }}</span>{% endfor %}
+                                    </div>
+                                </td>
+                                <td class="px-3 text-right tabular-nums">{{ row.sales }}</td>
+                                <td class="px-3 text-right tabular-nums whitespace-nowrap">
+                                    {%- if row.months %}{{ row.months }} мес.{% endif -%}
+                                    {%- if row.months and row.airtimeDays %}<br>{% endif -%}
+                                    {%- if row.airtimeDays %}{{ row.airtimeDays }} дн. эфира{% endif -%}
+                                </td>
+                                <td class="px-3 text-right tabular-nums whitespace-nowrap">
+                                    {{ fmt.rub(row.placement) }}
+                                    {% if row.unpriced %}<div class="text-xs text-fg-warning">без суммы: {{ row.unpriced }}</div>{% endif %}
+                                </td>
+                                <td class="px-3 text-right tabular-nums whitespace-nowrap">{{ row.services ? fmt.rub(row.services) : '—' }}</td>
+                                <td class="px-3 text-right font-semibold tabular-nums text-heading whitespace-nowrap">{{ fmt.rub(row.total) }}</td>
+                                <td class="px-3">
+                                    <div class="flex items-center gap-2" title="Доля в проданном за период">
+                                        <div class="h-1.5 w-20 overflow-hidden rounded-full bg-zinc-200"><div class="h-full bg-zinc-800" style="width: {{ row.share|round(1) }}%"></div></div>
+                                        <span class="text-xs tabular-nums text-body">{{ row.share|round }}%</span>
+                                    </div>
+                                </td>
+                                <td class="px-3 text-right tabular-nums whitespace-nowrap {{ row.paid < row.total ? 'text-fg-warning' : 'text-fg-success-strong' }}">{{ fmt.rub(row.paid) }}</td>
+                            </tr>
+                        {% else %}
+                            <tr>
+                                <td colspan="9" class="px-4 py-12 text-center">
+                                    <span class="mx-auto mb-3 grid size-12 place-items-center rounded-full bg-zinc-100 text-zinc-400">{{ ui.icon('chart') }}</span>
+                                    <p class="font-medium text-heading">За этот период продаж нет</p>
+                                    <p class="mt-1 text-sm text-body">Продажа появляется здесь, когда бронь подтверждают или отмечают оплату.</p>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            {% if idle is not empty %}
+                <details class="mb-8 text-sm">
+                    <summary class="cursor-pointer font-medium text-body hover:text-heading">Не продавались за период: {{ idle|length|plural('конструкция', 'конструкции', 'конструкций') }}</summary>
+                    <ul class="mt-2 columns-1 gap-6 sm:columns-2 xl:columns-3">
+                        {% for product in idle %}
+                            <li class="py-0.5"><a href="{{ path('admin_booking_product', {id: product.id}) }}" class="text-heading hover:underline">{{ product.name }}</a></li>
+                        {% endfor %}
+                    </ul>
+                </details>
+            {% else %}
+                <div class="mb-8"></div>
+            {% endif %}
+
+            {# By who made the booking #}
+            <h2 class="mb-2 text-lg font-semibold text-heading">По менеджерам</h2>
+            <div class="table-card">
+                <table class="data-table" id="report-managers">
+                    <thead>
+                        <tr>
+                            <th scope="col" class="px-3">Оформил</th>
+                            <th scope="col" class="px-3 text-right">Продаж</th>
+                            <th scope="col" class="px-3 text-right">Продано на</th>
+                            <th scope="col" class="px-3 text-right">Оплачено</th>
+                            <th scope="col" class="px-3 text-right">Средний чек</th>
+                            <th scope="col" class="px-3 text-right" title="Брони, которые сгорели за период: их не подтвердили за 24 часа">Сгорело броней</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in managers %}
+                            <tr>
+                                <th scope="row" class="px-3 font-normal">
+                                    <span class="flex items-center gap-2">
+                                        {% if row.user %}
+                                            <span class="avatar">{{ row.user.name|initials }}</span>
+                                            <span class="font-medium text-heading">{{ row.user.name ?: row.user.email }}</span>
+                                        {% else %}
+                                            <span class="avatar">—</span>
+                                            <span class="text-body" title="Импортированные брони и брони, оформленные без менеджера">Без менеджера</span>
+                                        {% endif %}
+                                    </span>
+                                </th>
+                                <td class="px-3 text-right tabular-nums">{{ row.sales }}</td>
+                                <td class="px-3 text-right font-semibold tabular-nums text-heading whitespace-nowrap">{{ fmt.rub(row.total) }}</td>
+                                <td class="px-3 text-right tabular-nums whitespace-nowrap">{{ fmt.rub(row.paid) }}</td>
+                                <td class="px-3 text-right tabular-nums whitespace-nowrap">{{ row.sales ? fmt.rub(row.average) : '—' }}</td>
+                                <td class="px-3 text-right tabular-nums {{ row.burned ? 'text-fg-danger-strong' : 'text-body-subtle' }}">{{ row.burned }}</td>
+                            </tr>
+                        {% else %}
+                            <tr><td colspan="6" class="px-4 py-8 text-center text-body">За этот период продаж нет.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% endblock %}
+    </div>
+{% endblock %}
