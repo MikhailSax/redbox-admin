@@ -4,13 +4,15 @@ namespace App\Entity;
 
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
+use Symfony\Component\Validator\Constraints as Assert;
 
 /**
  * One side the visitor put in the cart, with the period and the price they were shown.
  * The structure and the side are kept as text too, so an old request still reads well
- * after the structure is renamed or removed.
+ * after the structure is renamed or removed. A manager may correct the period and the slots later.
  */
 #[ORM\Entity]
+#[Assert\Expression('this.getEndDate() >= this.getStartDate()', message: 'Период заканчивается раньше, чем начинается')]
 class LeadItem
 {
     #[ORM\Id]
@@ -41,6 +43,7 @@ class LeadItem
 
     /** Slots of the screen's block, for airtime sides */
     #[ORM\Column(nullable: true)]
+    #[Assert\Positive(message: 'Слотов должно быть больше нуля')]
     private ?int $slots;
 
     /** Price per month shown on the website, rubles */
@@ -107,9 +110,23 @@ class LeadItem
         return $this->startDate;
     }
 
+    public function setStartDate(\DateTimeImmutable $startDate): static
+    {
+        $this->startDate = $startDate->setTime(0, 0);
+
+        return $this;
+    }
+
     public function getEndDate(): \DateTimeImmutable
     {
         return $this->endDate;
+    }
+
+    public function setEndDate(\DateTimeImmutable $endDate): static
+    {
+        $this->endDate = $endDate->setTime(0, 0);
+
+        return $this;
     }
 
     public function getDays(): int
@@ -120,6 +137,13 @@ class LeadItem
     public function getSlots(): ?int
     {
         return $this->slots;
+    }
+
+    public function setSlots(?int $slots): static
+    {
+        $this->slots = $slots;
+
+        return $this;
     }
 
     public function getMonthlyPrice(): ?float

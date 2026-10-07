@@ -7,6 +7,7 @@ use App\Entity\LeadItem;
 use App\Entity\MediaPlan;
 use App\Entity\User;
 use App\Enum\LeadStatus;
+use App\Form\LeadFormType;
 use App\Repository\LeadRepository;
 use App\Service\ClientCardException;
 use App\Service\ClientCards;
@@ -65,6 +66,29 @@ final class LeadController extends AbstractController
             'lead' => $lead,
             'statuses' => LeadStatus::cases(),
             'managers' => $this->entityManager->getRepository(User::class)->findStaff(),
+        ]);
+    }
+
+    /**
+     * The request itself, corrected: contacts, requisites, payment, the comment, the positions' periods and slots.
+     */
+    #[Route('/{id}/edit', name: 'edit', requirements: ['id' => Requirement::DIGITS], methods: ['GET', 'POST'])]
+    public function edit(Request $request, Lead $lead): Response
+    {
+        $form = $this->createForm(LeadFormType::class, $lead);
+        $form->handleRequest($request);
+
+        if ($form->isSubmitted() && $form->isValid()) {
+            $lead->touch();
+            $this->entityManager->flush();
+            $this->addFlash('success', 'Заявка изменена');
+
+            return $this->redirectToRoute('admin_lead_show', ['id' => $lead->getId()], Response::HTTP_SEE_OTHER);
+        }
+
+        return $this->render('admin/lead/edit.html.twig', [
+            'lead' => $lead,
+            'form' => $form,
         ]);
     }
 

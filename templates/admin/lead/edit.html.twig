@@ -1,0 +1,77 @@
+{% extends 'admin/layout.html.twig' %}
+
+{% block title %}Изменить заявку №{{ lead.id }} — {{ parent() }}{% endblock %}
+
+{% block content %}
+    <nav class="breadcrumbs">
+        <a href="{{ path('admin_lead_index') }}">Заявки</a>
+        <span class="text-body-subtle">/</span>
+        <a href="{{ path('admin_lead_show', {id: lead.id}) }}">№{{ lead.id }}</a>
+        <span class="text-body-subtle">/</span>
+        <span class="text-heading">Изменить</span>
+    </nav>
+    <div class="page-header">
+        <div>
+            <h1 class="page-title">Изменить заявку №{{ lead.id }}</h1>
+            <p class="page-subtitle">Поправьте данные клиента и позиции. Статус, ответственный и заметка — на карточке заявки.</p>
+        </div>
+    </div>
+
+    {% form_theme form 'admin/form/theme.html.twig' %}
+    {{ form_start(form, {attr: {novalidate: 'novalidate'}}) }}
+        {% if form.vars.errors|length %}
+            <div class="mb-5 max-w-4xl rounded-sm border border-danger-subtle bg-danger-soft p-3 text-sm text-fg-danger-strong" role="alert">{{ form_errors(form) }}</div>
+        {% endif %}
+
+        <section class="card mb-6 max-w-4xl">
+            <h2 class="mb-4 text-base font-semibold text-heading">Клиент</h2>
+            <div class="grid gap-x-6 md:grid-cols-3">
+                {{ form_row(form.contactName) }}
+                {{ form_row(form.phone) }}
+                {{ form_row(form.email) }}
+            </div>
+            <div class="grid gap-x-6 md:grid-cols-[1fr_10rem_10rem_12rem]">
+                {{ form_row(form.companyName) }}
+                {{ form_row(form.inn) }}
+                {{ form_row(form.kpp) }}
+                {{ form_row(form.paymentType) }}
+            </div>
+            {{ form_row(form.comment, {row_attr: {class: 'mb-0'}}) }}
+        </section>
+
+        {# Positions: the period and the slots; "Убрать" drops the row (assets/admin/collection.js), saved with the form #}
+        <section class="card mb-6 max-w-4xl">
+            <h2 class="mb-1 text-base font-semibold text-heading">Позиции</h2>
+            <p class="mb-4 text-sm text-body">Конструкции, которые выбрал клиент. Другие конструкции добавляйте уже в медиаплане.</p>
+            <div class="space-y-3">
+                {% for line in form.items %}
+                    {% set item = line.vars.data %}
+                    <div class="grid items-end gap-3 rounded-sm border border-default p-3 md:grid-cols-[minmax(0,1fr)_10rem_10rem_6rem_auto]" data-collection-item>
+                        <div class="min-w-0 self-center">
+                            <div class="truncate font-medium text-heading">{{ item.productTitle }}</div>
+                            <div class="text-xs text-body-subtle">Сторона {{ item.sideName }}{% if not item.side %} · конструкции больше нет{% endif %}</div>
+                        </div>
+                        {{ form_row(line.startDate, {row_attr: {class: 'mb-0'}}) }}
+                        {{ form_row(line.endDate, {row_attr: {class: 'mb-0'}}) }}
+                        {% if line.slots is defined %}
+                            {{ form_row(line.slots, {row_attr: {class: 'mb-0'}}) }}
+                        {% else %}
+                            <div></div>
+                        {% endif %}
+                        <button type="button" class="btn btn-ghost btn-sm text-fg-danger hover:bg-danger-soft" data-collection-remove
+                                data-confirm="Позиция «{{ item.productTitle }}, сторона {{ item.sideName }}» уйдёт из заявки, когда вы сохраните её." data-confirm-title="Убрать позицию?" data-confirm-button="Убрать">Убрать</button>
+                        {% if line.vars.errors|length %}<div class="md:col-span-5 text-sm text-fg-danger-strong">{{ form_errors(line) }}</div>{% endif %}
+                    </div>
+                {% else %}
+                    <p class="text-sm text-body">В заявке нет позиций.</p>
+                {% endfor %}
+            </div>
+            {% do form.items.setRendered %}
+        </section>
+
+        <div class="flex flex-wrap items-center gap-2">
+            <button type="submit" class="btn btn-primary">Сохранить</button>
+            <a href="{{ path('admin_lead_show', {id: lead.id}) }}" class="btn btn-secondary">Отмена</a>
+        </div>
+    {{ form_end(form) }}
+{% endblock %}

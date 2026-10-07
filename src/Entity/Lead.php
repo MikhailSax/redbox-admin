@@ -96,6 +96,7 @@ class Lead
      */
     #[ORM\OneToMany(targetEntity: LeadItem::class, mappedBy: 'lead', cascade: ['persist', 'remove'], orphanRemoval: true)]
     #[ORM\OrderBy(['id' => 'ASC'])]
+    #[Assert\Valid]
     private Collection $items;
 
     public function __construct()

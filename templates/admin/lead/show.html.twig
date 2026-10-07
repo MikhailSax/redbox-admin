@@ -5,16 +5,12 @@
 
 {% block content %}
     {% set token = csrf_token('lead-' ~ lead.id) %}
-    {% set tones = {
-        accent: 'bg-accent-soft text-accent-strong ring-accent/20',
-        warning: 'bg-warning-soft text-fg-warning ring-warning-subtle',
-        success: 'bg-success-soft text-fg-success-strong ring-success-subtle',
-        danger: 'bg-danger-soft text-fg-danger-strong ring-danger-subtle',
-    } %}
+    {# Status lozenge: a new request in violet, then the status tones #}
+    {% set tones = {accent: 'new', warning: 'warning', success: 'success', danger: 'danger'} %}
 
-    <nav class="mb-2 text-sm">
-        <a href="{{ path('admin_lead_index') }}" class="text-body hover:text-heading">Заявки</a>
-        <span class="mx-1 text-body-subtle">/</span>
+    <nav class="breadcrumbs">
+        <a href="{{ path('admin_lead_index') }}">Заявки</a>
+        <span class="text-body-subtle">/</span>
         <span class="text-heading">№{{ lead.id }}</span>
     </nav>
 
@@ -22,7 +18,7 @@
         <div class="min-w-0">
             <div class="flex flex-wrap items-center gap-3">
                 <h1 class="page-title">Заявка №{{ lead.id }}</h1>
-                <span class="inline-flex h-7 items-center rounded-md px-2 text-sm font-medium ring-1 ring-inset {{ tones[lead.status.tone] }}">{{ lead.status.label }}</span>
+                <span class="lozenge lozenge-{{ tones[lead.status.tone] }}">{{ lead.status.label }}</span>
             </div>
             <p class="page-subtitle">
                 {{ lead.createdAt|date('d.m.Y H:i') }} · {{ lead.fromSite ? 'с сайта' : 'вручную' }}
@@ -30,6 +26,7 @@
             </p>
         </div>
         <div class="flex flex-wrap gap-2">
+            <a href="{{ path('admin_lead_edit', {id: lead.id}) }}" class="btn btn-secondary">{{ ui.icon('pencil', 'size-4') }} Изменить</a>
             {% if lead.mediaPlan %}
                 <a href="{{ path('admin_media_plan_show', {id: lead.mediaPlan.id}) }}" class="btn btn-primary">{{ ui.icon('document', 'size-4') }} Медиаплан №{{ lead.mediaPlan.id }}</a>
             {% else %}
@@ -107,7 +104,10 @@
         <div class="grid content-start gap-6">
             {# Contacts #}
             <section class="card !p-5">
-                <h2 class="mb-4 text-base font-semibold text-heading">Клиент</h2>
+                <div class="mb-4 flex items-center justify-between gap-3">
+                    <h2 class="text-base font-semibold text-heading">Клиент</h2>
+                    <a href="{{ path('admin_lead_edit', {id: lead.id}) }}" class="btn btn-ghost btn-sm" title="Изменить данные клиента и позиции">{{ ui.icon('pencil', 'size-4') }}<span class="sr-only">Изменить</span></a>
+                </div>
                 <dl class="space-y-3 text-sm">
                     <div><dt class="text-xs text-body-subtle">Контактное лицо</dt><dd class="font-medium text-heading">{{ lead.contactName }}</dd></div>
                     <div><dt class="text-xs text-body-subtle">Телефон</dt><dd><a href="tel:{{ lead.phone }}" class="font-medium text-heading hover:underline">{{ lead.phone }}</a></dd></div>
