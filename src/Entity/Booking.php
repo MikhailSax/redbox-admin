@@ -89,9 +89,9 @@ class Booking
     #[ORM\Column(type: Types::TEXT, nullable: true)]
     private ?string $comment;
 
-    /** What the booking was sold for in the end, rubles for the whole period (discounts and bargaining included); null = not set yet */
-    #[ORM\Column(nullable: true)]
-    private ?int $soldPrice = null;
+    /** What the booking was sold for in the end, rubles with kopecks for the whole period (discounts and bargaining included); null = not set yet */
+    #[ORM\Column(type: Types::DECIMAL, precision: 12, scale: 2, nullable: true)]
+    private ?string $soldPrice = null;
 
     #[ORM\ManyToOne]
     #[ORM\JoinColumn(onDelete: 'SET NULL')]
@@ -344,16 +344,16 @@ class Booking
         return $this->createdBy;
     }
 
-    public function getSoldPrice(): ?int
+    public function getSoldPrice(): ?float
     {
-        return $this->soldPrice;
+        return null === $this->soldPrice ? null : (float) $this->soldPrice;
     }
 
     /**
      * The part of the sold price that falls on the period, by days: a booking for September–November
      * sold for 90 000 brings 30 000 to October. Null when no price is set.
      */
-    public function getSoldPriceWithin(\DateTimeInterface $from, \DateTimeInterface $to): ?int
+    public function getSoldPriceWithin(\DateTimeInterface $from, \DateTimeInterface $to): ?float
     {
         if (null === $this->soldPrice) {
             return null;
@@ -361,15 +361,15 @@ class Booking
         $start = max($this->startDate->format('Y-m-d'), $from->format('Y-m-d'));
         $end = min($this->endDate->format('Y-m-d'), $to->format('Y-m-d'));
         if ($start > $end) {
-            return 0;
+            return 0.0;
         }
 
-        return (int) round($this->soldPrice * MonthCalendar::days(new \DateTimeImmutable($start), new \DateTimeImmutable($end)) / $this->getDays());
+        return round((float) $this->soldPrice * MonthCalendar::days(new \DateTimeImmutable($start), new \DateTimeImmutable($end)) / $this->getDays(), 2);
     }
 
-    public function setSoldPrice(?int $soldPrice): static
+    public function setSoldPrice(?float $soldPrice): static
     {
-        $this->soldPrice = $soldPrice;
+        $this->soldPrice = null === $soldPrice ? null : number_format($soldPrice, 2, '.', '');
 
         return $this;
     }

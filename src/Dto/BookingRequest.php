@@ -59,9 +59,9 @@ final class BookingRequest
 
     public ?string $comment = null;
 
-    /** What the booking is sold for, rubles for the whole period; may be set later in the bookings list */
+    /** What the booking is sold for, rubles with kopecks for the whole period; may be set later in the bookings list */
     #[Assert\PositiveOrZero(message: 'Сумма не может быть меньше нуля')]
-    public ?int $soldPrice = null;
+    public ?float $soldPrice = null;
 
     /**
      * One-off services sold with the booking (layouts, printing, mounting); more may be added in the bookings list.

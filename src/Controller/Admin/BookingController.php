@@ -22,6 +22,7 @@ use App\Service\BookingManager;
 use App\Service\ClientCardException;
 use App\Service\ClientCards;
 use App\Service\MonthCalendar;
+use App\Twig\AdminExtension;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\Clock\ClockInterface;
 use Symfony\Component\ExpressionLanguage\Expression;
@@ -170,7 +171,7 @@ final class BookingController extends AbstractController
 
         // Revenue of the tab: "Продано за" of the bookings in force; a month gets its share of a longer booking by days
         // Services are one-off: they go whole to the month the booking starts in
-        $revenue = ['placement' => 0, 'services' => 0, 'total' => 0, 'paid' => 0, 'unpriced' => 0];
+        $revenue = ['placement' => 0.0, 'services' => 0.0, 'total' => 0.0, 'paid' => 0.0, 'unpriced' => 0];
         $serviceForms = [];
         foreach ($bookings as $booking) {
             if (!$booking->isActiveAt($now)) {
@@ -319,13 +320,16 @@ final class BookingController extends AbstractController
     #[IsGranted(User::ROLE_SUPER_MANAGER)]
     public function price(Request $request, Booking $booking): Response
     {
-        // "45 000" and "45000" alike
-        $typed = preg_replace('/\D+/', '', $request->getPayload()->getString('price'));
-        $price = '' === $typed ? null : (int) $typed;
+        // "45 000", "45000", "45 000,50" and "45000.50" alike
+        $typed = str_replace(',', '.', preg_replace('/[^\d.,]+/', '', $request->getPayload()->getString('price')));
+        if ('' !== $typed && !is_numeric($typed)) {
+            return $this->apply($request, $booking, static fn () => throw new BookingException('Введите сумму числом, например 45000 или 45000,50.'), '');
+        }
+        $price = '' === $typed ? null : round((float) $typed, 2);
 
         return $this->apply($request, $booking, fn () => $this->bookingManager->setSoldPrice($booking, $price), null === $price
             ? 'Сумма продажи стёрта'
-            : \sprintf('Продано за %s ₽', number_format($price, 0, ',', ' ')));
+            : 'Продано за '.AdminExtension::money($price));
     }
 
     /** A one-off service sold with the booking: from the catalog (prefilled) or typed in */

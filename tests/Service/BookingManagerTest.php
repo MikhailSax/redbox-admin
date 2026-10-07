@@ -173,7 +173,10 @@ final class BookingManagerTest extends KernelTestCase
 
         $this->manager->setSoldPrice($booking, 45000);
         $this->em->refresh($booking);
-        self::assertSame(45000, $booking->getSoldPrice());
+        self::assertSame(45000.0, $booking->getSoldPrice());
+
+        $this->manager->setSoldPrice($booking, 45000.5);
+        self::assertSame(45000.5, $booking->getSoldPrice());
 
         $this->manager->setSoldPrice($booking, null);
         $this->em->refresh($booking);

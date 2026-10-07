@@ -18,6 +18,7 @@ use Symfony\Component\Form\Extension\Core\Type\ChoiceType;
 use Symfony\Component\Form\Extension\Core\Type\CollectionType;
 use Symfony\Component\Form\Extension\Core\Type\DateType;
 use Symfony\Component\Form\Extension\Core\Type\IntegerType;
+use Symfony\Component\Form\Extension\Core\Type\MoneyType;
 use Symfony\Component\Form\Extension\Core\Type\TelType;
 use Symfony\Component\Form\Extension\Core\Type\TextareaType;
 use Symfony\Component\Form\Extension\Core\Type\TextType;
@@ -100,10 +101,12 @@ class BookingFormType extends AbstractType
                 'required' => false,
                 'attr' => ['rows' => 2],
             ])
-            ->add('soldPrice', IntegerType::class, [
-                'label' => 'Продано за, ₽',
+            ->add('soldPrice', MoneyType::class, [
+                'label' => 'Продано за',
+                'currency' => 'RUB',
                 'required' => false,
-                'attr' => ['min' => 0, 'step' => 1000, 'placeholder' => 'Например, 45000'],
+                'invalid_message' => 'Введите сумму числом, например 45000 или 45000,50',
+                'attr' => ['placeholder' => 'Например, 45000'],
                 'help' => 'Итоговая сумма за весь период, со скидками. Не знаете сейчас — впишите позже в списке броней.',
             ]);
 

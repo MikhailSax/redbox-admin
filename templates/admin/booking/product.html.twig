@@ -302,11 +302,11 @@
                         </th>
                         <td colspan="3" class="px-4 py-3">
                             <dl class="text-xs text-body tabular-nums">
-                                <div class="flex justify-between gap-3 max-w-56"><dt>Размещение</dt><dd class="whitespace-nowrap">{{ revenue.placement|number_format(0, ',', ' ') }} ₽</dd></div>
-                                <div class="flex justify-between gap-3 max-w-56"><dt>Услуги</dt><dd class="whitespace-nowrap">{{ revenue.services|number_format(0, ',', ' ') }} ₽</dd></div>
+                                <div class="flex justify-between gap-3 max-w-56"><dt>Размещение</dt><dd class="whitespace-nowrap">{{ revenue.placement|money }}</dd></div>
+                                <div class="flex justify-between gap-3 max-w-56"><dt>Услуги</dt><dd class="whitespace-nowrap">{{ revenue.services|money }}</dd></div>
                             </dl>
-                            <div class="mt-1 text-base font-semibold text-heading whitespace-nowrap tabular-nums">Итого {{ revenue.total|number_format(0, ',', ' ') }} ₽</div>
-                            <div class="text-xs text-body whitespace-nowrap tabular-nums">оплачено {{ revenue.paid|number_format(0, ',', ' ') }} ₽</div>
+                            <div class="mt-1 text-base font-semibold text-heading whitespace-nowrap tabular-nums">Итого {{ revenue.total|money }}</div>
+                            <div class="text-xs text-body whitespace-nowrap tabular-nums">оплачено {{ revenue.paid|money }}</div>
                             {% if revenue.unpriced %}<div class="text-xs text-fg-warning">без суммы: {{ revenue.unpriced }}</div>{% endif %}
                         </td>
                     </tr>

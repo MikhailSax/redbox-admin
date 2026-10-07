@@ -27,9 +27,9 @@ class SalesReport
 
     /**
      * @return array{
-     *     totals: array{sales: int, placement: int, services: float, total: float, paid: float, unpriced: int, average: float, products: int, allProducts: int},
-     *     products: list<array{product: Product, sales: int, sides: list<string>, months: int, airtimeDays: int, placement: int, services: float, total: float, paid: float, unpriced: int, share: float}>,
-     *     managers: list<array{user: ?User, sales: int, placement: int, services: float, total: float, paid: float, average: float, burned: int}>,
+     *     totals: array{sales: int, placement: float, services: float, total: float, paid: float, unpriced: int, average: float, products: int, allProducts: int},
+     *     products: list<array{product: Product, sales: int, sides: list<string>, months: int, airtimeDays: int, placement: float, services: float, total: float, paid: float, unpriced: int, share: float}>,
+     *     managers: list<array{user: ?User, sales: int, placement: float, services: float, total: float, paid: float, average: float, burned: int}>,
      *     idle: list<Product>,
      * }
      */
@@ -42,7 +42,7 @@ class SalesReport
         foreach ($sold as $booking) {
             $product = $booking->getProduct();
             $row = &$products[$product->getId()];
-            $row ??= ['product' => $product, 'sales' => 0, 'sides' => [], 'months' => 0, 'airtimeDays' => 0, 'placement' => 0, 'services' => 0.0, 'total' => 0.0, 'paid' => 0.0, 'unpriced' => 0, 'share' => 0.0];
+            $row ??= ['product' => $product, 'sales' => 0, 'sides' => [], 'months' => 0, 'airtimeDays' => 0, 'placement' => 0.0, 'services' => 0.0, 'total' => 0.0, 'paid' => 0.0, 'unpriced' => 0, 'share' => 0.0];
             self::add($row, $booking);
             $row['sides'][$booking->getSide()->getName()] = $booking->getSide()->getName();
             if ($booking->getSide()->isAirtime()) {
@@ -54,7 +54,7 @@ class SalesReport
 
             $author = $booking->getCreatedBy();
             $row = &$managers[$author?->getId() ?? 0];
-            $row ??= ['user' => $author, 'sales' => 0, 'placement' => 0, 'services' => 0.0, 'total' => 0.0, 'paid' => 0.0, 'unpriced' => 0, 'average' => 0.0, 'burned' => 0];
+            $row ??= ['user' => $author, 'sales' => 0, 'placement' => 0.0, 'services' => 0.0, 'total' => 0.0, 'paid' => 0.0, 'unpriced' => 0, 'average' => 0.0, 'burned' => 0];
             self::add($row, $booking);
             unset($row);
         }
@@ -63,12 +63,12 @@ class SalesReport
         foreach ($this->bookings->countBurnedHoldsByAuthor($from, $to, $this->clock->now()) as $authorId => $burned) {
             if (!isset($managers[$authorId])) {
                 $user = 0 !== $authorId ? $this->users->find($authorId) : null;
-                $managers[$authorId] = ['user' => $user, 'sales' => 0, 'placement' => 0, 'services' => 0.0, 'total' => 0.0, 'paid' => 0.0, 'unpriced' => 0, 'average' => 0.0, 'burned' => 0];
+                $managers[$authorId] = ['user' => $user, 'sales' => 0, 'placement' => 0.0, 'services' => 0.0, 'total' => 0.0, 'paid' => 0.0, 'unpriced' => 0, 'average' => 0.0, 'burned' => 0];
             }
             $managers[$authorId]['burned'] = $burned;
         }
 
-        $totals = ['sales' => 0, 'placement' => 0, 'services' => 0.0, 'total' => 0.0, 'paid' => 0.0, 'unpriced' => 0];
+        $totals = ['sales' => 0, 'placement' => 0.0, 'services' => 0.0, 'total' => 0.0, 'paid' => 0.0, 'unpriced' => 0];
         foreach ($products as $row) {
             foreach (array_keys($totals) as $key) {
                 $totals[$key] += $row[$key];
@@ -106,7 +106,7 @@ class SalesReport
         ];
     }
 
-    /** @param array{sales: int, placement: int, services: float, total: float, paid: float, unpriced: int} $row */
+    /** @param array{sales: int, placement: float, services: float, total: float, paid: float, unpriced: int} $row */
     private static function add(array &$row, Booking $booking): void
     {
         $price = $booking->getSoldPrice();

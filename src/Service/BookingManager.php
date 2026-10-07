@@ -377,7 +377,7 @@ class BookingManager
      * @throws BookingException
      */
     /** The final price of the booking; null clears it. Kept on cancelled and expired bookings too: it is history */
-    public function setSoldPrice(Booking $booking, ?int $price): void
+    public function setSoldPrice(Booking $booking, ?float $price): void
     {
         if (null !== $price && $price < 0) {
             throw new BookingException('Сумма продажи не может быть меньше нуля.');

@@ -1,7 +1,7 @@
 {% extends 'admin/layout.html.twig' %}
 {% import 'admin/_icons.html.twig' as ui %}
 
-{% macro rub(amount) %}{{ amount|number_format(0, ',', ' ') }}&nbsp;₽{% endmacro %}
+{% macro rub(amount) %}{{ amount|money }}{% endmacro %}
 
 {% block title %}Отчёты — {{ parent() }}{% endblock %}
 
@@ -43,7 +43,7 @@
             <dl class="mb-8 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
                 {% for tile in [
                     {label: 'Продаж', value: totals.sales, hint: totals.unpriced ? 'без суммы: ' ~ totals.unpriced : null},
-                    {label: 'Продано на', value: fmt.rub(totals.total), hint: 'размещение ' ~ totals.placement|number_format(0, ',', ' ') ~ ' ₽ · услуги ' ~ totals.services|number_format(0, ',', ' ') ~ ' ₽'},
+                    {label: 'Продано на', value: fmt.rub(totals.total), hint: 'размещение ' ~ totals.placement|money ~ ' · услуги ' ~ totals.services|money},
                     {label: 'Оплачено', value: fmt.rub(totals.paid), hint: totals.total > 0 ? (totals.paid * 100 / totals.total)|round ~ '% от проданного' : null},
                     {label: 'Средний чек', value: fmt.rub(totals.average), hint: null},
                     {label: 'Продавались конструкции', value: totals.products ~ ' из ' ~ totals.allProducts, hint: totals.allProducts ? (totals.products * 100 / totals.allProducts)|round ~ '% конструкций' : null},

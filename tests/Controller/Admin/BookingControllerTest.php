@@ -376,17 +376,45 @@ final class BookingControllerTest extends AdminWebTestCase
 
         $revenue = fn (string $query) => preg_replace('/\s+/u', ' ', trim($this->client->request('GET', $this->url($this->billboard).$query)->filter('[data-revenue]')->text()));
 
-        // 90 000 × 30 / 91 + 20 000
+        // 90 000 × 30 / 91 + 20 000, with kopecks
         self::assertStringContainsString('Выручка за сентябрь 2026', $revenue(''));
-        self::assertStringContainsString('49 670 ₽ оплачено 29 670 ₽', $revenue(''));
+        self::assertStringContainsString('49 670,33 ₽ оплачено 29 670,33 ₽', $revenue(''));
         // a cancelled booking brings nothing
-        self::assertStringContainsString('30 659 ₽ оплачено 30 659 ₽', $revenue('?month=2026-10'));
+        self::assertStringContainsString('30 659,34 ₽ оплачено 30 659,34 ₽', $revenue('?month=2026-10'));
         self::assertStringContainsString('без суммы: 1', $revenue('?month=2026-11'));
         self::assertStringContainsString('Выручка за всё время', $revenue('?month=all'));
         self::assertStringContainsString('110 000 ₽ оплачено 90 000 ₽', $revenue('?month=all'));
     }
 
     /** Services sold with a booking: picked when booking, added and removed later in the list, counted apart in the revenue */
+    public function testSoldPriceIsTypedWithKopecksInTheList(): void
+    {
+        $booking = $this->hold($this->side($this->billboard, 'A'), '2026-09');
+        $form = $this->client->request('GET', $this->url($this->billboard))->filter('form[action="/admin/bookings/'.$booking->getId().'/price"]');
+        $change = function (string $price) use ($form): void {
+            $values = $form->form()->getPhpValues();
+            $values['price'] = $price;
+            $this->client->request('POST', $form->form()->getUri(), $values);
+            $this->client->followRedirect();
+        };
+
+        $change('45 000,50');
+        self::assertAnySelectorTextContains('[role=alert]', "Продано за 45\u{00A0}000,50\u{00A0}₽");
+        self::assertSame(45000.5, $this->reload($booking)->getSoldPrice());
+        self::assertSame('45 000,50', $this->client->getCrawler()->filter('input[name="price"]')->attr('value'));
+
+        $change('38000.4');
+        self::assertSame(38000.4, $this->reload($booking)->getSoldPrice());
+
+        // a typo is refused, the price stays
+        $change('38,000,40');
+        self::assertAnySelectorTextContains('[role=alert]', 'Введите сумму числом');
+        self::assertSame(38000.4, $this->reload($booking)->getSoldPrice());
+
+        $change('');
+        self::assertNull($this->reload($booking)->getSoldPrice());
+    }
+
     public function testBookingCarriesServices(): void
     {
         $printing = (new AdditionalService())->setName('Печать баннера')->setUnit('м²')->setPrice('350.00')->setCostPrice('200.00');
@@ -431,8 +459,8 @@ final class BookingControllerTest extends AdminWebTestCase
 
         // services go whole to the month the booking starts in, the placement is shared by days (compared without spaces)
         $total = fn (string $query) => preg_replace('/\s+/u', '', $this->client->request('GET', $this->url($this->billboard).$query)->filter('[data-revenue]')->text());
-        self::assertStringContainsString('Размещение29508₽Услуги11800₽Итого41308₽', $total(''));
-        self::assertStringContainsString('Размещение30492₽Услуги0₽Итого30492₽', $total('?month=2026-10'));
+        self::assertStringContainsString('Размещение29508,20₽Услуги11800₽Итого41308,20₽', $total(''));
+        self::assertStringContainsString('Размещение30491,80₽Услуги0₽Итого30491,80₽', $total('?month=2026-10'));
         self::assertStringContainsString('Размещение60000₽Услуги11800₽Итого71800₽', $total('?month=all'));
 
         // removed in the list
@@ -1020,14 +1048,14 @@ final class BookingControllerTest extends AdminWebTestCase
         $values['booking_form']['clientName'] = 'Пётр';
         $values['booking_form']['clientPhone'] = '+7 900 555-44-33';
         $values['booking_form']['comment'] = 'Перенесли на ноябрь';
-        $values['booking_form']['soldPrice'] = '42000';
+        $values['booking_form']['soldPrice'] = '42000,50';
         $this->submit($uri, $values);
         self::assertResponseRedirects('/admin/bookings/'.$booking->getId());
         $this->client->followRedirect();
         self::assertSelectorTextContains('[role=alert]', 'Бронь изменена');
 
         $booking = $this->reload($booking);
-        self::assertSame(['B', '2026-11-01', '2026-11-30', 'Пётр', '+7 900 555-44-33', 'Перенесли на ноябрь', 42000, BookingStatus::Confirmed],
+        self::assertSame(['B', '2026-11-01', '2026-11-30', 'Пётр', '+7 900 555-44-33', 'Перенесли на ноябрь', 42000.5, BookingStatus::Confirmed],
             [$booking->getSide()->getName(), $booking->getStartDate()->format('Y-m-d'), $booking->getEndDate()->format('Y-m-d'), $booking->getClientName(), $booking->getClientPhone(), $booking->getComment(), $booking->getSoldPrice(), $booking->getStatus()]);
     }
 
