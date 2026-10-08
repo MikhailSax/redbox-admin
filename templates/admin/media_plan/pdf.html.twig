@@ -1,4 +1,4 @@
-{# Commercial proposal PDF (dompdf: CSS 2.1, tables instead of flex/grid). Vars: plan, photos[itemId] (data URI|null), generatedAt #}
+{# Commercial proposal PDF (dompdf: CSS 2.1, tables instead of flex/grid). Vars: plan, photos[itemId] ({src, width, height, top} in mm|null), generatedAt #}
 <!DOCTYPE html>
 <html lang="ru">
 <head>
@@ -23,7 +23,8 @@
         .item { border: 0.3mm solid #e4e4e7; margin-bottom: 3mm; page-break-inside: avoid; }
         .item td { vertical-align: top; }
         .photo { width: 50mm; padding: 3mm; }
-        .photo img { width: 50mm; height: 31mm; border-radius: 2mm; }
+        .photo .frame { width: 50mm; height: 31mm; }
+        .photo img { display: block; border-radius: 2mm; }
         .nophoto { width: 50mm; height: 31mm; background: #f4f4f5; border-radius: 2mm; text-align: center; line-height: 31mm; color: #a1a1aa; }
         .info { padding: 3.5mm 4mm 3.5mm 1mm; }
         .name { font-size: 12pt; font-weight: bold; color: #09090b; margin-bottom: 1mm; }
@@ -70,8 +71,9 @@
         <table class="item">
             <tr>
                 <td class="photo">
-                    {% if photos[item.id] %}
-                        <img src="{{ photos[item.id] }}" alt="">
+                    {% set photo = photos[item.id] %}
+                    {% if photo %}
+                        <div class="frame"><img src="{{ photo.src }}" alt="" style="width: {{ photo.width }}mm; height: {{ photo.height }}mm; margin: {{ photo.top }}mm auto 0"></div>
                     {% else %}
                         <div class="nophoto">нет фото</div>
                     {% endif %}

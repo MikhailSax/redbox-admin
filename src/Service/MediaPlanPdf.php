@@ -16,6 +16,9 @@ use Twig\Environment;
 class MediaPlanPdf
 {
     private const PHOTO_WIDTH = 900;
+    // the photo frame on the page, mm: a photo is fitted inside it keeping its proportions
+    private const FRAME_WIDTH = 50;
+    private const FRAME_HEIGHT = 31;
 
     public function __construct(
         private readonly Environment $twig,
@@ -62,9 +65,12 @@ class MediaPlanPdf
     }
 
     /**
-     * First photo of the side (or of the structure), downscaled and inlined as a JPEG data URI.
+     * First photo of the side (or of the structure), downscaled and inlined as a JPEG data URI,
+     * with its size in mm fitted into the frame without stretching.
+     *
+     * @return array{src: string, width: float, height: float, top: float}|null
      */
-    private function photoFor(MediaPlanItem $item): ?string
+    private function photoFor(MediaPlanItem $item): ?array
     {
         $photo = $item->getSide()->getPhotos()->first() ?: $item->getProduct()?->getCoverPhoto();
         if (!$photo) {
@@ -84,7 +90,12 @@ class MediaPlanPdf
 
         ob_start();
         imagejpeg($image, null, 80);
+        $src = 'data:image/jpeg;base64,'.base64_encode((string) ob_get_clean());
 
-        return 'data:image/jpeg;base64,'.base64_encode((string) ob_get_clean());
+        $scale = min(self::FRAME_WIDTH / imagesx($image), self::FRAME_HEIGHT / imagesy($image));
+        $width = round(imagesx($image) * $scale, 2);
+        $height = round(imagesy($image) * $scale, 2);
+
+        return ['src' => $src, 'width' => $width, 'height' => $height, 'top' => round((self::FRAME_HEIGHT - $height) / 2, 2)];
     }
 }
