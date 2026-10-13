@@ -35,10 +35,17 @@ class Product
     #[Assert\Length(max: 20)]
     private ?string $schemeNumber = null;
 
-    /** Width × height in metres as a key, "6x3" or "10.5x3.5", see ProductHelper */
-    #[ORM\Column(length: 20, nullable: true)]
-    #[Assert\Regex('/^\d+(\.\d+)?x\d+(\.\d+)?$/', message: 'Укажите ширину и высоту в метрах')]
-    private ?string $size = null;
+    /** Width in metres (10.5); set together with the height, both null = no size */
+    #[ORM\Column(nullable: true)]
+    #[Assert\Positive(message: 'Размер должен быть больше нуля')]
+    #[Assert\LessThanOrEqual(ProductHelper::MAX_METRES, message: 'Не больше {{ compared_value }} м')]
+    private ?float $width = null;
+
+    /** Height in metres (3.5) */
+    #[ORM\Column(nullable: true)]
+    #[Assert\Positive(message: 'Размер должен быть больше нуля')]
+    #[Assert\LessThanOrEqual(ProductHelper::MAX_METRES, message: 'Не больше {{ compared_value }} м')]
+    private ?float $height = null;
 
     #[ORM\Column(length: 255, nullable: true)]
     #[Assert\Length(max: 255)]
@@ -166,41 +173,68 @@ class Product
         return $this;
     }
 
+    /** The size as a key, "6x3" or "10.5x3.5" (filters, the API); null while width or height isn't set */
     public function getSize(): ?string
     {
-        return $this->size;
+        return null !== $this->width && null !== $this->height ? ProductHelper::sizeKey($this->width, $this->height) : null;
     }
 
+    /** From a key ("10.5x3.5"); null or anything else clears the size */
     public function setSize(?string $size): static
     {
-        $this->size = $size;
+        [$width, $height] = ProductHelper::dimensions($size) ?? [null, null];
 
-        return $this;
+        return $this->setDimensions($width, $height);
     }
 
     public function getSizeLabel(): ?string
     {
-        return ProductHelper::sizeLabel($this->size);
+        return ProductHelper::sizeLabel($this->getSize());
     }
 
     /** Width in metres; null while the size isn't set */
     public function getWidth(): ?float
     {
-        return ProductHelper::dimensions($this->size)[0] ?? null;
+        return $this->width;
+    }
+
+    public function setWidth(?float $width): static
+    {
+        $this->width = $width;
+
+        return $this;
     }
 
     /** Height in metres; null while the size isn't set */
     public function getHeight(): ?float
     {
-        return ProductHelper::dimensions($this->size)[1] ?? null;
+        return $this->height;
+    }
+
+    public function setHeight(?float $height): static
+    {
+        $this->height = $height;
+
+        return $this;
     }
 
     /** Both in metres, or both null to clear the size */
     public function setDimensions(?float $width, ?float $height): static
     {
-        $this->size = null !== $width && null !== $height ? ProductHelper::sizeKey($width, $height) : null;
+        $this->width = $width;
+        $this->height = $height;
 
         return $this;
+    }
+
+    /** Width and height go together: one without the other is an error on the empty one */
+    #[Assert\Callback]
+    public function validateDimensions(ExecutionContextInterface $context): void
+    {
+        if ((null === $this->width) !== (null === $this->height)) {
+            $context->buildViolation(null === $this->width ? 'Укажите ширину' : 'Укажите высоту')
+                ->atPath(null === $this->width ? 'width' : 'height')->addViolation();
+        }
     }
 
     public function getShortDescription(): ?string

@@ -42,7 +42,6 @@ class ProductFormType extends AbstractType
                 'required' => false,
                 'attr' => ['placeholder' => '858 или 7/23'],
             ])
-            // the size is one key (Product::$size): the listeners below fill both fields from it and put it back
             ->add('width', NumberType::class, $this->metresOptions('Ширина, м', '6'))
             ->add('height', NumberType::class, $this->metresOptions('Высота, м', '3'))
             ->add('category', EntityType::class, [
@@ -125,10 +124,8 @@ class ProductFormType extends AbstractType
                 'prototype' => true,
             ]);
 
-        $builder->addEventListener(FormEvents::PRE_SET_DATA, self::showDimensions(...));
         // SUBMIT runs after the fields are mapped onto the product and before validation
         $builder->addEventListener(FormEvents::SUBMIT, self::clearPurchasePriceOfOwnStructure(...));
-        $builder->addEventListener(FormEvents::SUBMIT, self::storeDimensions(...));
     }
 
     /**
@@ -140,49 +137,12 @@ class ProductFormType extends AbstractType
     {
         return [
             'label' => $label,
-            'mapped' => false,
             'required' => false,
-            'scale' => 2,
+            // no fixed scale: 6 shows as "6", 10.5 as "10.5"; the step keeps it to centimetres
             'html5' => true,
             'attr' => ['step' => '0.01', 'min' => '0.01', 'max' => (string) ProductHelper::MAX_METRES, 'placeholder' => $example, 'inputmode' => 'decimal'],
             'invalid_message' => \sprintf('Введите размер в метрах числом, например %s', $example),
-            'constraints' => [
-                new Assert\Positive(message: 'Размер должен быть больше нуля'),
-                new Assert\LessThanOrEqual(ProductHelper::MAX_METRES, message: 'Не больше {{ compared_value }} м'),
-            ],
         ];
-    }
-
-    private static function showDimensions(FormEvent $event): void
-    {
-        $product = $event->getData();
-        if ($product instanceof Product) {
-            $event->getForm()->get('width')->setData($product->getWidth());
-            $event->getForm()->get('height')->setData($product->getHeight());
-        }
-    }
-
-    /**
-     * Both fields make the size, both empty clear it; one without the other is an error on the empty one.
-     */
-    private static function storeDimensions(FormEvent $event): void
-    {
-        $product = $event->getData();
-        $form = $event->getForm();
-        if (!$product instanceof Product || !$form->get('width')->isValid() || !$form->get('height')->isValid()) {
-            return;
-        }
-        $width = $form->get('width')->getData();
-        $height = $form->get('height')->getData();
-        if ((null === $width) !== (null === $height)) {
-            $form->get(null === $width ? 'width' : 'height')->addError(new FormError(null === $width ? 'Укажите ширину' : 'Укажите высоту'));
-
-            return;
-        }
-        $inRange = static fn (float|int|null $metres) => null === $metres || ($metres > 0 && $metres <= ProductHelper::MAX_METRES);
-        if ($inRange($width) && $inRange($height)) { // otherwise the fields' own constraints report it
-            $product->setDimensions(null !== $width ? (float) $width : null, null !== $height ? (float) $height : null);
-        }
     }
 
     /**

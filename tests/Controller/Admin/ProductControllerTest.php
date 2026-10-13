@@ -241,6 +241,19 @@ final class ProductControllerTest extends AdminWebTestCase
         $this->em->clear();
         self::assertSame('6x3', $this->em->find(Product::class, $product->getId())->getSize());
 
+        // metres with decimals, stored as numbers
+        $values['product_form']['width'] = '10.5';
+        $values['product_form']['height'] = '3.5';
+        $this->submit($uri, $values);
+        self::assertResponseRedirects();
+        $this->em->clear();
+        $saved = $this->em->find(Product::class, $product->getId());
+        self::assertSame([10.5, 3.5], [$saved->getWidth(), $saved->getHeight()]);
+        self::assertSame('10.5x3.5', $saved->getSize());
+        self::assertSame('10,5 × 3,5 м', $saved->getSizeLabel());
+        $crawler = $this->client->request('GET', '/admin/products/'.$product->getId().'/edit');
+        self::assertSame('10.5', $crawler->filter('#product_form_width')->attr('value'));
+
         // both cleared: no size
         $values['product_form']['width'] = $values['product_form']['height'] = '';
         $this->submit($uri, $values);

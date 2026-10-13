@@ -61,7 +61,9 @@ class ProductRepository extends ServiceEntityRepository
         }
 
         if (null !== $query->size && '' !== $query->size) {
-            $qb->andWhere('p.size = :size')->setParameter('size', $query->size);
+            // "10.5x3.5" → width and height; not a size at all finds nothing
+            [$width, $height] = ProductHelper::dimensions($query->size) ?? [-1.0, -1.0];
+            $qb->andWhere('p.width = :width AND p.height = :height')->setParameter('width', $width)->setParameter('height', $height);
         }
 
         if ([] !== $query->sideNames()) {
@@ -183,11 +185,11 @@ class ProductRepository extends ServiceEntityRepository
      */
     public function findSizes(): array
     {
-        $sizes = array_column($this->createQueryBuilder('p')
-            ->select('DISTINCT p.size')
-            ->andWhere('p.size IS NOT NULL')
+        $sizes = array_map(static fn (array $row) => ProductHelper::sizeKey((float) $row['width'], (float) $row['height']), $this->createQueryBuilder('p')
+            ->select('DISTINCT p.width, p.height')
+            ->andWhere('p.width IS NOT NULL AND p.height IS NOT NULL')
             ->getQuery()
-            ->getScalarResult(), 'size');
+            ->getScalarResult());
         $area = static fn (string $size) => array_product(ProductHelper::dimensions($size) ?? [0, 0]);
         usort($sizes, static fn (string $a, string $b) => [$area($a), $a] <=> [$area($b), $b]);
 
