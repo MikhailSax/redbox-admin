@@ -42,6 +42,12 @@
                 <option value="{{ partner.id }}" {{ query.owner == partner.id ~ "" ? "selected" }}>{{ partner.name }}</option>
             {% endfor %}
         </select>
+        <select name="side" class="filter" aria-label="Сторона" title="Статус и цвет — по выбранной стороне">
+            <option value="">Все стороны</option>
+            {% for side in constant('App\\Dto\\ProductListQuery::SIDES') %}
+                <option value="{{ side }}" {{ query.side == side ? 'selected' }}>Сторона {{ side }}</option>
+            {% endfor %}
+        </select>
         <select name="working" class="filter" aria-label="Работает">
             <option value="">Работающие и нет</option>
             <option value="yes" {{ query.working == 'yes' ? 'selected' }}>Работают</option>
@@ -71,6 +77,7 @@
                 month: selected_month != months|first|date('Y-m') ? selected_month : null,
                 owner: query.owner,
                 working: query.working,
+                side: query.side,
                 status: query.status,
                 sort: query.sort,
                 dir: query.dir,

@@ -15,6 +15,12 @@ final readonly class ProductListQuery
     /** Columns the list is sorted by; without one the recently updated come first */
     public const SORTS = ['name', 'district', 'price', 'status'];
 
+    /** Sides the list is filtered by, as named in the cards */
+    public const SIDES = ['А', 'В'];
+
+    /** The same letter typed in Latin, or "Б" for "В" as the sides are called aloud */
+    private const SIDE_SPELLINGS = ['А' => ['А', 'A'], 'В' => ['В', 'B', 'Б']];
+
     public function __construct(
         #[Assert\Length(max: 100)]
         public ?string $q = null,
@@ -46,7 +52,20 @@ final readonly class ProductListQuery
         public ?string $sort = null,
         #[Assert\Choice(choices: ['asc', 'desc'])]
         public ?string $dir = null,
+        /** Side letter, "А" or "В": structures that have it, their status counted by that side alone */
+        #[Assert\Choice(choices: self::SIDES)]
+        public ?string $side = null,
     ) {
+    }
+
+    /**
+     * Side names that count as the chosen side; empty without the filter.
+     *
+     * @return list<string>
+     */
+    public function sideNames(): array
+    {
+        return self::SIDE_SPELLINGS[$this->side] ?? [];
     }
 
     public function isDescending(): bool

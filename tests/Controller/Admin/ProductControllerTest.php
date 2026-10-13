@@ -2,12 +2,14 @@
 
 namespace App\Tests\Controller\Admin;
 
+use App\Dto\BookingRequest;
 use App\Entity\Category;
 use App\Entity\District;
 use App\Entity\Product;
 use App\Entity\ProductSide;
 use App\Entity\ProductSidePhoto;
 use App\Entity\ProductType;
+use App\Service\BookingManager;
 use App\Service\SidePhotoStorage;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 
@@ -53,6 +55,46 @@ final class ProductControllerTest extends AdminWebTestCase
         $crawler = $this->client->request('GET', '/admin/products?type='.$this->prismatron->getId().'&category=');
         self::assertCount(1, $crawler->filter('tbody tr'));
         self::assertSelectorTextContains('tbody', 'ул. Мира 5');
+    }
+
+    /** "Сторона А / В": structures having that side, Latin or Cyrillic, their status by that side alone */
+    public function testIndexFiltersBySide(): void
+    {
+        $lenina = $this->createProduct('Билборд, пр. Ленина 12', $this->static);
+        $mira = (new Product())
+            ->setName('Билборд, ул. Мира 5')
+            ->setCategory($this->billboard)
+            ->setProductType($this->static)
+            ->setDistrict($this->center)
+            ->setPrice('30000')
+            ->setLatitude('55.0000000')
+            ->setLongitude('37.0000000')
+            ->addSide((new ProductSide())->setName('В'));
+        $this->em->persist($mira);
+        $this->em->flush();
+
+        // side A of Lenina is on hold for October, side B stays free
+        $request = new BookingRequest();
+        $request->side = $lenina->getSides()->filter(static fn (ProductSide $s) => 'A' === $s->getName())->first();
+        $request->startMonth = '2026-10';
+        $request->client = $this->createClientCard();
+        $request->clientName = 'Иван';
+        $request->clientPhone = '+7 900 000-00-00';
+        static::getContainer()->get(BookingManager::class)->hold($request);
+
+        $rows = fn (string $query) => $this->client->request('GET', '/admin/products?month=2026-10&'.$query)->filter('tbody tr')
+            ->each(static fn ($row) => [$row->filter('th')->text(), $row->filter('[data-status]')->attr('data-status')]);
+
+        $sideA = $rows('side=А');
+        self::assertCount(1, $sideA);
+        self::assertStringContainsString('Ленина', $sideA[0][0]);
+        self::assertSame('booked', $sideA[0][1]);
+
+        $sideB = $rows('side=В');
+        self::assertCount(2, $sideB);
+        self::assertSame(['free', 'free'], array_column($sideB, 1));
+
+        self::assertCount(2, $rows('side='));
     }
 
     public function testIndexPaginates(): void

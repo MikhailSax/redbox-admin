@@ -361,7 +361,7 @@ final class BookingControllerTest extends AdminWebTestCase
         self::assertResponseRedirects($this->url($this->billboard).'?month=2026-11');
     }
 
-    /** Revenue of the tab: "Продано за" of the bookings in force, a month takes its share of a longer booking by days */
+    /** Revenue of the tab: the sum of "Продано за" of the paid bookings on it, as typed; the unpaid ones await payment */
     public function testBookingsTableShowsTheRevenueOfTheTab(): void
     {
         $manager = static::getContainer()->get(BookingManager::class);
@@ -376,14 +376,14 @@ final class BookingControllerTest extends AdminWebTestCase
 
         $revenue = fn (string $query) => preg_replace('/\s+/u', ' ', trim($this->client->request('GET', $this->url($this->billboard).$query)->filter('[data-revenue]')->text()));
 
-        // 90 000 × 30 / 91 + 20 000, with kopecks
+        // the paid 90 000 counts whole in every month it takes; the unpaid 20 000 only awaits payment
         self::assertStringContainsString('Выручка за сентябрь 2026', $revenue(''));
-        self::assertStringContainsString('49 670,33 ₽ оплачено 29 670,33 ₽', $revenue(''));
+        self::assertStringContainsString('Итого 90 000 ₽ ждут оплаты 20 000 ₽', $revenue(''));
         // a cancelled booking brings nothing
-        self::assertStringContainsString('30 659,34 ₽ оплачено 30 659,34 ₽', $revenue('?month=2026-10'));
+        self::assertStringContainsString('Итого 90 000 ₽ ждут оплаты 0 ₽', $revenue('?month=2026-10'));
         self::assertStringContainsString('без суммы: 1', $revenue('?month=2026-11'));
         self::assertStringContainsString('Выручка за всё время', $revenue('?month=all'));
-        self::assertStringContainsString('110 000 ₽ оплачено 90 000 ₽', $revenue('?month=all'));
+        self::assertStringContainsString('Итого 90 000 ₽ ждут оплаты 20 000 ₽', $revenue('?month=all'));
     }
 
     /** Services sold with a booking: picked when booking, added and removed later in the list, counted apart in the revenue */
@@ -457,10 +457,14 @@ final class BookingControllerTest extends AdminWebTestCase
         self::assertSelectorTextContains('[role=alert]', 'Услуга «Монтаж» добавлена к брони');
         self::assertSame(11800.0, $this->reload($booking)->getServicesTotal());
 
-        // services go whole to the month the booking starts in, the placement is shared by days (compared without spaces)
+        // not paid yet: nothing in the revenue, all awaits payment (compared without spaces)
         $total = fn (string $query) => preg_replace('/\s+/u', '', $this->client->request('GET', $this->url($this->billboard).$query)->filter('[data-revenue]')->text());
-        self::assertStringContainsString('Размещение29508,20₽Услуги11800₽Итого41308,20₽', $total(''));
-        self::assertStringContainsString('Размещение30491,80₽Услуги0₽Итого30491,80₽', $total('?month=2026-10'));
+        self::assertStringContainsString('Размещение0₽Услуги0₽Итого0₽ждутоплаты71800₽', $total(''));
+
+        // paid: the rows as typed, in every month of the booking
+        static::getContainer()->get(BookingManager::class)->markPaid($this->reload($booking));
+        self::assertStringContainsString('Размещение60000₽Услуги11800₽Итого71800₽ждутоплаты0₽', $total(''));
+        self::assertStringContainsString('Размещение60000₽Услуги11800₽Итого71800₽', $total('?month=2026-10'));
         self::assertStringContainsString('Размещение60000₽Услуги11800₽Итого71800₽', $total('?month=all'));
 
         // removed in the list

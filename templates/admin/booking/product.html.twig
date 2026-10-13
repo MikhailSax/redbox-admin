@@ -291,13 +291,13 @@
                 {% endfor %}
             </tbody>
             {% if is_manager and bookings is not empty %}
-                {# Revenue of the tab: bookings in force only; a month takes its share of a longer booking by days #}
+                {# Revenue of the tab: the sum of the paid rows, as typed; the unpaid ones apart #}
                 <tfoot class="bg-neutral-secondary-soft border-t border-default">
                     <tr data-revenue>
                         <th scope="row" colspan="4" class="px-4 py-3 text-right font-medium text-heading">
                             {{ monthTab == 'all' ? 'Выручка за всё время' : 'Выручка за ' ~ (monthTabs[monthTab].month|month_label|lower) }}
                             <div class="text-xs font-normal text-body-subtle">
-                                действующие брони{{ monthTab != 'all' ? '; бронь на несколько месяцев — долей по дням, услуги — в месяц начала брони' }}
+                                сумма оплаченных броней на вкладке
                             </div>
                         </th>
                         <td colspan="3" class="px-4 py-3">
@@ -306,7 +306,7 @@
                                 <div class="flex justify-between gap-3 max-w-56"><dt>Услуги</dt><dd class="whitespace-nowrap">{{ revenue.services|money }}</dd></div>
                             </dl>
                             <div class="mt-1 text-base font-semibold text-heading whitespace-nowrap tabular-nums">Итого {{ revenue.total|money }}</div>
-                            <div class="text-xs text-body whitespace-nowrap tabular-nums">оплачено {{ revenue.paid|money }}</div>
+                            <div class="text-xs text-body whitespace-nowrap tabular-nums">ждут оплаты {{ revenue.unpaid|money }}</div>
                             {% if revenue.unpriced %}<div class="text-xs text-fg-warning">без суммы: {{ revenue.unpriced }}</div>{% endif %}
                         </td>
                     </tr>

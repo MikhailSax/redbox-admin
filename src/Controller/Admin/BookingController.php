@@ -169,23 +169,26 @@ final class BookingController extends AbstractController
             $bookings = array_values(array_filter($allBookings, static fn (Booking $b) => $b->overlaps($tabMonth, MonthCalendar::lastDay($tabMonth))));
         }
 
-        // Revenue of the tab: "Продано за" of the bookings in force; a month gets its share of a longer booking by days
-        // Services are one-off: they go whole to the month the booking starts in
-        $revenue = ['placement' => 0.0, 'services' => 0.0, 'total' => 0.0, 'paid' => 0.0, 'unpriced' => 0];
+        // Revenue of the tab: "Продано за" and services of the paid bookings, as typed — the sum of the rows;
+        // bookings in force not paid yet are counted apart, as awaiting payment
+        $revenue = ['placement' => 0.0, 'services' => 0.0, 'total' => 0.0, 'unpaid' => 0.0, 'unpriced' => 0];
         $serviceForms = [];
         foreach ($bookings as $booking) {
             if (!$booking->isActiveAt($now)) {
                 continue;
             }
             $serviceForms[$booking->getId()] = $this->serviceForm($booking)->createView();
-            $services = null === $tabMonth || $booking->getStartDate()->format('Y-m') === $monthTab ? $booking->getServicesTotal() : 0;
-            $price = null !== $tabMonth ? $booking->getSoldPriceWithin($tabMonth, MonthCalendar::lastDay($tabMonth)) : $booking->getSoldPrice();
+            $services = $booking->getServicesTotal();
+            $price = $booking->getSoldPrice();
             if (null === $price) {
                 ++$revenue['unpriced'];
             }
+            if (!$booking->isPaid()) {
+                $revenue['unpaid'] += ($price ?? 0) + $services;
+                continue;
+            }
             $revenue['placement'] += $price ?? 0;
             $revenue['services'] += $services;
-            $revenue['paid'] += $booking->isPaid() ? ($price ?? 0) + $services : 0;
         }
         $revenue['total'] = $revenue['placement'] + $revenue['services'];
 

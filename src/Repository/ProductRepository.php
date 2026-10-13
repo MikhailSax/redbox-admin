@@ -64,6 +64,11 @@ class ProductRepository extends ServiceEntityRepository
             $qb->andWhere('p.size = :size')->setParameter('size', $query->size);
         }
 
+        if ([] !== $query->sideNames()) {
+            $qb->andWhere(\sprintf('EXISTS (SELECT 1 FROM %s ns WHERE ns.product = p AND ns.name IN (:sideNames))', ProductSide::class))
+                ->setParameter('sideNames', $query->sideNames());
+        }
+
         $sideWhere = \sprintf('EXISTS (SELECT 1 FROM %s ws WHERE ws.product = p AND ws.working = %%s)', ProductSide::class);
         if ($workingOnly) {
             $qb->andWhere(\sprintf($sideWhere, 'true'));

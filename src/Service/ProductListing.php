@@ -8,6 +8,7 @@ use App\Enum\AvailabilityStatus;
 use App\Repository\ProductRepository;
 use App\Service\Availability\AvailabilityResolver;
 use App\Service\Availability\ProductAvailability;
+use App\Service\Availability\SideAvailability;
 use Symfony\Component\Clock\ClockInterface;
 
 /**
@@ -80,6 +81,15 @@ class ProductListing
         // then count and filter in PHP.
         $ids = $this->products->findMatchingIds($query, $workingOnly);
         $availability = $this->availability->forProducts($ids, $month, $workingOnly);
+
+        // One side chosen: the structure is as free as that side, the other one doesn't count
+        if ([] !== $names = $query->sideNames()) {
+            $availability = array_map(static fn (ProductAvailability $item) => new ProductAvailability(
+                $item->productId,
+                $item->month,
+                array_values(array_filter($item->sides, static fn (SideAvailability $side) => \in_array($side->sideName, $names, true))),
+            ), $availability);
+        }
 
         $statusCounts = array_fill_keys(array_map(static fn (AvailabilityStatus $s) => $s->value, AvailabilityStatus::cases()), 0);
         foreach ($availability as $item) {
