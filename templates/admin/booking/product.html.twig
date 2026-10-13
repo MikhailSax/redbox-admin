@@ -57,7 +57,7 @@
                             <th scope="row" class="sticky left-0 bg-neutral-primary-soft px-4 py-2 text-left font-medium text-heading whitespace-nowrap">
                                 {{ side.name }}
                                 {% if not side.working %}<div class="text-[11px] font-medium text-fg-danger-strong" title="{{ side.notWorkingReason }}">не работает</div>{% endif %}
-                                {% if grid_airtime %}<div class="text-[11px] font-normal text-body-subtle">{{ side.slotCount }} × {{ side.slotSeconds }} сек{% if side.loopSlotCount and side.loopSlotCount > side.slotCount %} из {{ side.loopSlotCount }}{% endif %}</div>{% endif %}
+                                {% if grid_airtime %}<div class="text-[11px] font-normal text-body-subtle">{{ side.slotCount }} × {{ side.slotSeconds }} сек{% if side.loopSlotCount and side.loopSlotCount > side.slotCount %} из {{ side.loopSlotCount }}{% endif %}</div>{% if side.airtime and not side.aroundTheClock %}<div class="text-[11px] font-normal text-body-subtle" title="Время работы экрана">{{ side.workHoursLabel }}</div>{% endif %}{% endif %}
                             </th>
                             {% for key, column in group.columns %}
                                 {% set cell = group.cells[side.id][key] %}

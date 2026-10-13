@@ -82,7 +82,7 @@
                                     <span class="min-w-0">
                                         <span class="line-clamp-2 min-w-40 font-medium text-heading group-hover:underline">{{ item.displayTitle }}</span>
                                         <span class="block text-xs text-body-subtle">
-                                            Сторона {{ item.side.name }} · {{ item.side.effectiveProductType.name ?? '' }}{% if item.slots %} · {{ airtime_label(item) }} из {{ item.side.slotCount }}{% endif %}
+                                            Сторона {{ item.side.name }} · {{ item.side.effectiveProductType.name ?? '' }}{% if item.slots %} · {{ airtime_label(item) }} из {{ item.side.slotCount }}{% endif %}{% if item.side.airtime and not item.side.aroundTheClock %} · {{ item.side.workHoursLabel }}{% endif %}
                                             {% if not product.own %} · {{ product.owner.name }}{% endif %}
                                         </span>
                                     </span>

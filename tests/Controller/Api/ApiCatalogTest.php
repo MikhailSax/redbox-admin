@@ -88,8 +88,26 @@ final class ApiCatalogTest extends AdminWebTestCase
         self::assertSame('perMonth', $screen['sides'][0]['priceUnit']);
         // how the block is split into slots stays in the CRM: a screen is only free or not
         self::assertSame('free', $screen['sides'][0]['status']);
+        // no hours of work set: around the clock
+        self::assertTrue($screen['sides'][0]['aroundTheClock']);
+        self::assertArrayNotHasKey('workHours', $screen['sides'][0]);
         foreach (['slots', 'slotCount', 'freeSlots', 'freeSeconds', 'loadPercent', 'loopSeconds', 'clipDurations'] as $key) {
             self::assertStringNotContainsString('"'.$key.'"', $json);
+        }
+    }
+
+    public function testScreenHoursOfWork(): void
+    {
+        $this->screen->getSides()->first()->setWorkStartsAt(new \DateTimeImmutable('07:00'))->setWorkEndsAt(new \DateTimeImmutable('01:00'));
+        $this->em->flush();
+
+        $side = $this->get('/api/v1/structures/'.$this->screen->getId())['sides'][0];
+        self::assertFalse($side['aroundTheClock']);
+        self::assertSame(['from' => '07:00', 'to' => '01:00'], $side['workHours']); // past midnight
+        // a static side has no hours at all
+        foreach ($this->get('/api/v1/structures/'.$this->billboard->getId())['sides'] as $side) {
+            self::assertArrayNotHasKey('aroundTheClock', $side);
+            self::assertArrayNotHasKey('workHours', $side);
         }
     }
 

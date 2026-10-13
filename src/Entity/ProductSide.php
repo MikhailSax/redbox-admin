@@ -92,6 +92,16 @@ class ProductSide
     private ?int $loopSlotCount = null;
 
     /**
+     * Video screens: when the screen comes on and goes off each day; both null = around the clock.
+     * An end not after the start runs past midnight (07:00–01:00).
+     */
+    #[ORM\Column(type: Types::TIME_IMMUTABLE, nullable: true)]
+    private ?\DateTimeImmutable $workStartsAt = null;
+
+    #[ORM\Column(type: Types::TIME_IMMUTABLE, nullable: true)]
+    private ?\DateTimeImmutable $workEndsAt = null;
+
+    /**
      * False while the side is out of order (repairs, the screen is off, no permit): it is left out of the dashboard,
      * the website and media plans, and takes no new bookings. Bookings it already has stay.
      */
@@ -334,6 +344,73 @@ class ProductSide
         if (null !== $this->loopSlotCount && $this->loopSlotCount < $this->slotCount) {
             $context->buildViolation('Всего слотов в блоке не может быть меньше, чем в продаже')->atPath('loopSlotCount')->addViolation();
         }
+    }
+
+    public function getWorkStartsAt(): ?\DateTimeImmutable
+    {
+        return $this->workStartsAt;
+    }
+
+    public function setWorkStartsAt(?\DateTimeImmutable $workStartsAt): static
+    {
+        $this->workStartsAt = $workStartsAt;
+
+        return $this;
+    }
+
+    public function getWorkEndsAt(): ?\DateTimeImmutable
+    {
+        return $this->workEndsAt;
+    }
+
+    public function setWorkEndsAt(?\DateTimeImmutable $workEndsAt): static
+    {
+        $this->workEndsAt = $workEndsAt;
+
+        return $this;
+    }
+
+    #[Assert\Callback]
+    public function validateWorkHours(ExecutionContextInterface $context): void
+    {
+        if ((null === $this->workStartsAt) !== (null === $this->workEndsAt)) {
+            $context->buildViolation('Укажите и начало, и конец работы — или оставьте оба пустыми, если экран работает круглосуточно')
+                ->atPath(null === $this->workStartsAt ? 'workStartsAt' : 'workEndsAt')->addViolation();
+        } elseif (null !== $this->workStartsAt && $this->workStartsAt->format('H:i') === $this->workEndsAt?->format('H:i')) {
+            $context->buildViolation('Начало и конец совпадают: если экран работает круглосуточно, оставьте оба поля пустыми')->atPath('workEndsAt')->addViolation();
+        }
+    }
+
+    /** The screen works around the clock: no hours set */
+    public function isAroundTheClock(): bool
+    {
+        return null === $this->workStartsAt || null === $this->workEndsAt;
+    }
+
+    /** How long the screen works a day, seconds; past midnight when the end is not after the start */
+    public function getWorkSecondsPerDay(): int
+    {
+        if ($this->isAroundTheClock()) {
+            return 86400;
+        }
+        $seconds = self::secondOfDay($this->workEndsAt) - self::secondOfDay($this->workStartsAt);
+
+        return $seconds > 0 ? $seconds : $seconds + 86400;
+    }
+
+    /** "07:00–23:00" or "круглосуточно" for a video screen; null for a side that isn't one */
+    public function getWorkHoursLabel(): ?string
+    {
+        if (!$this->isAirtime()) {
+            return null;
+        }
+
+        return $this->isAroundTheClock() ? 'круглосуточно' : $this->workStartsAt->format('H:i').'–'.$this->workEndsAt->format('H:i');
+    }
+
+    private static function secondOfDay(\DateTimeImmutable $time): int
+    {
+        return (int) $time->format('G') * 3600 + (int) $time->format('i') * 60 + (int) $time->format('s');
     }
 
     /** Airtime of the screen's block on sale, seconds: every slot on sale once. The screen is taken when all of it is. */

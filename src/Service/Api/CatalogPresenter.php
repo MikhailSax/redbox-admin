@@ -140,6 +140,9 @@ class CatalogPresenter
             // contacts a day with the side (for a screen, with the whole block)
             'ots' => $side->getDailyOts(),
             'grp' => null !== $side->getDailyOts() ? $this->audience->grp($side->getDailyOts()) : null,
+            // a screen's hours of work: "07:00"–"23:00", the end past midnight when not after the start; null = around the clock
+            'workHours' => $side->isAirtime() && !$side->isAroundTheClock() ? ['from' => $side->getWorkStartsAt()->format('H:i'), 'to' => $side->getWorkEndsAt()->format('H:i')] : null,
+            'aroundTheClock' => $side->isAirtime() ? $side->isAroundTheClock() : null,
             'print' => null !== $side->getPrintPrice() ? array_filter(['price' => (float) $side->getPrintPrice(), 'note' => $side->getPrintNote()], static fn (mixed $value) => null !== $value) : null,
             // a screen is free while it has a free slot; the slots themselves are not shown
             'status' => $state?->status()->value,

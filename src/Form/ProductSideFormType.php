@@ -16,6 +16,7 @@ use Symfony\Component\Form\Extension\Core\Type\IntegerType;
 use Symfony\Component\Form\Extension\Core\Type\MoneyType;
 use Symfony\Component\Form\Extension\Core\Type\TextareaType;
 use Symfony\Component\Form\Extension\Core\Type\TextType;
+use Symfony\Component\Form\Extension\Core\Type\TimeType;
 use Symfony\Component\Form\FormBuilderInterface;
 use Symfony\Component\OptionsResolver\OptionsResolver;
 use Symfony\Component\Validator\Constraints as Assert;
@@ -113,6 +114,22 @@ class ProductSideFormType extends AbstractType
                 'required' => false,
                 'attr' => ['min' => 1, 'max' => BookingMode::MAX_SLOT_COUNT, 'placeholder' => 'как в продаже'],
                 'help' => 'Если часть блока не продаётся: например, 12 в блоке, 9 в продаже. По нему считаются контакты.',
+            ])
+            ->add('workStartsAt', TimeType::class, [
+                'label' => 'Работает с',
+                'widget' => 'single_text',
+                'input' => 'datetime_immutable',
+                'required' => false,
+                'invalid_message' => 'Введите время, например 07:00',
+                'help' => 'Пусто в обоих полях — круглосуточно.',
+            ])
+            ->add('workEndsAt', TimeType::class, [
+                'label' => 'до',
+                'widget' => 'single_text',
+                'input' => 'datetime_immutable',
+                'required' => false,
+                'invalid_message' => 'Введите время, например 23:00',
+                'help' => 'Можно после полуночи: с 07:00 до 01:00.',
             ])
             ->add('dailyOts', IntegerType::class, [
                 'label' => 'OTS в сутки',
