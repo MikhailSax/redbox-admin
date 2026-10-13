@@ -283,8 +283,10 @@ final class ImportAddressProgramCommandTest extends KernelTestCase
         self::assertSame(ProductHelper::SIZE_10_5X3_5, ProductHelper::sizeFromText('10,5*3,5'));
         self::assertSame(ProductHelper::SIZE_3_3X7_7, ProductHelper::sizeFromText('Фасад дома 3,3*7,7 м.'));
         self::assertNull(ProductHelper::sizeFromText('Сити-формат'));
-        self::assertNull(ProductHelper::sizeFromText('7 × 9')); // not in the list
+        self::assertSame('7x9', ProductHelper::sizeFromText('7 × 9')); // any size, not only the common ones
+        self::assertNull(ProductHelper::sizeFromText('0x3'));
         self::assertSame('12 × 4 м', ProductHelper::sizeLabel(ProductHelper::SIZE_12X4));
+        self::assertSame('10,5 × 3,25 м', ProductHelper::sizeLabel(ProductHelper::sizeKey(10.50, 3.25)));
     }
 
     private function product(string $name): Product

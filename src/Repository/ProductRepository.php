@@ -5,6 +5,7 @@ namespace App\Repository;
 use App\Dto\ProductListQuery;
 use App\Entity\Product;
 use App\Entity\ProductSide;
+use App\Helpers\ProductHelper;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\ORM\QueryBuilder;
 use Doctrine\Persistence\ManagerRegistry;
@@ -168,5 +169,23 @@ class ProductRepository extends ServiceEntityRepository
             ->getArrayResult();
 
         return array_column(array_map(static fn (array $row) => [(int) $row['id'], (int) $row['total']], $rows), 1, 0);
+    }
+
+    /**
+     * Sizes the structures have, each once, smallest area first: ["1.2x1.8", "6x3", ...].
+     *
+     * @return list<string>
+     */
+    public function findSizes(): array
+    {
+        $sizes = array_column($this->createQueryBuilder('p')
+            ->select('DISTINCT p.size')
+            ->andWhere('p.size IS NOT NULL')
+            ->getQuery()
+            ->getScalarResult(), 'size');
+        $area = static fn (string $size) => array_product(ProductHelper::dimensions($size) ?? [0, 0]);
+        usort($sizes, static fn (string $a, string $b) => [$area($a), $a] <=> [$area($b), $b]);
+
+        return $sizes;
     }
 }

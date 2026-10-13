@@ -79,6 +79,8 @@ final class ProductControllerTest extends AdminWebTestCase
         $values['product_form']['productType'] = (string) $this->static->getId();
         $values['product_form']['district'] = (string) $this->center->getId();
         $values['product_form']['price'] = '45000';
+        $values['product_form']['width'] = '10,5'; // a size off the common formats, comma decimals
+        $values['product_form']['height'] = '3.25';
         $values['product_form']['latitude'] = '55.7539303';
         $values['product_form']['longitude'] = '37.6205606';
         // A third side added on the page via the collection prototype
@@ -103,6 +105,8 @@ final class ProductControllerTest extends AdminWebTestCase
         $product = $this->em->getRepository(Product::class)->findOneBy(['name' => 'Билборд, пр. Ленина 12']);
         self::assertNotNull($product);
         self::assertSame('45000.00', $product->getPrice());
+        self::assertSame('10.5x3.25', $product->getSize());
+        self::assertSame('10,5 × 3,25 м', $product->getSizeLabel());
         self::assertSame('55.7539303', $product->getLatitude());
         self::assertSame('37.6205606', $product->getLongitude());
         self::assertSame($this->center->getId(), $product->getDistrict()?->getId());
@@ -169,6 +173,38 @@ final class ProductControllerTest extends AdminWebTestCase
         self::assertSelectorTextContains('#product-form', 'Добавьте хотя бы одну сторону');
         $this->em->clear();
         self::assertSame('55.0000000', $this->em->find(Product::class, $product->getId())->getLatitude());
+    }
+
+    public function testEditShowsSizeInMetresAndChecksIt(): void
+    {
+        $product = $this->createProduct('Билборд', $this->static);
+        $product->setSize('6x3');
+        $this->em->flush();
+
+        $crawler = $this->client->request('GET', '/admin/products/'.$product->getId().'/edit');
+        self::assertSame('6', $crawler->filter('#product_form_width')->attr('value'));
+        self::assertSame('3', $crawler->filter('#product_form_height')->attr('value'));
+
+        [$values, $uri] = $this->formValues($crawler, 'Сохранить');
+        $values['product_form']['width'] = '12';
+        $values['product_form']['height'] = '';
+        $this->submit($uri, $values);
+        self::assertResponseStatusCodeSame(422);
+        self::assertSelectorTextContains('#product_form_height_error1', 'Укажите высоту');
+
+        $values['product_form']['height'] = '-4';
+        $this->submit($uri, $values);
+        self::assertResponseStatusCodeSame(422);
+        self::assertSelectorTextContains('#product_form_height_error1', 'больше нуля');
+        $this->em->clear();
+        self::assertSame('6x3', $this->em->find(Product::class, $product->getId())->getSize());
+
+        // both cleared: no size
+        $values['product_form']['width'] = $values['product_form']['height'] = '';
+        $this->submit($uri, $values);
+        self::assertResponseRedirects();
+        $this->em->clear();
+        self::assertNull($this->em->find(Product::class, $product->getId())->getSize());
     }
 
     public function testRejectsNonImageUpload(): void

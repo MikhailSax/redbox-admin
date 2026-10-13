@@ -81,8 +81,8 @@
                             </td>
                             <td class="px-4 py-3 text-right tabular-nums whitespace-nowrap">
                                 {% if item.monthlyPrice %}
-                                    {{ item.monthlyPrice|number_format(0, ',', ' ') }}&nbsp;₽<span class="text-xs text-body-subtle"> / мес.</span>
-                                    <div class="text-xs text-body-subtle">≈ {{ item.total|number_format(0, ',', ' ') }} ₽ за период</div>
+                                    {{ item.monthlyPrice|money }}<span class="text-xs text-body-subtle"> / мес.</span>
+                                    <div class="text-xs text-body-subtle">≈ {{ item.total|money }} за период</div>
                                 {% else %}—{% endif %}
                             </td>
                         </tr>
@@ -94,7 +94,7 @@
                     <tfoot>
                         <tr class="border-t border-default">
                             <td colspan="2" class="px-4 py-3 text-right font-medium text-heading">Ориентировочно за период</td>
-                            <td class="px-4 py-3 text-right text-lg font-semibold text-heading tabular-nums whitespace-nowrap">{{ lead.estimate|number_format(0, ',', ' ') }}&nbsp;₽</td>
+                            <td class="px-4 py-3 text-right text-lg font-semibold text-heading tabular-nums whitespace-nowrap">{{ lead.estimate|money }}</td>
                         </tr>
                     </tfoot>
                 {% endif %}

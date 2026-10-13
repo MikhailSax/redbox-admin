@@ -195,7 +195,7 @@
                                     {% if product.price is not null %}
                                         {% if product.sides|filter(s => s.price is not null) is not empty %}<span class="font-normal text-body-subtle" title="У сторон разные цены">от </span>{% endif -%}
                                         {{ product.price|number_format(product.price ends with ".00" ? 0 : 2, ",", " ") }}&nbsp;₽
-                                        {% if product.margin is not null %}<div class="text-xs font-normal text-fg-success-strong" title="Маржа в месяц">+{{ product.margin|number_format(0, ",", " ") }}&nbsp;₽ · {{ product.marginPercent|round }}%</div>{% endif %}
+                                        {% if product.margin is not null %}<div class="text-xs font-normal text-fg-success-strong" title="Маржа в месяц">+{{ product.margin|money }} · {{ product.marginPercent|round }}%</div>{% endif %}
                                     {% else %}
                                         <span class="font-normal text-body-subtle">—</span>
                                     {% endif %}

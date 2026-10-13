@@ -35,9 +35,9 @@ class Product
     #[Assert\Length(max: 20)]
     private ?string $schemeNumber = null;
 
-    /** Key of ProductHelper::SIZES */
+    /** Width × height in metres as a key, "6x3" or "10.5x3.5", see ProductHelper */
     #[ORM\Column(length: 20, nullable: true)]
-    #[Assert\Choice(callback: [ProductHelper::class, 'sizeKeys'], message: 'Выберите размер из списка')]
+    #[Assert\Regex('/^\d+(\.\d+)?x\d+(\.\d+)?$/', message: 'Укажите ширину и высоту в метрах')]
     private ?string $size = null;
 
     #[ORM\Column(length: 255, nullable: true)]
@@ -181,6 +181,26 @@ class Product
     public function getSizeLabel(): ?string
     {
         return ProductHelper::sizeLabel($this->size);
+    }
+
+    /** Width in metres; null while the size isn't set */
+    public function getWidth(): ?float
+    {
+        return ProductHelper::dimensions($this->size)[0] ?? null;
+    }
+
+    /** Height in metres; null while the size isn't set */
+    public function getHeight(): ?float
+    {
+        return ProductHelper::dimensions($this->size)[1] ?? null;
+    }
+
+    /** Both in metres, or both null to clear the size */
+    public function setDimensions(?float $width, ?float $height): static
+    {
+        $this->size = null !== $width && null !== $height ? ProductHelper::sizeKey($width, $height) : null;
+
+        return $this;
     }
 
     public function getShortDescription(): ?string

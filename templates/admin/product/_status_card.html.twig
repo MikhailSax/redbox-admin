@@ -37,18 +37,18 @@
         {% if product.price is not null %}
             <div class="flex justify-between gap-3">
                 <dt class="text-body">Цена продажи</dt>
-                <dd class="font-medium text-heading tabular-nums">{{ product.price|number_format(0, ',', ' ') }} ₽</dd>
+                <dd class="font-medium text-heading tabular-nums">{{ product.price|money }}</dd>
             </div>
         {% endif %}
         {% if not product.own and product.purchasePrice is not null %}
             <div class="flex justify-between gap-3">
                 <dt class="text-body">Цена партнёра</dt>
-                <dd class="tabular-nums text-heading">{{ product.purchasePrice|number_format(0, ',', ' ') }} ₽</dd>
+                <dd class="tabular-nums text-heading">{{ product.purchasePrice|money }}</dd>
             </div>
             <div class="flex justify-between gap-3">
                 <dt class="text-body">Маржа</dt>
                 <dd class="font-semibold tabular-nums {{ product.margin >= 0 ? 'text-fg-success-strong' : 'text-fg-danger-strong' }}">
-                    {{ product.margin|number_format(0, ',', ' ') }} ₽ · {{ product.marginPercent|round }}%
+                    {{ product.margin|money }} · {{ product.marginPercent|round }}%
                 </dd>
             </div>
         {% endif %}

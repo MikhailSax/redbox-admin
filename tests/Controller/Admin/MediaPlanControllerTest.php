@@ -7,6 +7,7 @@ use App\Entity\AdditionalService;
 use App\Entity\Category;
 use App\Entity\District;
 use App\Entity\MediaPlan;
+use App\Entity\MediaPlanServiceLine;
 use App\Entity\Partner;
 use App\Entity\Product;
 use App\Entity\ProductSide;
@@ -226,8 +227,31 @@ final class MediaPlanControllerTest extends AdminWebTestCase
         self::assertSame(19700.0, $plan->getMargin());
 
         $crawler = $this->client->request('GET', '/admin/media-plans/'.$plan->getId());
-        self::assertSelectorTextContains('main aside', '83 300 ₽');
+        self::assertSelectorTextContains('main aside', "83\u{00A0}300\u{00A0}₽");
         self::assertCount(2, $crawler->filter('#services tbody tr'));
+    }
+
+    public function testRowsAndTotalsKeepKopecksSoTheyAddUp(): void
+    {
+        $plan = $this->plan(months: 3);
+        $this->addSides($plan, [$this->billboard->getSides()->first()]);
+        $plan = $this->reload($plan);
+        $plan->getItems()->first()->setManualPrice('33333.33');
+        $plan->addServiceLine(new MediaPlanServiceLine('Монтаж', 'ч', '2.5', '350.50'));
+        $this->em->flush();
+
+        // 33 333,33 × 3 = 99 999,99 and 2,5 × 350,50 = 876,25: in whole rubles the rows were 100 000 and 876, the total 100 876
+        $plan = $this->reload($plan);
+        self::assertSame(99999.99, $plan->getPlacementSubtotal());
+        self::assertSame(876.25, $plan->getServicesTotal());
+        self::assertSame(100876.24, $plan->getTotal());
+
+        $crawler = $this->client->request('GET', '/admin/media-plans/'.$plan->getId());
+        $text = static fn (string $selector) => str_replace("\u{00A0}", ' ', $crawler->filter($selector)->text());
+        self::assertStringContainsString('99 999,99 ₽', $text('main table'));
+        self::assertStringContainsString('876,25 ₽', $text('#services'));
+        self::assertStringContainsString('К оплате 100 876,24 ₽', $text('main aside'));
+        self::assertSame('33333,33', $crawler->filter('input[name="price"]')->attr('value'));
     }
 
     public function testReachAndCostPerThousandFromTheSidesOts(): void

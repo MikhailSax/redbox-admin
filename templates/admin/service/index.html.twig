@@ -31,11 +31,11 @@
                             {% if not service.active %}<span class="ms-1 rounded bg-zinc-100 px-1.5 py-px text-[11px] text-body">не используется</span>{% endif %}
                             {% if service.description %}<div class="text-xs text-body-subtle">{{ service.description }}</div>{% endif %}
                         </th>
-                        <td class="px-4 py-3 text-right font-medium text-heading tabular-nums whitespace-nowrap">{{ service.price|number_format(0, ',', ' ') }}&nbsp;₽ <span class="font-normal text-body-subtle">/ {{ service.unit }}</span></td>
-                        <td class="px-4 py-3 text-right tabular-nums whitespace-nowrap">{{ service.costPrice is not null ? service.costPrice|number_format(0, ',', ' ') ~ ' ₽' : '—' }}</td>
+                        <td class="px-4 py-3 text-right font-medium text-heading tabular-nums whitespace-nowrap">{{ service.price|money }} <span class="font-normal text-body-subtle">/ {{ service.unit }}</span></td>
+                        <td class="px-4 py-3 text-right tabular-nums whitespace-nowrap">{{ service.costPrice is not null ? service.costPrice|money : '—' }}</td>
                         <td class="px-4 py-3 text-right tabular-nums whitespace-nowrap">
                             {% if service.costPrice is not null %}
-                                <span class="text-fg-success-strong">{{ (service.price - service.costPrice)|number_format(0, ',', ' ') }}&nbsp;₽</span>
+                                <span class="text-fg-success-strong">{{ (service.price - service.costPrice)|money }}</span>
                             {% else %}—{% endif %}
                         </td>
                         <td class="px-4 py-3">

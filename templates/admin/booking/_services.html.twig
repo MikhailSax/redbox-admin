@@ -9,7 +9,7 @@
             <li class="flex items-center gap-1">
                 <span class="min-w-0">
                     <span class="text-heading">{{ line.name }}</span>
-                    <span class="text-body-subtle whitespace-nowrap tabular-nums">· {{ line.quantity == line.quantity|round ? line.quantity|round : line.quantity }} {{ line.unit }} · {{ line.total|number_format(0, ',', ' ') }} ₽</span>
+                    <span class="text-body-subtle whitespace-nowrap tabular-nums">· {{ line.quantity == line.quantity|round ? line.quantity|round : line.quantity }} {{ line.unit }} · {{ line.total|money }}</span>
                 </span>
                 {% if service_form %}
                     <form method="post" action="{{ path('admin_booking_remove_service', {id: booking.id, line: line.id}) }}"
@@ -23,7 +23,7 @@
             </li>
         {% endfor %}
     </ul>
-    {% if booking.serviceLines|length > 1 %}<div class="text-xs font-medium text-heading tabular-nums whitespace-nowrap">всего {{ booking.servicesTotal|number_format(0, ',', ' ') }} ₽</div>{% endif %}
+    {% if booking.serviceLines|length > 1 %}<div class="text-xs font-medium text-heading tabular-nums whitespace-nowrap">всего {{ booking.servicesTotal|money }}</div>{% endif %}
 {% elseif not service_form %}
     <span class="text-body-subtle">—</span>
 {% endif %}

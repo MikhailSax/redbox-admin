@@ -82,7 +82,7 @@ final class PartnerControllerTest extends AdminWebTestCase
         $this->client->followRedirect();
 
         self::assertSelectorTextContains('#product-status', 'Наружка');
-        self::assertSelectorTextContains('#product-status', '10 000 ₽ · 25%');
+        self::assertSelectorTextContains('#product-status', "10\u{00A0}000\u{00A0}₽ · 25%");
 
         $this->em->clear();
         $saved = $this->em->find(Product::class, $product->getId());

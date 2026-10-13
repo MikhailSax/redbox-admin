@@ -402,6 +402,6 @@ class Booking
     /** Services sold with the booking, rubles; apart from the sold price of the placement */
     public function getServicesTotal(): float
     {
-        return array_sum($this->serviceLines->map(static fn (BookingServiceLine $line) => $line->getTotal())->toArray());
+        return round(array_sum($this->serviceLines->map(static fn (BookingServiceLine $line) => $line->getTotal())->toArray()), 2);
     }
 }

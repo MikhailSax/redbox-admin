@@ -289,7 +289,7 @@ class MediaPlan
     /** Placement at list prices (before promotions), before the plan discount */
     public function getListSubtotal(): float
     {
-        return array_sum($this->items->map(fn (MediaPlanItem $item) => $item->getBasePrice() * $this->months)->toArray());
+        return round(array_sum($this->items->map(fn (MediaPlanItem $item) => $item->getBasePrice() * $this->months)->toArray()), 2);
     }
 
     public function getPromotionSavings(): float
@@ -373,7 +373,7 @@ class MediaPlan
     /** Placement for the whole period, before discount */
     public function getPlacementSubtotal(): float
     {
-        return array_sum($this->items->map(fn (MediaPlanItem $item) => $item->getMonthlyPrice() * $this->months)->toArray());
+        return round(array_sum($this->items->map(fn (MediaPlanItem $item) => $item->getMonthlyPrice() * $this->months)->toArray()), 2);
     }
 
     public function getDiscountAmount(): float
@@ -383,18 +383,18 @@ class MediaPlan
 
     public function getPlacementTotal(): float
     {
-        return $this->getPlacementSubtotal() - $this->getDiscountAmount();
+        return round($this->getPlacementSubtotal() - $this->getDiscountAmount(), 2);
     }
 
     public function getServicesTotal(): float
     {
-        return array_sum($this->serviceLines->map(static fn (MediaPlanServiceLine $line) => $line->getTotal())->toArray());
+        return round(array_sum($this->serviceLines->map(static fn (MediaPlanServiceLine $line) => $line->getTotal())->toArray()), 2);
     }
 
     /** What the client pays */
     public function getTotal(): float
     {
-        return $this->getPlacementTotal() + $this->getServicesTotal();
+        return round($this->getPlacementTotal() + $this->getServicesTotal(), 2);
     }
 
     /**
@@ -402,13 +402,13 @@ class MediaPlan
      */
     public function getPartnerCost(): float
     {
-        return array_sum($this->items->map(fn (MediaPlanItem $item) => $item->getMonthlyPartnerCost() * $this->months)->toArray());
+        return round(array_sum($this->items->map(fn (MediaPlanItem $item) => $item->getMonthlyPartnerCost() * $this->months)->toArray()), 2);
     }
 
     /** Own cost of the services (printing house, installers), where known */
     public function getServicesCost(): float
     {
-        return array_sum($this->serviceLines->map(static fn (MediaPlanServiceLine $line) => $line->getCost())->toArray());
+        return round(array_sum($this->serviceLines->map(static fn (MediaPlanServiceLine $line) => $line->getCost())->toArray()), 2);
     }
 
     /*

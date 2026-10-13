@@ -91,10 +91,10 @@
                 </td>
                 <td class="price">
                     {% if item.hasPromotionPrice %}
-                        <div class="small old">{{ item.basePrice|number_format(0, ',', ' ') }} ₽</div>
+                        <div class="small old">{{ item.basePrice|money }}</div>
                     {% endif %}
-                    <div class="small muted">{{ item.monthlyPrice|number_format(0, ',', ' ') }} ₽ × {{ plan.months }} мес.</div>
-                    <div class="sum">{{ (item.monthlyPrice * plan.months)|number_format(0, ',', ' ') }} ₽</div>
+                    <div class="small muted">{{ item.monthlyPrice|money }} × {{ plan.months }} мес.</div>
+                    <div class="sum">{{ (item.monthlyPrice * plan.months)|money }}</div>
                     {% if item.hasPromotionPrice %}<div class="promo">Акция «{{ item.promotionTitle }}»</div>{% endif %}
                 </td>
             </tr>
@@ -109,8 +109,8 @@
                 <tr>
                     <td>{{ line.name }}</td>
                     <td class="r">{{ line.quantity == line.quantity|round ? line.quantity|round : line.quantity|number_format(2, ',', ' ') }} {{ line.unit }}</td>
-                    <td class="r">{{ line.unitPrice|number_format(0, ',', ' ') }} ₽</td>
-                    <td class="r"><b>{{ line.total|number_format(0, ',', ' ') }} ₽</b></td>
+                    <td class="r">{{ line.unitPrice|money }}</td>
+                    <td class="r"><b>{{ line.total|money }}</b></td>
                 </tr>
             {% endfor %}
         </table>
@@ -118,17 +118,17 @@
 
     <table class="totals">
         {% if plan.promotionSavings > 0 %}
-            <tr><td>По прайсу, {{ plan.months }} мес.</td><td class="r old">{{ plan.listSubtotal|number_format(0, ',', ' ') }} ₽</td></tr>
-            <tr><td>Скидка по акциям</td><td class="r">−{{ plan.promotionSavings|number_format(0, ',', ' ') }} ₽</td></tr>
+            <tr><td>По прайсу, {{ plan.months }} мес.</td><td class="r old">{{ plan.listSubtotal|money }}</td></tr>
+            <tr><td>Скидка по акциям</td><td class="r">−{{ plan.promotionSavings|money }}</td></tr>
         {% endif %}
-        <tr><td>Размещение, {{ plan.months }} мес.</td><td class="r">{{ plan.placementSubtotal|number_format(0, ',', ' ') }} ₽</td></tr>
+        <tr><td>Размещение, {{ plan.months }} мес.</td><td class="r">{{ plan.placementSubtotal|money }}</td></tr>
         {% if plan.discountPercent > 0 %}
-            <tr><td>Скидка {{ plan.discountPercent }}% на размещение</td><td class="r">−{{ plan.discountAmount|number_format(0, ',', ' ') }} ₽</td></tr>
+            <tr><td>Скидка {{ plan.discountPercent }}% на размещение</td><td class="r">−{{ plan.discountAmount|money }}</td></tr>
         {% endif %}
         {% if plan.serviceLines is not empty %}
-            <tr><td>Дополнительные услуги</td><td class="r">{{ plan.servicesTotal|number_format(0, ',', ' ') }} ₽</td></tr>
+            <tr><td>Дополнительные услуги</td><td class="r">{{ plan.servicesTotal|money }}</td></tr>
         {% endif %}
-        <tr class="grand"><td>Итого</td><td class="r">{{ plan.total|number_format(0, ',', ' ') }} ₽</td></tr>
+        <tr class="grand"><td>Итого</td><td class="r">{{ plan.total|money }}</td></tr>
     </table>
 
     {% if plan.contacts > 0 %}

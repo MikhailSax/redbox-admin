@@ -50,7 +50,7 @@
                                 </td>
                                 <td class="px-4 py-3 text-right tabular-nums">{{ plan.items|length }}</td>
                                 <td class="px-4 py-3 text-right font-medium text-heading tabular-nums whitespace-nowrap">
-                                    {{ plan.total|number_format(0, ',', ' ') }}&nbsp;₽
+                                    {{ plan.total|money }}
                                     {% if plan.discountPercent > 0 %}<div class="text-xs font-normal text-body-subtle">скидка {{ plan.discountPercent }}%</div>{% endif %}
                                 </td>
                                 <td class="px-4 py-3 whitespace-nowrap">

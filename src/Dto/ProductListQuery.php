@@ -27,7 +27,7 @@ final readonly class ProductListQuery
         public ?string $status = null,
         #[Assert\Positive]
         public ?int $district = null,
-        /** Key of ProductHelper::SIZES */
+        /** Size key, "6x3", see ProductHelper */
         #[Assert\Length(max: 20)]
         public ?string $size = null,
         /** "own" for Redbox's structures or a partner id */

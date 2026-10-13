@@ -206,7 +206,7 @@
                                         </th>
                                         <td class="px-4 py-3 whitespace-nowrap">{{ row.plan.startMonth|month_label }}{% if row.plan.months > 1 %} — {{ row.plan.endMonth|month_label }}{% endif %}</td>
                                         <td class="px-4 py-3 text-right tabular-nums">{{ row.items }}</td>
-                                        <td class="px-4 py-3 text-right font-medium text-heading tabular-nums whitespace-nowrap">{{ row.savings|number_format(0, ',', ' ') }}&nbsp;₽</td>
+                                        <td class="px-4 py-3 text-right font-medium text-heading tabular-nums whitespace-nowrap">{{ row.savings|money }}</td>
                                     </tr>
                                 {% else %}
                                     <tr>
@@ -267,7 +267,7 @@
                     </div>
                     <div class="flex justify-between gap-3">
                         <dt class="text-body">Скидка клиентам</dt>
-                        <dd class="font-medium text-heading tabular-nums whitespace-nowrap">{{ usage|reduce((sum, row) => sum + row.savings, 0)|number_format(0, ',', ' ') }} ₽</dd>
+                        <dd class="font-medium text-heading tabular-nums whitespace-nowrap">{{ usage|reduce((sum, row) => sum + row.savings, 0)|money }}</dd>
                     </div>
                 </dl>
 

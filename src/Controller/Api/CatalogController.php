@@ -7,6 +7,7 @@ use App\Entity\Product;
 use App\Helpers\ProductHelper;
 use App\Repository\CategoryRepository;
 use App\Repository\DistrictRepository;
+use App\Repository\ProductRepository;
 use App\Repository\ProductTypeRepository;
 use App\Service\Api\CatalogPresenter;
 use App\Service\ProductListing;
@@ -97,7 +98,7 @@ final class CatalogController extends AbstractController
      * Values for the catalogue filters.
      */
     #[Route('/filters', name: 'filters', methods: ['GET'])]
-    public function filters(CategoryRepository $categories, ProductTypeRepository $types, DistrictRepository $districts): JsonResponse
+    public function filters(CategoryRepository $categories, ProductTypeRepository $types, DistrictRepository $districts, ProductRepository $products): JsonResponse
     {
         $named = static fn (array $rows) => array_map(static fn (object $row) => ['id' => $row->getId(), 'name' => $row->getName()], $rows);
 
@@ -105,7 +106,7 @@ final class CatalogController extends AbstractController
             'categories' => $named($categories->findBy([], ['name' => 'ASC'])),
             'types' => $named($types->findBy([], ['name' => 'ASC'])),
             'districts' => $named($districts->findBy([], ['name' => 'ASC'])),
-            'sizes' => array_map(static fn (string $key) => ['id' => $key, 'name' => ProductHelper::SIZES[$key]], ProductHelper::sizeKeys()),
+            'sizes' => array_map(static fn (string $key) => ['id' => $key, 'name' => ProductHelper::sizeLabel($key)], $products->findSizes()),
             'statuses' => [
                 ['id' => 'free', 'name' => 'Свободна'],
                 ['id' => 'booked', 'name' => 'Забронирована'],
