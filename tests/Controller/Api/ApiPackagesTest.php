@@ -189,8 +189,8 @@ final class ApiPackagesTest extends AdminWebTestCase
         $past = $order([$pick($superSite, $this->superSite), $pick($billboards, $this->billboards[0]), $pick($billboards, $this->billboards[2])], from: '2026-10-01');
         self::assertSame(422, $past['status']);
 
-        // a package that is off
-        $package->setActive(false);
+        // a package that is off (the kernel reboots between requests and clears the entity manager: load it anew)
+        $this->em->find(Package::class, $package->getId())->setActive(false);
         $this->em->flush();
         $off = $order([$pick($superSite, $this->superSite), $pick($billboards, $this->billboards[0]), $pick($billboards, $this->billboards[2])]);
         self::assertSame('package_unavailable', $off['body']['error']);

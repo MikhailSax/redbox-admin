@@ -62,9 +62,10 @@ final class PackageControllerTest extends AdminWebTestCase
         self::assertSame(45000.0, $package->getFixedMonthlyTotal());
 
         // the card shows what the website offers for November
-        $this->client->followRedirect();
+        $crawler = $this->client->followRedirect();
         self::assertSelectorTextContains('main aside', 'Набор в месяц');
-        self::assertSelectorTextContains('main aside', '45 000');
+        // money() puts a non-breaking space between thousands
+        self::assertMatchesRegularExpression('/Набор в месяц\s*45\s000/u', $crawler->filter('main aside')->text());
 
         $this->client->request('GET', '/admin/packages');
         self::assertSelectorTextContains('.data-table', 'Выгодный');
