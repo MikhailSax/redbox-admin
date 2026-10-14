@@ -148,7 +148,7 @@
                                 {% if item.manualPrice %}
                                     <form method="post" action="{{ path('admin_media_plan_item_auto_price', {id: plan.id, item: item.id}) }}" class="mt-1 flex items-center justify-end gap-1 text-[11px] text-body-subtle">
                                         <input type="hidden" name="_token" value="{{ token }}">
-                                        цена вручную ·
+                                        {% if item.packagePrice %}<span class="promo-text max-w-20" title="{{ item.promotionTitle }}"><span class="truncate">{{ item.promotionTitle }}</span></span>{% else %}цена вручную{% endif %} ·
                                         <button type="submit" class="font-medium text-heading underline decoration-dotted underline-offset-2 hover:decoration-solid" title="Вернуть цену по прайсу {{ item.basePrice|money }} с учётом акций">по прайсу</button>
                                     </form>
                                 {% elseif item.hasPromotionPrice %}

@@ -23,6 +23,9 @@
             <p class="page-subtitle">
                 {{ lead.createdAt|date('d.m.Y H:i') }} · {{ lead.fromSite ? 'с сайта' : 'вручную' }}
                 {%- if lead.client %} · <a href="{{ path('admin_client_show', {id: lead.client.id}) }}" class="font-medium text-heading hover:underline">личный кабинет</a>{% endif %}
+                {%- if lead.packageTitle %} · пакет
+                    {% if lead.package and is_granted('ROLE_SUPER_MANAGER') %}<a href="{{ path('admin_package_edit', {id: lead.package.id}) }}" class="font-medium text-heading hover:underline">«{{ lead.packageTitle }}»</a>{% else %}<span class="font-medium text-heading">«{{ lead.packageTitle }}»</span>{% endif %}
+                {%- endif %}
             </p>
         </div>
         <div class="flex flex-wrap gap-2">
@@ -74,14 +77,18 @@
                                 <div class="text-xs text-body-subtle">
                                     Сторона {{ item.sideName }}{% if item.slots %} · {{ item.slots|plural('слот', 'слота', 'слотов') }}{% endif %}
                                 </div>
+                                {% if item.inPackage %}<span class="promo-badge mt-1" title="Пакет «{{ lead.packageTitle }}»">{{ ui.icon('stack', 'size-3') }} {{ item.packageSlotTitle }}</span>{% endif %}
                             </th>
                             <td class="px-4 py-3">
                                 {{ period_label(item.startDate, item.endDate) }}
                                 <div class="text-xs text-body-subtle">{{ item.days }} дн.</div>
                             </td>
                             <td class="px-4 py-3 text-right tabular-nums whitespace-nowrap">
-                                {% if item.monthlyPrice %}
-                                    {{ item.monthlyPrice|money }}<span class="text-xs text-body-subtle"> / мес.</span>
+                                {% if item.inPackage and item.monthlyPrice is same as(0.0) %}
+                                    <span class="font-medium text-heading">в подарок</span>
+                                    <div class="text-xs text-body-subtle">по пакету</div>
+                                {% elseif item.monthlyPrice %}
+                                    {{ item.monthlyPrice|money }}<span class="text-xs text-body-subtle"> / мес.{% if item.inPackage %} по пакету{% endif %}</span>
                                     <div class="text-xs text-body-subtle">≈ {{ item.total|money }} за период</div>
                                 {% else %}—{% endif %}
                             </td>

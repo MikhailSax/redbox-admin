@@ -117,6 +117,12 @@ class MediaPlanItem
         return $this;
     }
 
+    /** The price came from a package offer (see applyPackage()) */
+    public function isPackagePrice(): bool
+    {
+        return $this->manualPrice && null !== $this->promotionTitle;
+    }
+
     public function isManualPrice(): bool
     {
         return $this->manualPrice;
@@ -138,6 +144,18 @@ class MediaPlanItem
     public function resetManualPrice(): static
     {
         $this->manualPrice = false;
+
+        return $this;
+    }
+
+    /**
+     * The price of a package offer the client took on the website: kept like a manager's price
+     * (recalculation doesn't touch it), with the package named where a promotion would be.
+     */
+    public function applyPackage(string $packageTitle, string $price): static
+    {
+        $this->setManualPrice($price);
+        $this->promotionTitle = mb_substr('Пакет «'.$packageTitle.'»', 0, 255);
 
         return $this;
     }

@@ -1,0 +1,48 @@
+{% import 'admin/_icons.html.twig' as ui %}
+{#
+    One position of a package in the form, also the collection's prototype (assets/admin/collection.js).
+    Vars: slot_form
+#}
+{% set list_id = 'package-slot-' ~ slot_form.vars.name ~ '-sides' %}
+<section class="card" data-collection-item>
+    <div class="mb-4 flex items-start justify-between gap-3">
+        <h3 class="text-base font-semibold text-heading">Позиция</h3>
+        <button type="button" class="btn btn-ghost btn-sm text-fg-danger hover:bg-danger-soft" data-collection-remove
+                data-confirm="Позиция уйдёт из пакета, когда вы сохраните его." data-confirm-title="Убрать позицию?" data-confirm-button="Убрать">Убрать</button>
+    </div>
+    {{ form_errors(slot_form) }}
+
+    <div class="grid gap-x-6 md:grid-cols-[minmax(0,1fr)_9rem_14rem]">
+        {{ form_row(slot_form.title) }}
+        {{ form_row(slot_form.quantity) }}
+        {{ form_row(slot_form.price) }}
+    </div>
+
+    <div class="mb-1.5 flex flex-wrap items-center justify-between gap-3">
+        {{ form_label(slot_form.sides, null, {label_class: 'block text-sm font-medium text-heading'}) }}
+        <label class="search-field w-full max-w-64">
+            <span class="sr-only">Найти сторону</span>
+            {{ ui.icon('search') }}
+            <input type="search" class="input h-8 text-sm" autocomplete="off" placeholder="Название, тип, размер, район…" data-checklist-filter="{{ list_id }}">
+        </label>
+    </div>
+    <div id="{{ list_id }}" class="max-h-80 overflow-y-auto rounded-lg border border-default">
+        <ul class="divide-y divide-default">
+            {% for child in slot_form.sides %}
+                {% set hint = child.vars.attr['data-hint'] ?? '' %}
+                <li data-search="{{ (child.vars.label ~ ' ' ~ hint)|lower }}">
+                    <label class="flex cursor-pointer items-center gap-3 px-3 py-2 hover:bg-zinc-50 has-checked:bg-violet-50/60">
+                        {{ form_widget(child, {widget_class: 'checkbox', attr: {}}) }}
+                        <span class="min-w-0 flex-1 truncate text-sm text-heading">{{ child.vars.label }}</span>
+                        {% if hint %}<span class="shrink-0 truncate text-xs text-body-subtle">{{ hint }}</span>{% endif %}
+                    </label>
+                </li>
+            {% else %}
+                <li class="px-3 py-6 text-center text-sm text-body">Конструкций пока нет.</li>
+            {% endfor %}
+            <li data-checklist-empty hidden class="px-3 py-6 text-center text-sm text-body">Ничего не найдено</li>
+        </ul>
+    </div>
+    <p class="mt-1.5 text-xs text-body-subtle">Клиент выберет из отмеченных столько сторон, сколько указано выше. Нужны конкретные стороны без выбора — отметьте ровно столько, сколько берёт клиент.</p>
+    {{ form_errors(slot_form.sides) }}
+</section>

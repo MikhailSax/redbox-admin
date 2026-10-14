@@ -13,6 +13,8 @@ use App\Service\Availability\ProductAvailability;
 use App\Service\Availability\SideAvailability;
 use App\Service\BookingManager;
 use App\Service\CityAudience;
+use App\Service\Package\PackageOffer;
+use App\Service\Package\SlotOffer;
 use App\Service\PromotionResolver;
 use Symfony\Component\Asset\Packages;
 use Symfony\Component\Clock\ClockInterface;
@@ -149,6 +151,67 @@ class CatalogPresenter
             'statusLabel' => $state?->status()->label(),
             'photos' => array_map(fn ($photo) => $this->assets->getUrl($photo->getWebPath()), $side->getPhotos()->toArray()),
         ], static fn (mixed $value) => null !== $value);
+    }
+
+    /**
+     * A package offer for a period: every position with the sides free all the period and the ready set.
+     *
+     * @return array<string, mixed>
+     */
+    public function package(PackageOffer $offer): array
+    {
+        $package = $offer->package;
+        $monthly = $offer->monthlyTotal();
+        $list = $offer->listMonthlyTotal();
+
+        return array_filter([
+            'id' => $package->getId(),
+            'title' => $package->getTitle(),
+            'description' => $package->getDescription(),
+            'endsAt' => $package->getEndsAt()?->format('Y-m-d'),
+            'minMonths' => $package->getMinMonths(),
+            'maxMonths' => $package->getMaxMonthsOrDefault(),
+            'monthsLabel' => $package->getMonthsLabel(),
+            'sides' => $package->getSideCount(),
+            // the period the sides were checked for
+            'from' => $offer->from->format('Y-m-d'),
+            'to' => $offer->to->format('Y-m-d'),
+            'months' => $offer->months,
+            // false: some position hasn't enough free sides for this period, try another one
+            'available' => $offer->isAvailable(),
+            // per month and for the whole period, of the ready set
+            'monthlyTotal' => $monthly,
+            'total' => null !== $monthly ? round($monthly * $offer->months, 2) : null,
+            'listMonthlyTotal' => $list,
+            'savingsMonthly' => null !== $list && null !== $monthly ? max(0.0, round($list - $monthly, 2)) : null,
+            'slots' => array_map($this->packageSlot(...), $offer->slots),
+        ], static fn (mixed $value) => null !== $value);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function packageSlot(SlotOffer $offer): array
+    {
+        $slot = $offer->slot;
+
+        return [
+            'id' => $slot->getId(),
+            'title' => $slot->getTitle(),
+            'quantity' => $slot->getQuantity(),
+            // per side per month; null = each side at its own price (see options[].price)
+            'price' => null !== $slot->getPrice() ? (float) $slot->getPrice() : null,
+            'priceLabel' => $slot->getPriceLabel(),
+            'gift' => $slot->isGift(),
+            'options' => array_map(fn (ProductSide $side) => [
+                'sideId' => $side->getId(),
+                'side' => $side->getName(),
+                'price' => $offer->price($side),
+                'listPrice' => SlotOffer::listPrice($side, $offer->months),
+                'structure' => $this->structure($side->getProduct(), withSides: false),
+            ], $offer->free),
+            'suggested' => array_map(static fn (ProductSide $side) => $side->getId(), $offer->suggested),
+        ];
     }
 
     /**

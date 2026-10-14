@@ -96,7 +96,7 @@
                     {% endif %}
                     <div class="small muted">{{ item.monthlyPrice|money }} × {{ plan.months }} мес.</div>
                     <div class="sum">{{ (item.monthlyPrice * plan.months)|money }}</div>
-                    {% if item.hasPromotionPrice %}<div class="promo">Акция «{{ item.promotionTitle }}»</div>{% endif %}
+                    {% if item.hasPromotionPrice %}<div class="promo">{{ item.packagePrice ? item.promotionTitle : 'Акция «' ~ item.promotionTitle ~ '»' }}</div>{% endif %}
                 </td>
             </tr>
         </table>

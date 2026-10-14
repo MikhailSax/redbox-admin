@@ -8,9 +8,13 @@ use App\Entity\Lead;
 use App\Entity\LeadItem;
 use App\Entity\ProductSide;
 use App\Entity\User;
+use App\Repository\PackageRepository;
 use App\Service\MediaPlanManager;
 use App\Service\MonthCalendar;
 use App\Service\Notifications;
+use App\Service\Package\PackageException;
+use App\Service\Package\PackageOffers;
+use Symfony\Component\Clock\ClockInterface;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\DependencyInjection\Attribute\Target;
@@ -33,6 +37,9 @@ final class OrderController extends AbstractController
         #[Target('orders')]
         private readonly RateLimiterFactoryInterface $ordersLimiter,
         private readonly Notifications $notifications,
+        private readonly PackageRepository $packages,
+        private readonly PackageOffers $packageOffers,
+        private readonly ClockInterface $clock,
     ) {
     }
 
@@ -81,6 +88,38 @@ final class OrderController extends AbstractController
             ], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
+        // A package: its sides at the package prices, checked against the package and the bookings
+        if (null !== $order->package) {
+            $package = $this->packages->findRunningById((int) $order->package->id, $this->clock->now());
+            if (null === $package) {
+                return $this->json([
+                    'error' => 'package_unavailable',
+                    'message' => 'Это пакетное предложение больше не действует. Обновите страницу и выберите другое.',
+                ], Response::HTTP_UNPROCESSABLE_ENTITY);
+            }
+
+            $start = new \DateTimeImmutable((string) $order->package->from);
+            try {
+                $lines = $this->packageOffers->select($package, $start, (int) $order->package->months, $order->package->selection());
+            } catch (PackageException $e) {
+                return $this->json(['error' => 'package_invalid', 'message' => $e->getMessage()], Response::HTTP_UNPROCESSABLE_ENTITY);
+            }
+
+            [$from, $to] = PackageOffers::period($start, (int) $order->package->months);
+            $lead->setPackage($package);
+            foreach ($lines as ['slot' => $slot, 'side' => $side, 'price' => $price]) {
+                $lead->addItem((new LeadItem(
+                    side: $side,
+                    productTitle: self::productTitle($side),
+                    sideName: $side->getName(),
+                    startDate: $from,
+                    endDate: $to,
+                    slots: MediaPlanManager::slotsFor($side, null),
+                    monthlyPrice: number_format($price, 2, '.', ''),
+                ))->setPackageSlotTitle($slot->getTitle()));
+            }
+        }
+
         $this->entityManager->persist($lead);
         $this->entityManager->flush();
         $this->notifications->leadReceived($lead);
@@ -95,7 +134,6 @@ final class OrderController extends AbstractController
 
     private function item(ProductSide $side, OrderItemRequest $request): LeadItem
     {
-        $product = $side->getProduct();
         $start = new \DateTimeImmutable((string) $request->from);
         $end = new \DateTimeImmutable((string) $request->to);
         // the site sells a screen by one slot; the manager changes the slots in the media plan if needed
@@ -104,12 +142,20 @@ final class OrderController extends AbstractController
 
         return new LeadItem(
             side: $side,
-            productTitle: trim(\sprintf('%s%s', $product?->getSchemeNumber() ? '№'.$product->getSchemeNumber().' · ' : '', (string) $product?->getName())),
+            productTitle: self::productTitle($side),
             sideName: $side->getName(),
             startDate: $start,
             endDate: $end,
             slots: $slots,
             monthlyPrice: number_format($monthly, 2, '.', ''),
         );
+    }
+
+    /** "№7/23 · Щит на Ленина" */
+    private static function productTitle(ProductSide $side): string
+    {
+        $product = $side->getProduct();
+
+        return trim(\sprintf('%s%s', $product?->getSchemeNumber() ? '№'.$product->getSchemeNumber().' · ' : '', (string) $product?->getName()));
     }
 }

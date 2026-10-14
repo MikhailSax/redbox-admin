@@ -4,6 +4,7 @@ namespace App\Dto\Api;
 
 use App\Validator\SmartCaptcha;
 use Symfony\Component\Validator\Constraints as Assert;
+use Symfony\Component\Validator\Context\ExecutionContextInterface;
 
 /**
  * "Заявка на размещение" from the website: the cart plus the visitor's contacts.
@@ -55,9 +56,23 @@ final class OrderRequest
     public ?string $captchaToken = null;
 
     /**
+     * Sides at their own prices; may be empty when the order is a package
+     *
      * @var list<OrderItemRequest>
      */
     #[Assert\Valid]
-    #[Assert\Count(min: 1, max: 50, minMessage: 'Добавьте хотя бы одну конструкцию', maxMessage: 'Не больше {{ limit }} позиций в заявке')]
+    #[Assert\Count(max: 50, maxMessage: 'Не больше {{ limit }} позиций в заявке')]
     public array $items = [];
+
+    /** A package offer taken with the order (see /api/v1/packages) */
+    #[Assert\Valid]
+    public ?PackageOrderRequest $package = null;
+
+    #[Assert\Callback]
+    public function validateNotEmpty(ExecutionContextInterface $context): void
+    {
+        if ([] === $this->items && null === $this->package) {
+            $context->buildViolation('Добавьте хотя бы одну конструкцию')->atPath('items')->addViolation();
+        }
+    }
 }

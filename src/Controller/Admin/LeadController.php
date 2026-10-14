@@ -177,7 +177,11 @@ final class LeadController extends AbstractController
         $this->entityManager->persist($plan);
 
         foreach ($sides as $item) {
-            $this->mediaPlans->addSide($plan, $item->getSide(), $item->getSlots());
+            $planItem = $this->mediaPlans->addSide($plan, $item->getSide(), $item->getSlots());
+            // taken in a package: the price the client was offered stays, whatever the list says
+            if (null !== $planItem && $item->isInPackage() && null !== $item->getMonthlyPrice()) {
+                $planItem->applyPackage((string) $lead->getPackageTitle(), number_format($item->getMonthlyPrice(), 2, '.', ''));
+            }
         }
 
         $before = $lead->getStatus();

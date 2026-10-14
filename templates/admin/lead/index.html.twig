@@ -66,6 +66,7 @@
                                 <td class="max-w-72 px-4 py-3">
                                     <span class="line-clamp-2 text-heading">{{ lead.items|map(i => i.productTitle)|slice(0, 3)|join(', ') }}{% if lead.items|length > 3 %} и ещё {{ lead.items|length - 3 }}{% endif %}</span>
                                     <span class="text-xs text-body-subtle">позиций: {{ lead.items|length }}</span>
+                                    {% if lead.packageTitle %}<span class="promo-badge ms-1" title="Пакетное предложение">{{ ui.icon('stack', 'size-3') }} {{ lead.packageTitle }}</span>{% endif %}
                                 </td>
                                 <td class="px-4 py-3 text-right tabular-nums whitespace-nowrap">{{ lead.estimate > 0 ? lead.estimate|money : '—' }}</td>
                                 <td class="px-4 py-3">

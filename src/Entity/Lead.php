@@ -91,6 +91,15 @@ class Lead
     #[ORM\JoinColumn(onDelete: 'SET NULL')]
     private ?MediaPlan $mediaPlan = null;
 
+    /** Package offer the visitor took on the website (its items carry the package prices) */
+    #[ORM\ManyToOne]
+    #[ORM\JoinColumn(onDelete: 'SET NULL')]
+    private ?Package $package = null;
+
+    /** The package's title when the request came, kept after the package is renamed or removed */
+    #[ORM\Column(length: 255, nullable: true)]
+    private ?string $packageTitle = null;
+
     /**
      * @var Collection<int, LeadItem>
      */
@@ -293,6 +302,24 @@ class Lead
     public function setMediaPlan(?MediaPlan $mediaPlan): static
     {
         $this->mediaPlan = $mediaPlan;
+
+        return $this;
+    }
+
+    public function getPackage(): ?Package
+    {
+        return $this->package;
+    }
+
+    public function getPackageTitle(): ?string
+    {
+        return $this->packageTitle;
+    }
+
+    public function setPackage(?Package $package): static
+    {
+        $this->package = $package;
+        $this->packageTitle = $package?->getTitle();
 
         return $this;
     }

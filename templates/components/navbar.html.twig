@@ -60,6 +60,7 @@
                 {{ _self.nav_item('Клиенты', path('admin_client_index'), 'client', current_route starts with 'admin_client_') }}
                 {% if is_manager %}
                     {{ _self.nav_item('Акции', path('admin_promotion_index'), 'percent', current_route starts with 'admin_promotion_') }}
+                    {{ _self.nav_item('Пакеты', path('admin_package_index'), 'stack', current_route starts with 'admin_package_') }}
                     {{ _self.nav_item('Партнёры', path('admin_partner_index'), 'briefcase', current_route starts with 'admin_partner_') }}
                 {% endif %}
             </ul>

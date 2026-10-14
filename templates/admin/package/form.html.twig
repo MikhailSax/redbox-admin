@@ -1,0 +1,174 @@
+{% extends 'admin/layout.html.twig' %}
+{% import 'admin/_icons.html.twig' as ui %}
+
+{#
+    Package card: the package, its positions (a collection, assets/admin/collection.js),
+    what the website shows for next month and the requests that came with it.
+    Vars: package, form, offer (PackageOffer|null), leads, now
+#}
+{% set heading = package.id ? package.title : 'Новый пакет' %}
+{% set state_styles = {
+    active: 'bg-success-soft text-fg-success-strong ring-success-subtle',
+    scheduled: 'bg-warning-soft text-fg-warning ring-warning-subtle',
+    finished: 'bg-zinc-100 text-body ring-zinc-200',
+    disabled: 'bg-zinc-100 text-body-subtle ring-zinc-200',
+} %}
+{% set state_labels = {active: 'Действует', scheduled: 'Запланирован', finished: 'Завершён', disabled: 'Выключен'} %}
+
+{% block title %}{{ heading }} — {{ parent() }}{% endblock %}
+
+{% block content %}
+    {% set package_state = package.id ? package.stateOn(now) : null %}
+
+    <nav class="mb-2 text-sm">
+        <a href="{{ path('admin_package_index') }}" class="text-body hover:text-heading">Пакетные предложения</a>
+        <span class="mx-1 text-body-subtle">/</span>
+        <span class="text-heading">{{ package.id ? '#' ~ package.id : 'Новый' }}</span>
+    </nav>
+
+    <div class="mb-5 flex flex-wrap items-start justify-between gap-4">
+        <div class="min-w-0">
+            <div class="flex flex-wrap items-center gap-3">
+                <h1 class="page-title">{{ heading }}</h1>
+                {% if package.id %}
+                    <span class="inline-flex h-7 items-center rounded-md px-2 text-sm font-medium ring-1 ring-inset {{ state_styles[package_state] }}">{{ state_labels[package_state] }}</span>
+                {% endif %}
+            </div>
+            {% if package.id %}
+                <p class="mt-1 text-sm text-body">
+                    {{ package.startsAt|date('d.m.Y') }} — {{ package.endsAt ? package.endsAt|date('d.m.Y') : 'бессрочно' }}
+                    · {{ package.monthsLabel }} · обновлён {{ package.updatedAt|date('d.m.Y H:i') }}
+                </p>
+            {% else %}
+                <p class="mt-1 text-sm text-body">Набор сторон по особой цене. Клиент выбирает его на сайте в разделе «Пакетные предложения» — из сторон, свободных на выбранный период.</p>
+            {% endif %}
+        </div>
+        {% if package.id %}
+            {{ include('admin/_delete_form.html.twig', {
+                action: path('admin_package_delete', {id: package.id}),
+                token_id: 'delete-package-' ~ package.id,
+                title: 'Удалить пакет?',
+                confirm: 'Пакет «' ~ package.title ~ '» будет удалён и пропадёт с сайта. Заявки по нему останутся с ценами пакета.',
+                label: 'Удалить',
+                button_class: 'btn-danger-outline',
+            }) }}
+        {% endif %}
+    </div>
+
+    {% form_theme form 'admin/form/theme.html.twig' %}
+
+    <div class="grid gap-6 {{ package.id ? 'lg:grid-cols-3' : '' }}">
+        {{ form_start(form, {attr: {id: 'package-form', novalidate: 'novalidate', class: (package.id ? 'lg:col-span-2' : 'max-w-4xl') ~ ' min-w-0'}}) }}
+            {{ form_errors(form) }}
+
+            <section class="card mb-6">
+                {{ form_row(form.title) }}
+                <div class="grid gap-x-6 md:grid-cols-3 md:items-start">
+                    {{ form_row(form.startsAt) }}
+                    {{ form_row(form.endsAt) }}
+                    <div class="md:pt-7">{{ form_row(form.active) }}</div>
+                </div>
+                <div class="grid gap-x-6 md:grid-cols-3">
+                    {{ form_row(form.minMonths) }}
+                    {{ form_row(form.maxMonths) }}
+                    {{ form_row(form.position) }}
+                </div>
+                {{ form_row(form.description, {row_attr: {class: 'mb-0'}}) }}
+            </section>
+
+            <div class="mb-3 flex flex-wrap items-end justify-between gap-3">
+                <div>
+                    <h2 class="text-base font-semibold text-heading">Что входит в пакет</h2>
+                    <p class="text-sm text-body">Каждая позиция — сколько сторон клиент берёт, из каких и по какой цене. Например, «Суперсайт» ×1 и «Экран 6×3 на выбор» ×4 по 14 800 ₽ или «Экран в подарок» ×1 за 0 ₽.</p>
+                </div>
+            </div>
+            {{ form_errors(form.slots) }}
+            <div id="package-slots" class="grid gap-4"
+                 data-index="{{ form.slots|length > 0 ? form.slots|last.vars.name + 1 : 0 }}"
+                 data-prototype="{{ include('admin/package/_slot.html.twig', {slot_form: form.slots.vars.prototype})|e('html_attr') }}">
+                {% for slot_form in form.slots %}
+                    {{ include('admin/package/_slot.html.twig', {slot_form: slot_form}) }}
+                {% endfor %}
+            </div>
+            {% do form.slots.setRendered() %}
+            <button type="button" class="btn btn-secondary mt-4" data-collection-add="package-slots">{{ ui.icon('plus', 'size-4') }} Добавить позицию</button>
+
+            <div class="mt-6 flex flex-wrap items-center gap-3">
+                <button type="submit" class="btn btn-primary">{{ package.id ? 'Сохранить' : 'Создать пакет' }}</button>
+                <a href="{{ path('admin_package_index') }}" class="btn btn-secondary">К списку</a>
+            </div>
+        {{ form_end(form) }}
+
+        {% if package.id %}
+            <aside class="grid content-start gap-6">
+                {# What the website shows now for the start of next month #}
+                <section class="card !p-5">
+                    <h2 class="mb-1 text-base font-semibold text-heading">На сайте</h2>
+                    {% if offer %}
+                        <p class="mb-4 text-sm text-body">{{ period_label(offer.from, offer.to) }}, {{ offer.months }} мес.</p>
+                        {% if package_state != 'active' %}
+                            <p class="mb-3 text-sm text-fg-warning">Пакет сейчас не показывается: {{ state_labels[package_state]|lower }}.</p>
+                        {% endif %}
+                        <ul class="space-y-3 text-sm">
+                            {% for slot in offer.slots %}
+                                {% set enough = slot.free|length >= slot.slot.quantity %}
+                                <li>
+                                    <div class="flex justify-between gap-3">
+                                        <span class="font-medium text-heading">{{ slot.slot.title }} × {{ slot.slot.quantity }}</span>
+                                        <span class="shrink-0 text-body">{{ slot.slot.priceLabel }}</span>
+                                    </div>
+                                    <div class="text-xs {{ enough ? 'text-body-subtle' : 'text-fg-danger-strong' }}">
+                                        свободно {{ slot.free|length }} из {{ slot.slot.sides|length }}
+                                    </div>
+                                    {% if slot.suggested is not empty %}
+                                        <div class="mt-0.5 text-xs text-body">{{ slot.suggested|map(s => s.product.name ~ ' ' ~ s.name)|join(', ') }}</div>
+                                    {% endif %}
+                                </li>
+                            {% endfor %}
+                        </ul>
+                        <div class="mt-4 border-t border-default pt-3 text-sm">
+                            {% if offer.available %}
+                                <div class="flex justify-between gap-3">
+                                    <span class="text-body">Набор в месяц</span>
+                                    <span class="font-medium text-heading tabular-nums whitespace-nowrap">{{ offer.monthlyTotal|money }}</span>
+                                </div>
+                                {% if offer.listMonthlyTotal > offer.monthlyTotal %}
+                                    <div class="flex justify-between gap-3">
+                                        <span class="text-body">По прайсу</span>
+                                        <s class="text-body-subtle tabular-nums whitespace-nowrap">{{ offer.listMonthlyTotal|money }}</s>
+                                    </div>
+                                {% endif %}
+                            {% else %}
+                                <p class="text-fg-danger-strong">Не хватает свободных сторон — на этот период клиент пакет не соберёт.</p>
+                            {% endif %}
+                        </div>
+                    {% else %}
+                        <p class="text-sm text-body">Сохраните изменения, чтобы увидеть, что покажет сайт.</p>
+                    {% endif %}
+
+                    <form method="post" action="{{ path('admin_package_toggle', {id: package.id}) }}" class="mt-5 border-t border-default pt-4">
+                        <input type="hidden" name="_token" value="{{ csrf_token('package-' ~ package.id) }}">
+                        <input type="hidden" name="back" value="card">
+                        <button type="submit" class="btn btn-secondary btn-sm w-full">{{ package.active ? 'Выключить пакет' : 'Включить пакет' }}</button>
+                    </form>
+                </section>
+
+                <section class="card !p-5">
+                    <h2 class="mb-3 text-base font-semibold text-heading">Заявки по пакету <span class="text-body-subtle">{{ leads|length }}</span></h2>
+                    {% if leads is empty %}
+                        <p class="text-sm text-body">Заявок пока нет.</p>
+                    {% else %}
+                        <ul class="divide-y divide-default text-sm">
+                            {% for lead in leads %}
+                                <li class="flex justify-between gap-3 py-2">
+                                    <a href="{{ path('admin_lead_show', {id: lead.id}) }}" class="min-w-0 truncate font-medium text-heading hover:underline">№{{ lead.id }} · {{ lead.clientTitle }}</a>
+                                    <span class="shrink-0 text-body-subtle">{{ lead.createdAt|date('d.m.Y') }}</span>
+                                </li>
+                            {% endfor %}
+                        </ul>
+                    {% endif %}
+                </section>
+            </aside>
+        {% endif %}
+    </div>
+{% endblock %}

@@ -50,6 +50,10 @@ class LeadItem
     #[ORM\Column(type: Types::DECIMAL, precision: 12, scale: 2, nullable: true)]
     private ?string $monthlyPrice;
 
+    /** Position of the lead's package the side was taken in ("Экран в подарок"); null = not in the package */
+    #[ORM\Column(length: 255, nullable: true)]
+    private ?string $packageSlotTitle = null;
+
     public function __construct(
         ?ProductSide $side,
         string $productTitle,
@@ -142,6 +146,24 @@ class LeadItem
     public function setSlots(?int $slots): static
     {
         $this->slots = $slots;
+
+        return $this;
+    }
+
+    public function getPackageSlotTitle(): ?string
+    {
+        return $this->packageSlotTitle;
+    }
+
+    /** Taken in the lead's package: $monthlyPrice is the package price */
+    public function isInPackage(): bool
+    {
+        return null !== $this->packageSlotTitle;
+    }
+
+    public function setPackageSlotTitle(?string $title): static
+    {
+        $this->packageSlotTitle = null !== $title ? mb_substr($title, 0, 255) : null;
 
         return $this;
     }
