@@ -45,11 +45,12 @@ class BookingManager
     }
 
     /**
-     * Creates a 24h hold if the side is free for the whole period.
+     * Creates a 24h hold if the side is free for the whole period. $backdate lets the period start in the past
+     * (a manager entering a placement afterwards); otherwise days are booked from today on.
      *
      * @throws BookingException when the side or the airtime is already taken
      */
-    public function hold(BookingRequest $request, ?User $createdBy = null): Booking
+    public function hold(BookingRequest $request, ?User $createdBy = null, bool $backdate = false): Booking
     {
         $side = $request->side;
         if (null === $request->client) {
@@ -75,7 +76,7 @@ class BookingManager
 
         try {
             $now = $this->clock->now();
-            if ($request->isByDays() && $start < $now->setTime(0, 0)) {
+            if (!$backdate && $request->isByDays() && $start < $now->setTime(0, 0)) {
                 throw new BookingException('Первый день брони уже прошёл — выберите сегодня или позже.');
             }
             $this->assertAvailable($side, $start, $end, $slots, $seconds, $now);
@@ -101,10 +102,11 @@ class BookingManager
      * Changes a booking in force: the client and the contact, the comment, the price, and the side (of the same
      * structure), the period or the slots — those only while the new ones are free (the booking's own days don't count).
      * The status, the hold's deadline, the payment mark and the services stay as they are.
+     * $backdate lets the period be moved into the past, as in hold().
      *
      * @throws BookingException
      */
-    public function update(Booking $booking, BookingRequest $request): void
+    public function update(Booking $booking, BookingRequest $request, bool $backdate = false): void
     {
         $now = $this->clock->now();
         $this->assertHoldLive($booking, $now);
@@ -132,7 +134,7 @@ class BookingManager
             throw new BookingException(\sprintf('Минимальное размещение — %d дней.', BookingMode::MIN_DAYS));
         }
         // a running booking keeps its first day; a moved one can't start in the past
-        if ($request->isByDays() && $start->format('Y-m-d') !== $booking->getStartDate()->format('Y-m-d') && $start < $now->setTime(0, 0)) {
+        if (!$backdate && $request->isByDays() && $start->format('Y-m-d') !== $booking->getStartDate()->format('Y-m-d') && $start < $now->setTime(0, 0)) {
             throw new BookingException('Первый день брони уже прошёл — выберите сегодня или позже.');
         }
 

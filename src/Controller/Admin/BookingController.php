@@ -123,7 +123,9 @@ final class BookingController extends AbstractController
             $bookingRequest->startMonth = $from;
         }
 
-        $form = $this->createForm(BookingFormType::class, $bookingRequest, ['product' => $product, 'now' => $now]);
+        // managers may enter a placement afterwards, with past days; agents book from today on
+        $backdate = $this->isGranted(User::ROLE_SUPER_MANAGER);
+        $form = $this->createForm(BookingFormType::class, $bookingRequest, ['product' => $product, 'now' => $now, 'backdate' => $backdate]);
         $form->handleRequest($request);
 
         if ($form->isSubmitted() && $form->isValid()) {
@@ -134,7 +136,7 @@ final class BookingController extends AbstractController
                     [$bookingRequest->client, $created] = $clientCards->findOrCreate($newClient['title'], $newClient['phone'], $newClient['email'], $newClient['inn'], type: $newClient['type']);
                 }
                 $user = $this->getUser();
-                $booking = $this->bookingManager->hold($bookingRequest, $user instanceof User ? $user : null);
+                $booking = $this->bookingManager->hold($bookingRequest, $user instanceof User ? $user : null, $backdate);
 
                 $this->addFlash('success', \sprintf(
                     'Бронь создана и ждёт подтверждения до %s. Без подтверждения или оплаты она снимется автоматически.',
@@ -271,7 +273,7 @@ final class BookingController extends AbstractController
 
         $product = $booking->getProduct();
         $bookingRequest = BookingRequest::fromBooking($booking);
-        $form = $this->createForm(BookingFormType::class, $bookingRequest, ['product' => $product, 'now' => $now, 'booking' => $booking]);
+        $form = $this->createForm(BookingFormType::class, $bookingRequest, ['product' => $product, 'now' => $now, 'booking' => $booking, 'backdate' => true]);
         $form->handleRequest($request);
 
         if ($form->isSubmitted() && $form->isValid()) {
@@ -281,7 +283,8 @@ final class BookingController extends AbstractController
                 if (null !== $newClient) {
                     [$bookingRequest->client] = $clientCards->findOrCreate($newClient['title'], $newClient['phone'], $newClient['email'], $newClient['inn'], type: $newClient['type']);
                 }
-                $this->bookingManager->update($booking, $bookingRequest);
+                // changing a booking is for managers only: the period may go into the past
+                $this->bookingManager->update($booking, $bookingRequest, backdate: true);
                 $this->addFlash('success', 'Бронь изменена');
 
                 return $this->redirectToRoute('admin_booking_show', ['id' => $booking->getId()], Response::HTTP_SEE_OTHER);

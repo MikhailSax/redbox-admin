@@ -29,6 +29,9 @@ use Symfony\Component\OptionsResolver\OptionsResolver;
 
 class BookingFormType extends AbstractType
 {
+    /** How far back whole months are offered to a back-dated booking */
+    private const BACKDATE_MONTHS = 12;
+
     public function buildForm(FormBuilderInterface $builder, array $options): void
     {
         /** @var Product $product */
@@ -141,33 +144,38 @@ class BookingFormType extends AbstractType
         }
 
         if ($airtime) {
-            // Airtime is sold by days, two weeks at least; a running booking keeps its first day in the past
+            // Airtime is sold by days, two weeks at least; a running booking keeps its first day in the past.
+            // Managers may book back-dated (a placement entered afterwards): no earliest day then.
             $today = \DateTimeImmutable::createFromInterface($options['now'])->format('Y-m-d');
             if (null !== $editing && $editing->getStartDate()->format('Y-m-d') < $today) {
                 $today = $editing->getStartDate()->format('Y-m-d');
             }
+            $earliest = $options['backdate'] ? [] : ['min' => $today];
             $builder
                 ->add('startDate', DateType::class, [
                     'label' => 'С',
                     'widget' => 'single_text',
                     'input' => 'datetime_immutable',
                     'required' => !$mixed,
-                    'attr' => ['min' => $today],
+                    'attr' => $earliest,
                 ])
                 ->add('endDate', DateType::class, [
                     'label' => 'По (включительно)',
                     'widget' => 'single_text',
                     'input' => 'datetime_immutable',
                     'required' => !$mixed,
-                    'attr' => ['min' => $today],
+                    'attr' => $earliest,
                 ]);
         }
 
         if ($whole) {
             // Whole sides are sold by calendar months
             $months = [];
-            // a running booking: from its first month on
+            // a running booking: from its first month on; back-dated booking: a year back
             $first = null !== $editing && $editing->getStartDate() < MonthCalendar::firstDay($options['now']) ? $editing->getStartDate() : $options['now'];
+            if ($options['backdate']) {
+                $first = min(MonthCalendar::firstDay($first), MonthCalendar::firstDay($options['now'])->modify(\sprintf('-%d months', self::BACKDATE_MONTHS)));
+            }
             $count = 11 + \count(MonthCalendar::between(MonthCalendar::firstDay($first), MonthCalendar::firstDay($options['now'])));
             foreach (MonthCalendar::range($first, $count) as $month) {
                 $months[MonthCalendar::label($month)] = $month->format('Y-m');
@@ -222,7 +230,10 @@ class BookingFormType extends AbstractType
             'data_class' => BookingRequest::class,
             // the booking being changed; null for a new one
             'booking' => null,
+            // past days and months on offer (managers entering a placement afterwards)
+            'backdate' => false,
         ]);
+        $resolver->setAllowedTypes('backdate', 'bool');
         $resolver->setRequired(['product', 'now']);
         $resolver->setAllowedTypes('product', Product::class);
         $resolver->setAllowedTypes('now', \DateTimeInterface::class);

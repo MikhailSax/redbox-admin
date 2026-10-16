@@ -219,18 +219,37 @@ final class BookingControllerTest extends AdminWebTestCase
         self::assertSame('0/12', trim($cells->eq(16)->text())); // 26th
     }
 
-    public function testAirtimeCannotStartInThePast(): void
+    /** Managers enter placements afterwards, with past days and months; agents book from today on */
+    public function testManagersBookBackDatedAgentsDoNot(): void
     {
-        $crawler = $this->client->request('GET', $this->url($this->screen));
-        [$values, $uri] = $this->formValues($crawler, 'Забронировать на 24 часа');
-        $values['booking_form']['startDate'] = '2026-09-01';
-        $values['booking_form']['endDate'] = '2026-09-20';
-        $values['booking_form']['slots'] = '1';
-        $values['booking_form']['client'] = (string) $this->customer->getId();
-        $values['booking_form']['clientName'] = 'Кафе';
-        $values['booking_form']['clientPhone'] = '123';
-        $this->submit($uri, $values);
+        $book = function (Product $product, array $period): void {
+            $crawler = $this->client->request('GET', $this->url($product));
+            [$values, $uri] = $this->formValues($crawler, 'Забронировать на 24 часа');
+            $values['booking_form'] = array_merge($values['booking_form'], $period, [
+                'side' => (string) $this->side($product, 'A')->getId(),
+                'client' => (string) $this->customer->getId(),
+            ]);
+            $this->submit($uri, $values);
+        };
 
+        // the screen: the first day in the past, no earliest day in the form
+        self::assertNull($this->client->request('GET', $this->url($this->screen))->filter('#booking_form_startDate')->attr('min'));
+        $book($this->screen, ['startDate' => '2026-08-20', 'endDate' => '2026-09-05', 'slots' => '1']);
+        $booking = $this->em->getRepository(Booking::class)->findOneBy([]);
+        self::assertResponseRedirects('/admin/bookings/'.$booking->getId());
+        self::assertSame('2026-08-20', $booking->getStartDate()->format('Y-m-d'));
+
+        // the billboard: a month gone, from the year back on offer
+        $options = $this->client->request('GET', $this->url($this->billboard))->filter('#booking_form_startMonth option')->each(static fn ($o) => $o->attr('value'));
+        self::assertSame('2025-09', $options[0]);
+        $book($this->billboard, ['startMonth' => '2026-07', 'months' => '1']);
+        self::assertSame(2, $this->em->getRepository(Booking::class)->count([]));
+        self::assertNotNull($this->em->getRepository(Booking::class)->findOneBy(['startDate' => new \DateTimeImmutable('2026-07-01')]));
+
+        // an agent: from today on, as before
+        $this->client->loginUser($this->createUser('agent@redbox.local', User::ROLE_AGENT));
+        self::assertSame('2026-09-10', $this->client->request('GET', $this->url($this->screen))->filter('#booking_form_startDate')->attr('min'));
+        $book($this->screen, ['startDate' => '2026-09-01', 'endDate' => '2026-09-20', 'slots' => '1']);
         self::assertResponseStatusCodeSame(422);
         self::assertSelectorTextContains('[role=alert]', 'Первый день брони уже прошёл');
     }
