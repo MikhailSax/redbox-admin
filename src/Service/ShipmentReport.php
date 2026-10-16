@@ -91,6 +91,10 @@ class ShipmentReport
             }
         }
         $totals['unpaid'] = $totals['total'] - $totals['paid'];
+        // placed not for money: how many of each kind, and the certificates' sums by the days of the period
+        $kinds = SalesReport::kinds($shipped);
+        $totals['kinds'] = $kinds['kinds'];
+        $totals['certificates'] = self::sum($shipped, $from, $to)['certificates'];
 
         foreach ($products as &$row) {
             $row['sides'] = array_values($row['sides']);
@@ -124,11 +128,13 @@ class ShipmentReport
      *
      * @param iterable<Booking> $bookings
      *
-     * @return array{placement: float, services: float, total: float, paid: float, unpaid: float, unpriced: int}
+     * Certificates' sums (by days, like the price) and free bookings are counted apart from the money.
+     *
+     * @return array{placement: float, services: float, total: float, paid: float, unpaid: float, unpriced: int, certificates: float, free: int}
      */
     public static function sum(iterable $bookings, ?\DateTimeInterface $periodFrom = null, ?\DateTimeInterface $periodTo = null): array
     {
-        $sum = ['placement' => 0.0, 'services' => 0.0, 'total' => 0.0, 'paid' => 0.0, 'unpaid' => 0.0, 'unpriced' => 0];
+        $sum = ['placement' => 0.0, 'services' => 0.0, 'total' => 0.0, 'paid' => 0.0, 'unpaid' => 0.0, 'unpriced' => 0, 'certificates' => 0.0, 'free' => 0];
         foreach ($bookings as $booking) {
             $from = $periodFrom ?? $booking->getStartDate();
             $to = $periodTo ?? $booking->getEndDate();
@@ -141,6 +147,8 @@ class ShipmentReport
             $sum['placement'] += $placement ?? 0;
             $sum['services'] += $services;
             $sum[$booking->isPaid() ? 'paid' : 'unpaid'] += ($placement ?? 0) + $services;
+            $sum['certificates'] += $booking->getCertificateWithin($from, $to);
+            $sum['free'] += $booking->getKind()->isFree() ? 1 : 0;
         }
         $sum['total'] = $sum['placement'] + $sum['services'];
 

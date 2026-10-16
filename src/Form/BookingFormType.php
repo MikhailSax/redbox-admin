@@ -7,6 +7,7 @@ use App\Entity\Booking;
 use App\Entity\Product;
 use App\Entity\ProductSide;
 use App\Entity\User;
+use App\Enum\BookingKind;
 use App\Enum\BookingMode;
 use App\Service\MonthCalendar;
 use App\Twig\AdminExtension;
@@ -17,6 +18,7 @@ use Symfony\Component\Form\AbstractType;
 use Symfony\Component\Form\Extension\Core\Type\ChoiceType;
 use Symfony\Component\Form\Extension\Core\Type\CollectionType;
 use Symfony\Component\Form\Extension\Core\Type\DateType;
+use Symfony\Component\Form\Extension\Core\Type\EnumType;
 use Symfony\Component\Form\Extension\Core\Type\IntegerType;
 use Symfony\Component\Form\Extension\Core\Type\MoneyType;
 use Symfony\Component\Form\Extension\Core\Type\TelType;
@@ -100,6 +102,22 @@ class BookingFormType extends AbstractType
                 'label' => 'Комментарий',
                 'required' => false,
                 'attr' => ['rows' => 2],
+            ])
+            // "Продано за" for a commercial booking, the certificate's sum for a certificate (assets/admin/dependent-fields.js)
+            ->add('kind', EnumType::class, [
+                'label' => 'Вид брони',
+                'class' => BookingKind::class,
+                'expanded' => true,
+                'choice_label' => static fn (BookingKind $kind): string => $kind->label(),
+                'help' => 'Соцреклама и бонус — бесплатно; у сертификата — его сумма. Сторона занята при любом виде.',
+            ])
+            ->add('certificateAmount', MoneyType::class, [
+                'label' => 'Сумма сертификата',
+                'currency' => 'RUB',
+                'required' => false,
+                'invalid_message' => 'Введите сумму числом, например 50000',
+                'attr' => ['placeholder' => 'Например, 50000'],
+                'help' => 'Считается отдельно от денег: не входит в выручку и платежи.',
             ])
             ->add('soldPrice', MoneyType::class, [
                 'label' => 'Продано за',

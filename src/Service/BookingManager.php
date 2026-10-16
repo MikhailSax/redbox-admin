@@ -9,6 +9,7 @@ use App\Entity\BookingServiceLine;
 use App\Entity\Product;
 use App\Entity\ProductSide;
 use App\Entity\User;
+use App\Enum\BookingKind;
 use App\Enum\BookingMode;
 use App\Enum\BookingStatus;
 use App\Repository\BookingRepository;
@@ -81,6 +82,7 @@ class BookingManager
 
             $booking = new Booking($side, $start, $end, $slots, $request->client, $request->contactName(), $request->contactPhone(), $request->comment, $createdBy, $seconds);
             $booking->setSoldPrice($request->soldPrice);
+            $booking->changeKind($request->kind ?? BookingKind::Commercial, $request->certificateAmount);
             foreach ($request->services as $service) {
                 $booking->addServiceLine(self::serviceLine($service));
             }
@@ -142,6 +144,7 @@ class BookingManager
             $booking->reschedule($side, $start, $end, $slots, $seconds);
             $booking->changeClient($request->client, $request->contactName(), $request->contactPhone(), '' !== trim((string) $request->comment) ? trim((string) $request->comment) : null);
             $booking->setSoldPrice($request->soldPrice);
+            $booking->changeKind($request->kind ?? BookingKind::Commercial, $request->certificateAmount);
             $this->entityManager->flush();
         } finally {
             $lock->release();
@@ -387,6 +390,9 @@ class BookingManager
     {
         if (null !== $price && $price < 0) {
             throw new BookingException('Сумма продажи не может быть меньше нуля.');
+        }
+        if (null !== $price && !$booking->getKind()->isSold()) {
+            throw new BookingException(\sprintf('Бронь размещена как «%s» — она не продаётся за деньги. Поменяйте вид брони в «Изменить».', $booking->getKind()->label()));
         }
 
         $booking->setSoldPrice($price);

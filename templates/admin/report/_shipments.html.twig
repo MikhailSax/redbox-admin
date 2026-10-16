@@ -22,6 +22,7 @@
         </div>
     {% endfor %}
 </dl>
+{{ include('admin/report/_kinds.html.twig') }}
 
 {# By month #}
 {% set peak = max(byMonth|map(m => m.total)|merge([0])) %}

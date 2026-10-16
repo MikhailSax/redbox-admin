@@ -5,6 +5,7 @@ namespace App\Dto;
 use App\Entity\Booking;
 use App\Entity\ProductSide;
 use App\Entity\User;
+use App\Enum\BookingKind;
 use App\Enum\BookingMode;
 use App\Service\MonthCalendar;
 use Symfony\Component\Validator\Constraints as Assert;
@@ -59,6 +60,13 @@ final class BookingRequest
 
     public ?string $comment = null;
 
+    /** Commercial (sold for money), social advertising, a certificate or a bonus */
+    #[Assert\NotNull(message: 'Выберите, как размещается бронь')]
+    public ?BookingKind $kind = BookingKind::Commercial;
+
+    /** The certificate's sum, rubles; required for a certificate, ignored otherwise */
+    public ?float $certificateAmount = null;
+
     /** What the booking is sold for, rubles with kopecks for the whole period; may be set later in the bookings list */
     #[Assert\PositiveOrZero(message: 'Сумма не может быть меньше нуля')]
     public ?float $soldPrice = null;
@@ -90,6 +98,8 @@ final class BookingRequest
         $request->clientPhone = '—' !== $booking->getClientPhone() ? $booking->getClientPhone() : null;
         $request->comment = $booking->getComment();
         $request->soldPrice = $booking->getSoldPrice();
+        $request->kind = $booking->getKind();
+        $request->certificateAmount = $booking->getCertificateAmount();
 
         return $request;
     }
@@ -141,6 +151,15 @@ final class BookingRequest
         }
         if (null !== $this->client && !$this->client->isEmailVerified()) {
             $context->buildViolation(User::UNVERIFIED_MESSAGE)->atPath('client')->addViolation();
+        }
+    }
+
+    /** A certificate is placed against its sum: it has to be typed in */
+    #[Assert\Callback]
+    public function validateKind(ExecutionContextInterface $context): void
+    {
+        if (BookingKind::Certificate === $this->kind && (null === $this->certificateAmount || $this->certificateAmount <= 0)) {
+            $context->buildViolation('Укажите сумму сертификата')->atPath('certificateAmount')->addViolation();
         }
     }
 

@@ -7,6 +7,7 @@ use App\Entity\Booking;
 use App\Entity\Product;
 use App\Entity\ProductSide;
 use App\Entity\User;
+use App\Enum\BookingKind;
 use App\Enum\BookingMode;
 use App\Enum\BookingStatus;
 use App\Service\MonthCalendar;
@@ -153,7 +154,9 @@ class BookingRepository extends ServiceEntityRepository
     public function countByStatus(BookingListQuery $query): array
     {
         $rows = $this->listQuery($query)
-            ->select('b.status AS status', 'COUNT(b.id) AS total', 'SUM(CASE WHEN b.paidAt IS NULL THEN 1 ELSE 0 END) AS unpaid')
+            // free bookings and certificates wait for no money
+            ->select('b.status AS status', 'COUNT(b.id) AS total', 'SUM(CASE WHEN b.paidAt IS NULL AND b.kind = :sold THEN 1 ELSE 0 END) AS unpaid')
+            ->setParameter('sold', BookingKind::Commercial)
             ->groupBy('b.status')
             ->getQuery()
             ->getArrayResult();
@@ -335,7 +338,7 @@ class BookingRepository extends ServiceEntityRepository
     {
         $status = $query->statusFilter();
         if ($query->isUnpaid()) {
-            $qb->andWhere('b.paidAt IS NULL');
+            $qb->andWhere('b.paidAt IS NULL AND b.kind = :sold')->setParameter('sold', BookingKind::Commercial);
             $status = BookingStatus::Confirmed;
         }
         if (null !== $status) {

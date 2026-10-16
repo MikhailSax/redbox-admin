@@ -13,9 +13,11 @@ use App\Entity\Product;
 use App\Entity\ProductSide;
 use App\Entity\ProductType;
 use App\Entity\User;
+use App\Enum\BookingKind;
 use App\Enum\BookingMode;
 use App\Enum\ClientType;
 use App\Enum\BookingStatus;
+use App\Service\BookingException;
 use App\Service\BookingManager;
 use Symfony\Component\Clock\MockClock;
 use Symfony\Component\Clock\Test\ClockSensitiveTrait;
@@ -500,6 +502,80 @@ final class BookingControllerTest extends AdminWebTestCase
         $crawler = $this->client->request('GET', $card);
         $this->submitPostForm($crawler, 'form[action="'.$card.'/pay"]');
         self::assertTrue($this->reload($booking)->getPayments()->forAll(static fn (int $i, Payment $p) => $p->isPaid()));
+    }
+
+    /**
+     * Social advertising and a bonus are free, a certificate carries its own sum: they take the side all the same,
+     * but bring no money — the certificate's sum is counted apart — and wait for no payment.
+     */
+    public function testBookingKindsSocialBonusAndCertificate(): void
+    {
+        $book = function (string $side, string $kind, string $price, string $certificate = '') {
+            $crawler = $this->client->request('GET', $this->url($this->billboard));
+            [$values, $uri] = $this->formValues($crawler, 'Забронировать на 24 часа');
+            $values['booking_form']['side'] = (string) $this->side($this->billboard, $side)->getId();
+            $values['booking_form']['startMonth'] = '2026-09';
+            $values['booking_form']['months'] = '1';
+            $values['booking_form']['client'] = (string) $this->customer->getId();
+            $values['booking_form']['kind'] = $kind;
+            $values['booking_form']['soldPrice'] = $price;
+            $values['booking_form']['certificateAmount'] = $certificate;
+            $this->submit($uri, $values);
+        };
+
+        // a certificate without its sum is refused
+        $book('A', 'certificate', '');
+        self::assertSelectorTextContains('form[name="booking_form"]', 'Укажите сумму сертификата');
+        self::assertSame(0, $this->em->getRepository(Booking::class)->count([]));
+
+        // the price typed in is dropped: neither is sold for money
+        $book('A', 'certificate', '60000', '50000');
+        $book('B', 'social', '30000');
+        $certificate = $this->em->getRepository(Booking::class)->findOneBy(['kind' => BookingKind::Certificate]);
+        $social = $this->em->getRepository(Booking::class)->findOneBy(['kind' => BookingKind::Social]);
+        self::assertSame(50000.0, $certificate->getCertificateAmount());
+        self::assertNull($certificate->getSoldPrice());
+        self::assertNull($social->getSoldPrice());
+        self::assertNull($social->getCertificateAmount());
+
+        foreach ([$certificate, $social] as $booking) {
+            $this->submitPostForm($this->client->request('GET', $this->url($this->billboard)), 'form[action="/admin/bookings/'.$booking->getId().'/confirm"]');
+        }
+        try {
+            static::getContainer()->get(BookingManager::class)->setSoldPrice($this->reload($social), 1000);
+            self::fail('Expected BookingException');
+        } catch (BookingException $e) {
+            self::assertStringContainsString('«Соцреклама»', $e->getMessage());
+        }
+
+        // the list shows the kind instead of the price, and no "Оплачено"
+        $crawler = $this->client->request('GET', $this->url($this->billboard));
+        self::assertStringContainsString("на 50\u{a0}000", $crawler->filter('#booking-'.$certificate->getId().' [data-booking-kind="certificate"]')->text());
+        self::assertStringContainsString('бесплатно', $crawler->filter('#booking-'.$social->getId().' [data-booking-kind="social"]')->text());
+        self::assertCount(0, $crawler->filter('form[action="/admin/bookings/'.$social->getId().'/price"]'));
+        self::assertCount(0, $crawler->filter('form[action="/admin/bookings/'.$social->getId().'/pay"]'));
+
+        // the side is taken, no money is shipped, the certificate's sum apart
+        $revenue = preg_replace('/\s+/u', ' ', $crawler->filter('[data-revenue]')->text());
+        self::assertStringContainsString('Итого 0 ₽', $revenue);
+        self::assertStringContainsString('По сертификатам: 50 000 ₽', $revenue);
+        self::assertStringContainsString('Бесплатно (соцреклама, бонус): 1 бронь', $revenue);
+        self::assertStringNotContainsString('без суммы', $revenue);
+
+        // they wait for no payment
+        $crawler = $this->client->request('GET', '/admin/bookings');
+        self::assertSame('0', trim($crawler->filter('a[data-live-link]:contains("не оплачены") .chip-count')->text()));
+
+        // changed into a commercial booking: the certificate's sum goes, a price may be set again
+        $crawler = $this->client->request('GET', '/admin/bookings/'.$certificate->getId().'/edit');
+        [$values, $uri] = $this->formValues($crawler, 'Сохранить');
+        $values['booking_form']['kind'] = 'commercial';
+        $values['booking_form']['soldPrice'] = '45000';
+        $this->submit($uri, $values);
+        $certificate = $this->reload($certificate);
+        self::assertSame(BookingKind::Commercial, $certificate->getKind());
+        self::assertNull($certificate->getCertificateAmount());
+        self::assertSame(45000.0, $certificate->getSoldPrice());
     }
 
     /** Services sold with a booking: picked when booking, added and removed later in the list, counted apart in the revenue */

@@ -1,0 +1,7 @@
+{# The kind of `booking` when it is not sold for money: "Соцреклама", "Бонус" or "Сертификат" with its sum #}
+{% if not booking.kind.sold %}
+    <span class="inline-flex flex-col items-start gap-0.5" data-booking-kind="{{ booking.kind.value }}">
+        <span class="lozenge {{ booking.kind.free ? 'lozenge-success' : 'lozenge-info' }}">{{ booking.kind.label }}</span>
+        {% if booking.certificateAmount is not null %}<span class="whitespace-nowrap text-xs tabular-nums text-body">на {{ booking.certificateAmount|money }}</span>{% elseif booking.kind.free %}<span class="text-xs text-body-subtle">бесплатно</span>{% endif %}
+    </span>
+{% endif %}

@@ -27,7 +27,8 @@
             'Бронь клиента ' ~ booking.clientTitle ~ ' будет закреплена и больше не снимется автоматически. Оплату можно отметить позже — для постоплатников.',
             'Подтвердить бронь', 'Да, подтвердить', month: return_month|default(null)) }}
     {% endif %}
-    {% if status.value in ['hold', 'confirmed'] and not booking.paid %}
+    {# free bookings and certificates are paid for only when services are sold with them #}
+    {% if status.value in ['hold', 'confirmed'] and not booking.paid and booking.needsPayment %}
         {{ _self.action(booking, 'admin_booking_pay', 'pay', 'Оплачено', return,
             'Клиент ' ~ booking.clientTitle ~ ' оплатил бронь?' ~ (status.value == 'hold' ? ' Она будет подтверждена и закреплена.' : ''),
             'Отметить оплату', 'Да, оплачено', 'primary', status.value == 'hold' ? 'btn-secondary' : 'btn-primary', month: return_month|default(null)) }}

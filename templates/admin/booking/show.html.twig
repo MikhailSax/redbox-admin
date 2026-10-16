@@ -21,6 +21,7 @@
             <div class="flex flex-wrap items-center gap-3">
                 <h1 class="page-title">{{ product.name }}, сторона {{ booking.side.name }}</h1>
                 {{ include('admin/booking/_status.html.twig') }}
+                {{ include('admin/booking/_kind.html.twig') }}
             </div>
             <p class="page-subtitle">{{ period_label(booking.startDate, booking.endDate) }} · {{ booking.clientTitle }}</p>
         </div>
@@ -91,7 +92,7 @@
             {# Money: the price and the services #}
             <section class="card">
                 {# The total first, then what it is made of #}
-                {% set total = (booking.soldPrice ?? 0) + booking.servicesTotal %}
+                {% set total = (booking.placementPrice ?? 0) + booking.servicesTotal %}
                 <div class="mb-4 flex flex-wrap items-baseline justify-between gap-3 border-b border-default pb-3">
                     <h2 class="text-base font-semibold text-heading">Деньги</h2>
                     {% if total > 0 %}
@@ -103,7 +104,7 @@
                 </div>
                 <div class="grid gap-6 sm:grid-cols-2">
                     <div>
-                        <div class="mb-1 text-xs font-semibold text-body-subtle">Продано за</div>
+                        <div class="mb-1 text-xs font-semibold text-body-subtle">{{ booking.kind.sold ? 'Продано за' : 'Вид брони' }}</div>
                         {{ include('admin/booking/_sold.html.twig', {return: 'card'}) }}
                     </div>
                     <div>

@@ -10,6 +10,7 @@ use App\Entity\Product;
 use App\Entity\ProductSide;
 use App\Entity\ProductType;
 use App\Entity\User;
+use App\Enum\BookingKind;
 use App\Enum\BookingMode;
 use App\Service\BookingManager;
 use Symfony\Component\Clock\MockClock;
@@ -190,6 +191,30 @@ final class ReportControllerTest extends AdminWebTestCase
         self::assertStringContainsString('Анна Котова', $rows[1]);
         self::assertStringContainsString('Анна Котова', $managers('&msort=total&mdir=asc')[0]);
         self::assertCount(1, $managers('&manager='.$this->anna->getId()));
+    }
+
+    /** A bonus and a certificate load the surfaces but bring no money; the certificate's sum is shown apart */
+    public function testBookingsNotSoldForMoney(): void
+    {
+        $manager = static::getContainer()->get(BookingManager::class);
+        // October–November, 31 + 30 = 61 days
+        $manager->confirm($this->whole('A', '2026-10', 2, 0, $this->currentUser)->changeKind(BookingKind::Certificate, 60000));
+        $manager->confirm($this->whole('B', '2026-10', 1, 30000, $this->anna)->changeKind(BookingKind::Bonus));
+
+        $text = static fn ($node): string => trim(preg_replace('/\s+/u', ' ', $node->text()));
+        $crawler = $this->client->request('GET', '/admin/reports?from=2026-09');
+        self::assertSame('2', $text($crawler->filter('[data-total="1"] dd')->first()));
+        self::assertSame('0 ₽', $text($crawler->filter('[data-total="2"] dd')->first()));
+        self::assertSame('50%', $text($crawler->filter('[data-total="5"] dd')->first())); // 2 of 4 sides
+        self::assertStringNotContainsString('без суммы', $text($crawler->filter('[data-total="1"]')));
+        $kinds = $text($crawler->filter('[data-report-kinds]'));
+        self::assertStringContainsString('Сертификат — 1 на 60 000 ₽', $kinds);
+        self::assertStringContainsString('Бонус — 1', $kinds);
+
+        // shipments of October: the certificate's sum by days, 60 000 × 31 / 61
+        $crawler = $this->client->request('GET', '/admin/reports?view=shipments&from=2026-10&to=2026-10');
+        self::assertSame('0 ₽', $text($crawler->filter('[data-shipment-total="1"] dd')->first()));
+        self::assertStringContainsString('Сертификат — 1 на 30 491,80 ₽', $text($crawler->filter('[data-report-kinds]')));
     }
 
     public function testAgentsHaveNoReports(): void

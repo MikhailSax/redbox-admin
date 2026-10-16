@@ -76,6 +76,8 @@ class SalesReport
         }
 
         $totals = ['sales' => 0, 'placement' => 0.0, 'services' => 0.0, 'total' => 0.0, 'paid' => 0.0, 'unpriced' => 0];
+        // social advertising, bonuses and certificates: placed, but not for money; certificates' sums apart
+        $kinds = self::kinds($sold);
         foreach ($products as $row) {
             foreach (array_keys($totals) as $key) {
                 $totals[$key] += $row[$key];
@@ -107,6 +109,8 @@ class SalesReport
                 'products' => \count($products),
                 'allProducts' => \count($all),
                 'sides' => \count($soldSides),
+                'kinds' => $kinds['kinds'],
+                'certificates' => $kinds['certificates'],
                 'allSides' => $this->sides->countNamed($sideNames),
             ],
             'products' => array_values($products),
@@ -115,10 +119,31 @@ class SalesReport
         ];
     }
 
+    /**
+     * How many of $bookings are placed as each kind but a commercial one, and the certificates' whole sums.
+     *
+     * @param list<Booking> $bookings
+     *
+     * @return array{kinds: array<string, int>, certificates: float}
+     */
+    public static function kinds(array $bookings): array
+    {
+        $kinds = [];
+        $certificates = 0.0;
+        foreach ($bookings as $booking) {
+            if (!$booking->getKind()->isSold()) {
+                $kinds[$booking->getKind()->value] = ($kinds[$booking->getKind()->value] ?? 0) + 1;
+                $certificates += $booking->getCertificateAmount() ?? 0;
+            }
+        }
+
+        return ['kinds' => $kinds, 'certificates' => round($certificates, 2)];
+    }
+
     /** @param array{sales: int, placement: float, services: float, total: float, paid: float, unpriced: int} $row */
     private static function add(array &$row, Booking $booking): void
     {
-        $price = $booking->getSoldPrice();
+        $price = $booking->getPlacementPrice(); // 0 for the bookings not sold for money
         $services = $booking->getServicesTotal();
         ++$row['sales'];
         $row['placement'] += $price ?? 0;

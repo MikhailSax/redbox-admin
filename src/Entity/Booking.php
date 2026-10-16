@@ -2,6 +2,7 @@
 
 namespace App\Entity;
 
+use App\Enum\BookingKind;
 use App\Enum\BookingStatus;
 use App\Repository\BookingRepository;
 use App\Service\MonthCalendar;
@@ -88,6 +89,14 @@ class Booking
 
     #[ORM\Column(type: Types::TEXT, nullable: true)]
     private ?string $comment;
+
+    /** Commercial, social advertising, a certificate or a bonus: only a commercial booking is sold for money */
+    #[ORM\Column(length: 20, enumType: BookingKind::class, options: ['default' => 'commercial'])]
+    private BookingKind $kind = BookingKind::Commercial;
+
+    /** The sum of the certificate the booking is placed against, rubles; apart from the money. Certificates only */
+    #[ORM\Column(type: Types::DECIMAL, precision: 12, scale: 2, nullable: true)]
+    private ?string $certificateAmount = null;
 
     /** What the booking was sold for in the end, rubles with kopecks for the whole period (discounts and bargaining included); null = not set yet */
     #[ORM\Column(type: Types::DECIMAL, precision: 12, scale: 2, nullable: true)]
@@ -361,13 +370,31 @@ class Booking
 
     /**
      * The part of the sold price that falls on the period, by days (the shipment of the period): a booking for
-     * September–November sold for 90 000 brings 30 000 to October. Null when no price is set.
-     * Counted as "shipped by the last day" minus "shipped by the day before the first", each in whole kopecks,
-     * so the months of a booking add up to its price exactly.
+     * September–November sold for 90 000 brings 30 000 to October; the months add up to the price exactly.
+     * Null when no price is set; 0 for a booking not sold for money (social advertising, a bonus, a certificate).
      */
     public function getSoldPriceWithin(\DateTimeInterface $from, \DateTimeInterface $to): ?float
     {
-        if (null === $this->soldPrice) {
+        if (!$this->kind->isSold()) {
+            return 0.0; // free or a certificate: no money, and not "without a price" either
+        }
+
+        return $this->shareWithin($this->soldPrice, $from, $to);
+    }
+
+    /** The part of the certificate's sum that falls on the period, by days like the price; 0 for other kinds */
+    public function getCertificateWithin(\DateTimeInterface $from, \DateTimeInterface $to): float
+    {
+        return BookingKind::Certificate === $this->kind ? $this->shareWithin($this->certificateAmount, $from, $to) ?? 0.0 : 0.0;
+    }
+
+    /**
+     * Counted as "by the last day" minus "by the day before the first", each in whole kopecks,
+     * so the months of a booking add up to $amount exactly. Null when there is no amount.
+     */
+    private function shareWithin(?string $amount, \DateTimeInterface $from, \DateTimeInterface $to): ?float
+    {
+        if (null === $amount) {
             return null;
         }
         $days = $this->getDaysWithin($from, $to);
@@ -375,7 +402,7 @@ class Booking
             return 0.0;
         }
         $before = $this->getDaysWithin($this->startDate, (new \DateTimeImmutable($from->format('Y-m-d')))->modify('-1 day'));
-        $kopecks = (int) round((float) $this->soldPrice * 100);
+        $kopecks = (int) round((float) $amount * 100);
         $total = $this->getDays();
         $shipped = static fn (int $daysGone) => (int) round($kopecks * $daysGone / $total);
 
@@ -397,6 +424,42 @@ class Booking
         $start = $this->startDate->format('Y-m-d');
 
         return $start >= $from->format('Y-m-d') && $start <= $to->format('Y-m-d') ? $this->getServicesTotal() : 0.0;
+    }
+
+    /** The price of the placement as money: "Продано за" of a commercial booking, 0 for the other kinds */
+    public function getPlacementPrice(): ?float
+    {
+        return $this->kind->isSold() ? $this->getSoldPrice() : 0.0;
+    }
+
+    public function getKind(): BookingKind
+    {
+        return $this->kind;
+    }
+
+    public function getCertificateAmount(): ?float
+    {
+        return null === $this->certificateAmount ? null : (float) $this->certificateAmount;
+    }
+
+    /**
+     * Places the booking as $kind: only a commercial booking keeps "Продано за", only a certificate keeps its sum.
+     */
+    public function changeKind(BookingKind $kind, ?float $certificateAmount = null): static
+    {
+        $this->kind = $kind;
+        $this->certificateAmount = BookingKind::Certificate === $kind && null !== $certificateAmount ? number_format($certificateAmount, 2, '.', '') : null;
+        if (!$kind->isSold()) {
+            $this->soldPrice = null;
+        }
+
+        return $this;
+    }
+
+    /** Something to pay for: a commercial booking, or services sold with a booking of another kind */
+    public function needsPayment(): bool
+    {
+        return $this->kind->isSold() || $this->getServicesTotal() > 0;
     }
 
     public function setSoldPrice(?float $soldPrice): static

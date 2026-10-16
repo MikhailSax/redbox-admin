@@ -54,7 +54,9 @@
                 {{ form_row(form.clientPhone) }}
             </div>
             {{ form_row(form.comment) }}
-            {{ form_row(form.soldPrice, {help: 'Итоговая сумма за весь период, со скидками.'}) }}
+            {{ form_row(form.kind) }}
+            {{ form_row(form.certificateAmount, {row_attr: {'data-visible-when': form.kind.vars.id, 'data-visible-values': 'certificate'}}) }}
+            {{ form_row(form.soldPrice, {help: 'Итоговая сумма за весь период, со скидками.', row_attr: {'data-visible-when': form.kind.vars.id, 'data-visible-values': 'commercial'}}) }}
 
             <div class="flex flex-wrap items-center gap-2">
                 <button type="submit" class="btn btn-primary">Сохранить</button>

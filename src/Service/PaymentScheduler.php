@@ -92,8 +92,10 @@ class PaymentScheduler
         if ($day < 1 || $day > 31) {
             throw new PaymentException('Число оплаты — от 1 до 31.');
         }
-        if (($booking->getSoldPrice() ?? 0) + $booking->getServicesTotal() <= 0) {
-            throw new PaymentException('В брони нечего оплачивать — укажите «Продано за» или добавьте услуги.');
+        if (($booking->getPlacementPrice() ?? 0) + $booking->getServicesTotal() <= 0) {
+            throw new PaymentException($booking->getKind()->isSold()
+                ? 'В брони нечего оплачивать — укажите «Продано за» или добавьте услуги.'
+                : \sprintf('Бронь размещена как «%s» — платить не за что, кроме услуг, а их нет.', $booking->getKind()->label()));
         }
 
         $today = $this->clock->now()->setTime(0, 0);
