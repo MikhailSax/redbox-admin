@@ -39,7 +39,16 @@ final readonly class BookingListQuery
         /** "asc" | "desc"; the default direction of the column otherwise */
         #[Assert\Length(max: 4)]
         public ?string $dir = null,
+        /** Side letter, "А" or "В" (Latin and "Б" count too): bookings of those sides only */
+        #[Assert\Choice(choices: ProductListQuery::SIDES)]
+        public ?string $side = null,
     ) {
+    }
+
+    /** @return list<string> side names of the chosen letter; empty without the filter */
+    public function sideNames(): array
+    {
+        return ProductListQuery::sideSpellings($this->side);
     }
 
     public function isUnpaid(): bool

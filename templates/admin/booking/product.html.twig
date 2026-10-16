@@ -15,6 +15,52 @@
     <div id="booking-header" data-ajax-region>
         {{ include('admin/product/_card_header.html.twig', {active_tab: 'booking', in_form: false}) }}
     </div>
+    {% set is_manager = is_granted('ROLE_SUPER_MANAGER') %}
+    {# the side picked in the bookings list and its sorting, carried by the month links #}
+    {% set list_query = {list_side: listSide, sort: listSort, dir: listSort ? (listDescending ? 'desc' : 'asc') : null}|filter(v => v is not null) %}
+
+    {#
+        Shipments, at the top: how much the structure is loaded with money. The month of the bookings tab below
+        (all of it on "Все"), by days — a booking for three months brings a third of its price to each; services in
+        the month the booking starts. Then every month a booking takes; a month opens its tab.
+    #}
+    {% if is_manager %}
+        {% set tab_label = monthTab == 'all' ? 'за всё время' : 'за ' ~ (monthTabs[monthTab].month|month_label|lower) %}
+        {% set peak = max(shipments|merge([0])) %}
+        <section id="booking-revenue" class="card mb-6" aria-label="Отгрузка" data-ajax-region>
+            <div class="grid gap-6 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)]">
+                <div data-revenue>
+                    <p class="text-sm font-semibold text-body-subtle">Отгрузка {{ tab_label }}{% if listSide %} · сторона {{ (product.sides|filter(s => s.id == listSide)|first).name }}{% endif %}</p>
+                    <div class="mt-1 text-2xl font-semibold tracking-tight tabular-nums text-heading">Итого {{ revenue.total|money }}</div>
+                    <dl class="mt-2 space-y-1 text-sm tabular-nums text-body">
+                        <div class="flex justify-between gap-3"><dt>Размещение</dt> <dd class="whitespace-nowrap">{{ revenue.placement|money }}</dd></div>
+                        <div class="flex justify-between gap-3"><dt>Услуги</dt> <dd class="whitespace-nowrap">{{ revenue.services|money }}</dd></div>
+                        <div class="flex justify-between gap-3"><dt>Оплачено</dt> <dd class="whitespace-nowrap text-fg-success-strong">{{ revenue.paid|money }}</dd></div>
+                        <div class="flex justify-between gap-3"><dt>Ждёт оплаты</dt> <dd class="whitespace-nowrap {{ revenue.unpaid > 0 ? 'text-fg-warning' }}">{{ revenue.unpaid|money }}</dd></div>
+                    </dl>
+                    {% if revenue.holds %}<p class="mt-2 text-xs text-body">Ждут подтверждения: {{ revenue.holds }} на {{ revenue.holdsTotal|money }} — в отгрузку не входят.</p>{% endif %}
+                    {% if revenue.unpriced %}<p class="mt-1 text-xs text-fg-warning">без суммы: {{ revenue.unpriced }}</p>{% endif %}
+                </div>
+                <div>
+                    <p class="mb-2 text-sm font-semibold text-body-subtle">Отгрузка по месяцам</p>
+                    <ul class="flex gap-1 overflow-x-auto pb-1" data-shipments>
+                        {% for key, amount in shipments %}
+                            <li class="shrink-0">
+                                <a href="{{ path('admin_booking_product', {id: product.id, month: key}|merge(list_query)) }}#booking-revenue" data-shipment="{{ key }}"
+                                   class="flex w-24 flex-col rounded-md px-2 py-1.5 text-xs hover:bg-zinc-100 {{ key == monthTab ? 'bg-zinc-100 ring-1 ring-default' }}"
+                                   title="{{ monthTabs[key].month|month_label }}: {{ amount|money }}">
+                                    <span class="flex h-12 items-end"><span class="w-full rounded-xs {{ amount > 0 ? 'bg-zinc-800' : 'bg-zinc-200' }}" style="height: {{ peak > 0 ? max(4, (amount * 100 / peak)|round) : 4 }}%"></span></span>
+                                    <span class="mt-1 text-body-subtle">{{ monthTabs[key].month|month_label(true) }}</span>
+                                    <span class="font-medium tabular-nums text-heading whitespace-nowrap">{{ amount|money }}</span>
+                                </a>
+                            </li>
+                        {% endfor %}
+                    </ul>
+                    <p class="mt-2 text-xs text-body-subtle">Подтверждённые брони, «Продано за» по дням размещения; услуги — в месяц начала брони.</p>
+                </div>
+            </div>
+        </section>
+    {% endif %}
 
     <p class="text-sm text-body mb-4">
         {% if mixed %}
@@ -140,7 +186,6 @@
     {% endif %}
 
     {# Agents book too (24h holds); confirming, payments, prices and services are for managers. Sides out of order take no new bookings #}
-    {% set is_manager = is_granted('ROLE_SUPER_MANAGER') %}
     {% if product.working %}
     <div class="grid gap-6 lg:grid-cols-3 mb-6">
         {# New booking #}
@@ -236,14 +281,14 @@
     <nav class="mb-4 overflow-x-auto overflow-y-hidden border-b border-default" aria-label="Брони по месяцам">
         <ul class="flex -mb-px text-sm font-medium text-center whitespace-nowrap">
             <li class="me-1">
-                <a href="{{ path('admin_booking_product', {id: product.id, month: 'all'}) }}#bookings"
+                <a href="{{ path('admin_booking_product', {id: product.id, month: 'all'}|merge(list_query)) }}#bookings"
                    class="{{ tab_css }} {{ monthTab == 'all' ? tab_active : tab_inactive }}"{% if monthTab == 'all' %} aria-current="page"{% endif %}>
                     Все {{ _self.tab_count(allBookings) }}
                 </a>
             </li>
             {% for key, tab in monthTabs %}
                 <li class="me-1">
-                    <a href="{{ path('admin_booking_product', {id: product.id, month: key}) }}#bookings"
+                    <a href="{{ path('admin_booking_product', {id: product.id, month: key}|merge(list_query)) }}#bookings"
                        class="{{ tab_css }} {{ key == monthTab ? tab_active : tab_inactive }}"{% if key == monthTab %} aria-current="page"{% endif %}
                        {% if key == now|date('Y-m') %}title="Текущий месяц"{% endif %}>
                         {{ tab.month|month_label }} {{ _self.tab_count(tab.count) }}
@@ -252,18 +297,46 @@
             {% endfor %}
         </ul>
     </nav>
+    {# One side at a time: А, Б… or all of them; the month tab and the sorting stay #}
+    {% if product.sides|length > 1 %}
+        {% set month_query = monthTab != defaultMonthTab ? {month: monthTab} : {} %}
+        <div class="mb-4 flex flex-wrap items-center gap-2" data-list-sides>
+            <span class="text-sm text-body">Сторона:</span>
+            <a href="{{ path('admin_booking_product', {id: product.id}|merge(month_query)|merge(list_query|filter((v, k) => k != 'list_side'))) }}#bookings"
+               class="chip {{ listSide is null ? 'chip-on' }}">Все</a>
+            {% for side in product.sides %}
+                <a href="{{ path('admin_booking_product', {id: product.id}|merge(month_query)|merge(list_query)|merge({list_side: side.id})) }}#bookings"
+                   class="chip {{ listSide == side.id ? 'chip-on' }}" data-list-side="{{ side.name }}">{{ side.name }}</a>
+            {% endfor %}
+        </div>
+    {% endif %}
     {# the tab that opens by default needs no carrying back after an action #}
     {% set return_month = monthTab != defaultMonthTab ? monthTab %}
     <div class="table-card">
         <table class="data-table">
             <thead>
                 <tr>
-                    <th scope="col" class="px-4 py-3 font-medium">Сторона</th>
-                    <th scope="col" class="px-4 py-3 font-medium">Период</th>
-                    <th scope="col" class="px-4 py-3 font-medium">Клиент</th>
-                    <th scope="col" class="px-4 py-3 font-medium">Статус</th>
+                    {# a click sorts by the column, a second one turns the order around; the third goes back to the newest first #}
+                    {% set sort_month = monthTab != defaultMonthTab ? {month: monthTab} : {} %}
+                    {% for column in [
+                        {key: 'side', label: 'Сторона'},
+                        {key: 'period', label: 'Период'},
+                        {key: 'client', label: 'Клиент'},
+                        {key: 'status', label: 'Статус'},
+                    ]|merge(is_manager ? [{key: 'sold', label: 'Продано за', desc_first: true}] : []) %}
+                        {% set active = listSort == column.key %}
+                        {% set desc_first = column.desc_first ?? false %}
+                        {# off → the column's own direction → the other one → off #}
+                        {% set next = not active ? {sort: column.key} : (listDescending == desc_first ? {sort: column.key, dir: desc_first ? 'asc' : 'desc'} : {}) %}
+                        <th scope="col" class="px-4 py-3 font-medium" {% if active %}aria-sort="{{ listDescending ? 'descending' : 'ascending' }}"{% endif %}>
+                            <a href="{{ path('admin_booking_product', {id: product.id}|merge(sort_month)|merge(listSide ? {list_side: listSide} : {})|merge(next)) }}#bookings"
+                               data-list-sort="{{ column.key }}" class="inline-flex items-center gap-1 hover:text-heading {{ active ? 'text-heading' }}">
+                                {{- column.label -}}
+                                <span aria-hidden="true" class="{{ active ? '' : 'opacity-30' }}">{{ active and listDescending ? '↓' : '↑' }}</span>
+                            </a>
+                        </th>
+                    {% endfor %}
                     {% if is_manager %}
-                        <th scope="col" class="px-4 py-3 font-medium">Продано за</th>
                         <th scope="col" class="px-4 py-3 font-medium">Услуги</th>
                         <th scope="col" class="px-4 py-3 font-medium"><span class="sr-only">Действия</span></th>
                     {% endif %}
@@ -290,28 +363,6 @@
                     <tr><td colspan="{{ is_manager ? 7 : 4 }}" class="px-4 py-8 text-center">{{ monthTab == 'all' or allBookings == 0 ? 'Броней пока нет.' : 'В этом месяце броней нет.' }}</td></tr>
                 {% endfor %}
             </tbody>
-            {% if is_manager and bookings is not empty %}
-                {# Revenue of the tab: the sum of the paid rows, as typed; the unpaid ones apart #}
-                <tfoot class="bg-neutral-secondary-soft border-t border-default">
-                    <tr data-revenue>
-                        <th scope="row" colspan="4" class="px-4 py-3 text-right font-medium text-heading">
-                            {{ monthTab == 'all' ? 'Выручка за всё время' : 'Выручка за ' ~ (monthTabs[monthTab].month|month_label|lower) }}
-                            <div class="text-xs font-normal text-body-subtle">
-                                сумма оплаченных броней на вкладке
-                            </div>
-                        </th>
-                        <td colspan="3" class="px-4 py-3">
-                            <dl class="text-xs text-body tabular-nums">
-                                <div class="flex justify-between gap-3 max-w-56"><dt>Размещение</dt><dd class="whitespace-nowrap">{{ revenue.placement|money }}</dd></div>
-                                <div class="flex justify-between gap-3 max-w-56"><dt>Услуги</dt><dd class="whitespace-nowrap">{{ revenue.services|money }}</dd></div>
-                            </dl>
-                            <div class="mt-1 text-base font-semibold text-heading whitespace-nowrap tabular-nums">Итого {{ revenue.total|money }}</div>
-                            <div class="text-xs text-body whitespace-nowrap tabular-nums">ждут оплаты {{ revenue.unpaid|money }}</div>
-                            {% if revenue.unpriced %}<div class="text-xs text-fg-warning">без суммы: {{ revenue.unpriced }}</div>{% endif %}
-                        </td>
-                    </tr>
-                </tfoot>
-            {% endif %}
         </table>
     </div>
     </section>

@@ -74,7 +74,7 @@ final class ReportControllerTest extends AdminWebTestCase
         self::assertSame('3', $text($crawler->filter('[data-total="1"] dd')->first()));
         self::assertSame('140 000 ₽', $text($crawler->filter('[data-total="2"] dd')->first()));
         self::assertSame('90 000 ₽', $text($crawler->filter('[data-total="3"] dd')->first()));
-        self::assertSame('2 из 3', $text($crawler->filter('[data-total="5"] dd')->first()));
+        self::assertSame('75%', $text($crawler->filter('[data-total="5"] dd')->first())); // 3 of 4 sides
 
         // structures: the best seller first, months of whole sides, days of airtime
         $rows = $crawler->filter('#report-products tbody tr');
@@ -105,6 +105,91 @@ final class ReportControllerTest extends AdminWebTestCase
         $this->client->request('GET', '/admin/reports?from=2026-09', server: ['HTTP_X_LIVE_FILTER' => '1']);
         self::assertSelectorNotExists('form[data-live-filter]');
         self::assertSelectorExists('#report-products');
+    }
+
+    /**
+     * Shipments: a confirmed booking brings its "Продано за" to the period by the days it runs there;
+     * holds ship nothing; by month and by structure.
+     */
+    public function testShipmentsOfThePeriodByDays(): void
+    {
+        $manager = static::getContainer()->get(BookingManager::class);
+        // October–December, 31 + 30 + 31 = 92 days, paid; November alone, confirmed and not paid yet
+        $manager->markPaid($this->whole('A', '2026-10', 3, 90000, $this->currentUser));
+        $manager->confirm($this->whole('B', '2026-11', 1, 30000, $this->anna));
+        // September: outside the period; a hold in November: not shipped
+        $manager->confirm($this->airtime('2026-09-15', '2026-09-28', 20000, $this->anna));
+        $this->airtime('2026-11-02', '2026-11-20', 15000, $this->anna);
+
+        $text = static fn ($node): string => trim(preg_replace('/\s+/u', ' ', $node->text()));
+        $crawler = $this->client->request('GET', '/admin/reports?view=shipments&from=2026-10&to=2026-11');
+        self::assertResponseIsSuccessful();
+        self::assertSelectorTextContains('[data-report-view="shipments"][aria-current="page"]', 'Отгрузки');
+
+        // 90 000 × 31 / 92 = 30 326,09 in October, 90 000 × 61 / 92 − October = 29 347,82 in November, and 30 000
+        self::assertSame('89 673,91 ₽', $text($crawler->filter('[data-shipment-total="1"] dd')->first()));
+        self::assertSame('59 673,91 ₽', $text($crawler->filter('[data-shipment-total="2"] dd')->first()));
+        self::assertSame('30 000 ₽', $text($crawler->filter('[data-shipment-total="3"] dd')->first()));
+        self::assertSame('50%', $text($crawler->filter('[data-shipment-total="5"] dd')->first())); // sides A and B of 4
+
+        $months = $crawler->filter('#shipment-months tbody tr');
+        self::assertCount(2, $months);
+        self::assertStringContainsString('Октябрь 2026', $text($months->eq(0)));
+        self::assertStringContainsString('30 326,09 ₽', $text($months->eq(0)));
+        self::assertStringContainsString('59 347,82 ₽', $text($months->eq(1)));
+
+        $rows = $crawler->filter('#shipment-products tbody tr');
+        self::assertCount(1, $rows);
+        self::assertStringContainsString('Щит на Ленина', $text($rows->eq(0)));
+        self::assertStringContainsString('2 91 ', $text($rows->eq(0))); // bookings, days of the sides in the period
+
+        // the period switch keeps the report
+        self::assertStringContainsString('view=shipments', $crawler->filter('a.chip:contains("Этот месяц")')->attr('href'));
+        // all three months of the paid booking add up to its price
+        $crawler = $this->client->request('GET', '/admin/reports?view=shipments&from=2026-10&to=2026-12');
+        self::assertStringContainsString('90 000 ₽', $text($crawler->filter('#shipment-products tbody tr')->eq(0)->filter('td')->eq(7)));
+    }
+
+    /** Narrowed to a side letter or to one manager ("who collected how much"), tables sorted by any column */
+    public function testReportsBySideAndManagerSorted(): void
+    {
+        $manager = static::getContainer()->get(BookingManager::class);
+        $manager->confirm($this->whole('A', '2026-10', 1, 40000, $this->currentUser));
+        $manager->confirm($this->whole('B', '2026-10', 1, 30000, $this->anna));
+        $manager->confirm($this->airtime('2026-09-15', '2026-09-28', 20000, $this->anna));
+
+        $text = static fn ($node): string => trim(preg_replace('/\s+/u', ' ', $node->text()));
+        $tile = fn (string $query, int $n) => $text($this->client->request('GET', '/admin/reports?from=2026-09'.$query)->filter('[data-total="'.$n.'"] dd')->first());
+
+        self::assertSame('90 000 ₽', $tile('', 2));
+        self::assertSame('Загружено на', $text($this->client->getCrawler()->filter('[data-total="2"] dt')));
+        self::assertSame('Загружено поверхностей', $text($this->client->getCrawler()->filter('[data-total="5"] dt')));
+        // side "В" is the Latin "B" of the billboard alone: 1 of its 1 side
+        self::assertSame('30 000 ₽', $tile('&side=В', 2));
+        self::assertSame('100%', $tile('&side=В', 5));
+        // side "А": the billboard's A and the screen
+        self::assertSame('60 000 ₽', $tile('&side=А', 2));
+        // Anna's alone
+        self::assertSame('50 000 ₽', $tile('&manager='.$this->anna->getId(), 2));
+        self::assertCount(1, $this->client->getCrawler()->filter('#report-managers tbody tr'));
+
+        $products = fn (string $query) => $this->client->request('GET', '/admin/reports?from=2026-09'.$query)->filter('#report-products tbody th')
+            ->each(static fn ($th) => $th->filter('a')->text());
+        self::assertSame(['Щит на Ленина', 'Экран на площади'], $products(''));
+        self::assertSame(['Экран на площади', 'Щит на Ленина'], $products('&sort=total&dir=asc'));
+        self::assertSame(['Экран на площади', 'Щит на Ленина'], $products('&sort=name&dir=desc'));
+        // the sorting is carried by the other links
+        self::assertStringContainsString('sort=name', $this->client->getCrawler()->filter('a.chip:contains("Этот месяц")')->attr('href'));
+
+        // shipments of October by manager: who collected how much
+        $managers = fn (string $query) => $this->client->request('GET', '/admin/reports?view=shipments&from=2026-10&to=2026-10'.$query)->filter('#shipment-managers tbody tr')
+            ->each(static fn ($row) => $text($row));
+        $rows = $managers('');
+        self::assertCount(2, $rows);
+        self::assertStringContainsString('40 000 ₽', $rows[0]);
+        self::assertStringContainsString('Анна Котова', $rows[1]);
+        self::assertStringContainsString('Анна Котова', $managers('&msort=total&mdir=asc')[0]);
+        self::assertCount(1, $managers('&manager='.$this->anna->getId()));
     }
 
     public function testAgentsHaveNoReports(): void

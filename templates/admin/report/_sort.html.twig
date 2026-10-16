@@ -1,0 +1,18 @@
+{#
+    A sortable column header of the report tables: a click sorts by the column, a second click turns the order around.
+    Numbers go from the biggest first, names from A. `keep` — the report's query to carry along; `param` / `dir_param` —
+    "sort" / "dir" for the structures table, "msort" / "mdir" for the managers.
+#}
+{% macro th(label, key, keep, param = 'sort', dir_param = 'dir', align = 'right', title = null) %}
+    {% set active = keep[param] is defined and keep[param] == key %}
+    {% set descending = active ? (key == 'name' ? keep[dir_param]|default('') == 'desc' : keep[dir_param]|default('') != 'asc') : false %}
+    {% set next_desc = active ? not descending : key != 'name' %}
+    {# the default direction of the column needs no "dir" in the link #}
+    {% set link = keep|merge({(param): key, (dir_param): next_desc != (key != 'name') ? (next_desc ? 'desc' : 'asc') : null})|filter(v => v is not null and v != '') %}
+    <th scope="col" class="px-3 {{ align == 'right' ? 'text-right' }}" {% if active %}aria-sort="{{ descending ? 'descending' : 'ascending' }}"{% endif %}{% if title %} title="{{ title }}"{% endif %}>
+        <a href="{{ path('admin_report_index', link) }}" data-live-link data-sort="{{ param }}:{{ key }}" class="inline-flex items-center gap-1 hover:text-heading {{ active ? 'text-heading' }}">
+            {{- label -}}
+            <span aria-hidden="true" class="{{ active ? '' : 'opacity-30' }}">{{ active and not descending ? '↑' : '↓' }}</span>
+        </a>
+    </th>
+{% endmacro %}

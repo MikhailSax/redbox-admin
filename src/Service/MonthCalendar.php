@@ -29,6 +29,14 @@ class MonthCalendar
         return self::parse($date->format('Y-m'));
     }
 
+    /** Day $day of the month of $date; a month shorter than that gives its last day (31 → 30 November) */
+    public static function dayOf(\DateTimeInterface $date, int $day): \DateTimeImmutable
+    {
+        $first = self::firstDay($date);
+
+        return $first->setDate((int) $first->format('Y'), (int) $first->format('n'), max(1, min($day, (int) $first->format('t'))));
+    }
+
     public static function lastDay(\DateTimeInterface $date): \DateTimeImmutable
     {
         return self::firstDay($date)->modify('last day of this month');

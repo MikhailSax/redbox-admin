@@ -509,7 +509,7 @@ final class MediaPlanControllerTest extends AdminWebTestCase
         $this->client->request('GET', '/admin/media-plans/'.$plan->getId());
         self::assertSelectorTextContains('.data-table', 'Осень в центре');
         self::assertSelectorTextContains('main aside', 'Акции');
-        self::assertSelectorTextContains('main aside', '−8 000');
+        self::assertSelectorTextContains('main aside', "−8\u{a0}000"); // money()'s non-breaking space
     }
 
     public function testPromoCodeAndFirstOrderRecalculatePricesOnSave(): void

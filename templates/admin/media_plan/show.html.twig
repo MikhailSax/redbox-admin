@@ -186,8 +186,10 @@
         </div>
 
         {# Totals #}
-        <aside class="card content-start !p-5">
-            <h2 class="mb-4 text-base font-semibold text-heading">Итого</h2>
+        {# the total first: above the items on narrow screens, "К оплате" at the top of the card #}
+        <aside class="card order-first content-start !p-5 xl:order-none">
+            <h2 class="text-base font-semibold text-heading">Итого</h2>
+            <div class="mb-4 mt-1 flex items-baseline justify-between gap-3 border-b border-default pb-3" data-plan-total><span class="text-sm font-medium text-heading">К оплате</span> <span class="text-2xl font-semibold tracking-tight text-heading tabular-nums">{{ plan.total|money }}</span></div>
             <dl class="space-y-2.5 text-sm">
                 <div class="flex justify-between gap-3"><dt class="text-body">Сторон</dt><dd class="font-medium text-heading tabular-nums">{{ plan.items|length }}</dd></div>
                 {% if plan.promotionSavings > 0 %}
@@ -199,7 +201,6 @@
                     <div class="flex justify-between gap-3"><dt class="text-body">Скидка {{ plan.discountPercent }}% на размещение</dt><dd class="shrink-0 whitespace-nowrap tabular-nums text-fg-danger-strong">−{{ plan.discountAmount|money }}</dd></div>
                 {% endif %}
                 <div class="flex justify-between gap-3"><dt class="text-body">Услуги</dt><dd class="shrink-0 whitespace-nowrap tabular-nums text-heading">{{ plan.servicesTotal|money }}</dd></div>
-                <div class="flex items-baseline justify-between border-t border-default pt-3"><dt class="font-medium text-heading">К оплате</dt><dd class="text-2xl font-semibold tracking-tight text-heading tabular-nums">{{ plan.total|money }}</dd></div>
             </dl>
 
             {% if plan.items is not empty %}
@@ -339,7 +340,7 @@
                 <div class="flex flex-wrap gap-2">
                     {% if plan.payments is empty %}
                         <form method="post" action="{{ path('admin_media_plan_schedule_payments', {id: plan.id}) }}"
-                              data-confirm="{{ plan.total|money }} разобьётся на {{ plan.months }} {{ plan.months == 1 ? 'платёж' : (plan.months < 5 ? 'платежа' : 'платежей') }} — по одному на месяц, со сроком до 1-го числа месяца размещения. Услуги войдут в первый платёж."
+                              data-confirm="{{ plan.total|money }} разобьётся на {{ plan.months }} {{ plan.months == 1 ? 'платёж' : (plan.months < 5 ? 'платежа' : 'платежей') }} — по одному на месяц, со сроком до {{ plan.paymentDay }}-го числа месяца размещения (меняется в параметрах). Услуги войдут в первый платёж."
                               data-confirm-title="Составить график платежей?" data-confirm-button="Составить" data-confirm-variant="primary">
                             <input type="hidden" name="_token" value="{{ token }}">
                             <button type="submit" class="btn btn-primary btn-sm">{{ ui.icon('calendar', 'size-4') }} Разбить на платежи по месяцам</button>

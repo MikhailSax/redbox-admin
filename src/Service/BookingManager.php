@@ -166,7 +166,8 @@ class BookingManager
     }
 
     /**
-     * Marks the booking paid; a hold paid for is confirmed at the same time.
+     * Marks the booking paid; a hold paid for is confirmed at the same time. The payments of its schedule
+     * still waiting are marked paid too: the client has paid for the whole booking.
      *
      * @throws BookingException
      */
@@ -182,6 +183,11 @@ class BookingManager
         }
 
         $booking->markPaid($now);
+        foreach ($booking->getPayments() as $payment) {
+            if (!$payment->isPaid()) {
+                $payment->markPaid($now);
+            }
+        }
         $this->entityManager->flush();
     }
 

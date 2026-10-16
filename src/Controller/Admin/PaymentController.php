@@ -8,7 +8,10 @@ use App\Entity\User;
 use App\Enum\ClientType;
 use App\Enum\PaymentStatus;
 use App\Form\PaymentFormType;
+use App\Enum\BookingStatus;
 use App\Repository\PaymentRepository;
+use App\Service\BookingException;
+use App\Service\BookingManager;
 use App\Service\MediaPlanManager;
 use App\Service\MonthCalendar;
 use App\Service\PaymentCalendar;
@@ -36,6 +39,7 @@ final class PaymentController extends AbstractController
         private readonly PaymentRepository $payments,
         private readonly ClockInterface $clock,
         private readonly MediaPlanManager $mediaPlans,
+        private readonly BookingManager $bookings,
     ) {
     }
 
@@ -112,6 +116,7 @@ final class PaymentController extends AbstractController
             $payment->markPaid($this->clock->now());
             $this->entityManager->flush();
             $this->fixPlanBookings($payment);
+            $this->settleBooking($payment);
         }
         $this->addFlash('success', \sprintf('Оплата отмечена: %s', $payment->getClient()->getClientTitle()));
 
@@ -148,6 +153,31 @@ final class PaymentController extends AbstractController
         }
     }
 
+    /**
+     * Money for a booking fixes it: a hold is confirmed by the first payment, and the booking is marked paid
+     * once every payment of its schedule is.
+     */
+    private function settleBooking(Payment $payment): void
+    {
+        $booking = $payment->getBooking();
+        if (null === $booking) {
+            return;
+        }
+
+        try {
+            if (BookingStatus::Hold === $booking->getStatus()) {
+                $this->bookings->confirm($booking);
+                $this->addFlash('success', 'Бронь подтверждена');
+            }
+            if ($booking->isScheduleSettled() && !$booking->isPaid()) {
+                $this->bookings->markPaid($booking);
+                $this->addFlash('success', 'Все платежи по брони пришли — бронь отмечена оплаченной');
+            }
+        } catch (BookingException $e) {
+            $this->addFlash('error', 'Бронь — '.$e->getMessage());
+        }
+    }
+
     #[Route('/{id}/unpay', name: 'unpay', requirements: ['id' => Requirement::DIGITS], methods: ['POST'])]
     #[IsCsrfTokenValid(new Expression('"payment-" ~ args["payment"].getId()'))]
     public function unpay(Request $request, Payment $payment): Response
@@ -155,6 +185,11 @@ final class PaymentController extends AbstractController
         $payment->markUnpaid();
         $this->entityManager->flush();
         $this->addFlash('success', 'Отметка об оплате снята');
+        // a booking paid by its schedule is not paid in full any more; it stays confirmed
+        $booking = $payment->getBooking();
+        if (null !== $booking && $booking->isPaid()) {
+            $this->bookings->markUnpaid($booking);
+        }
 
         return $this->back($request, $payment);
     }
@@ -193,15 +228,17 @@ final class PaymentController extends AbstractController
     }
 
     /**
-     * Back to where the button was pressed: the client card, the media plan, the dashboard or the calendar.
+     * Back to where the button was pressed: the client card, the media plan, the booking, the dashboard or the calendar.
      */
     private function back(Request $request, Payment $payment): Response
     {
         $plan = $payment->getMediaPlan();
+        $booking = $payment->getBooking();
 
         return match (true) {
             'client' === $request->getPayload()->getString('return') => $this->redirectToRoute('admin_client_show', ['id' => $payment->getClient()->getId(), '_fragment' => 'payments'], Response::HTTP_SEE_OTHER),
             'plan' === $request->getPayload()->getString('return') && null !== $plan => $this->redirectToRoute('admin_media_plan_show', ['id' => $plan->getId(), '_fragment' => 'payments'], Response::HTTP_SEE_OTHER),
+            'booking' === $request->getPayload()->getString('return') && null !== $booking => $this->redirectToRoute('admin_booking_show', ['id' => $booking->getId(), '_fragment' => 'payments'], Response::HTTP_SEE_OTHER),
             'dashboard' === $request->getPayload()->getString('return') => $this->redirectToRoute('admin_dashboard', status: Response::HTTP_SEE_OTHER),
             default => $this->redirectToRoute('admin_payment_index', ['month' => $payment->getDueDate()->format('Y-m')], Response::HTTP_SEE_OTHER),
         };

@@ -16,28 +16,18 @@ class ProductSideRepository extends ServiceEntityRepository
         parent::__construct($registry, ProductSide::class);
     }
 
-//    /**
-//     * @return ProductSide[] Returns an array of ProductSide objects
-//     */
-//    public function findByExampleField($value): array
-//    {
-//        return $this->createQueryBuilder('p')
-//            ->andWhere('p.exampleField = :val')
-//            ->setParameter('val', $value)
-//            ->orderBy('p.id', 'ASC')
-//            ->setMaxResults(10)
-//            ->getQuery()
-//            ->getResult()
-//        ;
-//    }
+    /**
+     * Sides (advertising surfaces) of every structure, or only those named $names (one side letter).
+     *
+     * @param list<string> $names
+     */
+    public function countNamed(array $names = []): int
+    {
+        $qb = $this->createQueryBuilder('s')->select('COUNT(s.id)');
+        if ([] !== $names) {
+            $qb->andWhere('s.name IN (:names)')->setParameter('names', $names);
+        }
 
-//    public function findOneBySomeField($value): ?ProductSide
-//    {
-//        return $this->createQueryBuilder('p')
-//            ->andWhere('p.exampleField = :val')
-//            ->setParameter('val', $value)
-//            ->getQuery()
-//            ->getOneOrNullResult()
-//        ;
-//    }
+        return (int) $qb->getQuery()->getSingleScalarResult();
+    }
 }

@@ -11,7 +11,7 @@ use Symfony\Component\Validator\Context\ExecutionContextInterface;
 
 /**
  * A payment a client has to make by a date: one line of the payment calendar.
- * Usually one month of a media plan (PaymentScheduler), or added by hand. The status is derived from the dates.
+ * Usually one month of a media plan or of a booking (PaymentScheduler), or added by hand. The status is derived from the dates.
  */
 #[ORM\Entity(repositoryClass: PaymentRepository::class)]
 #[ORM\HasLifecycleCallbacks]
@@ -34,6 +34,11 @@ class Payment
     #[ORM\ManyToOne(inversedBy: 'payments')]
     #[ORM\JoinColumn(onDelete: 'SET NULL')]
     private ?MediaPlan $mediaPlan = null;
+
+    /** The booking the payment is for; the payment stays with the client if the booking goes */
+    #[ORM\ManyToOne(inversedBy: 'payments')]
+    #[ORM\JoinColumn(onDelete: 'SET NULL')]
+    private ?Booking $booking = null;
 
     /** What the payment is for: "Медиаплан «Осень» — октябрь 2026" */
     #[ORM\Column(length: 255)]
@@ -116,6 +121,10 @@ class Payment
         if (null !== $planClient && null !== $this->client && $planClient !== $this->client) {
             $context->buildViolation(\sprintf('Медиаплан оформлен на другого клиента — %s', $planClient->getClientTitle()))->atPath('mediaPlan')->addViolation();
         }
+        $bookingClient = $this->booking?->getClient();
+        if (null !== $bookingClient && null !== $this->client && $bookingClient !== $this->client) {
+            $context->buildViolation(\sprintf('Бронь оформлена на другого клиента — %s', $bookingClient->getClientTitle()))->atPath('client')->addViolation();
+        }
         if (null !== $this->client && !$this->client->isEmailVerified()) {
             $context->buildViolation(User::UNVERIFIED_MESSAGE)->atPath('client')->addViolation();
         }
@@ -141,6 +150,18 @@ class Payment
     public function setMediaPlan(?MediaPlan $mediaPlan): static
     {
         $this->mediaPlan = $mediaPlan;
+
+        return $this;
+    }
+
+    public function getBooking(): ?Booking
+    {
+        return $this->booking;
+    }
+
+    public function setBooking(?Booking $booking): static
+    {
+        $this->booking = $booking;
 
         return $this;
     }

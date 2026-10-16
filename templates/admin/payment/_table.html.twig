@@ -1,5 +1,5 @@
 {#
-    Payments table. Vars: payments, now, return ('calendar' | 'client' | 'plan' | 'dashboard'),
+    Payments table. Vars: payments, now, return ('calendar' | 'client' | 'plan' | 'booking' | 'dashboard'),
     show_client? (default true), show_plan? (default true), empty? (text when there are none), q? (highlight)
 #}
 {% set show_client = show_client ?? true %}
@@ -33,6 +33,9 @@
                         <div class="text-heading">{{ payment.title|highlight(q ?? null) }}</div>
                         {% if show_plan and payment.mediaPlan %}
                             <a href="{{ path('admin_media_plan_show', {id: payment.mediaPlan.id}) }}" class="text-xs text-body-subtle hover:underline">Медиаплан #{{ payment.mediaPlan.id }}</a>
+                        {% endif %}
+                        {% if show_plan and payment.booking %}
+                            <a href="{{ path('admin_booking_show', {id: payment.booking.id}) }}" class="text-xs text-body-subtle hover:underline">Бронь #{{ payment.booking.id }}</a>
                         {% endif %}
                         {% if payment.comment %}<div class="text-xs text-body">{{ payment.comment }}</div>{% endif %}
                     </td>

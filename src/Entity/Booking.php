@@ -106,6 +106,15 @@ class Booking
     #[ORM\OrderBy(['position' => 'ASC'])]
     private Collection $serviceLines;
 
+    /**
+     * Payment schedule of the booking (PaymentScheduler::scheduleBooking()): when the client pays, in the payment calendar.
+     *
+     * @var Collection<int, Payment>
+     */
+    #[ORM\OneToMany(targetEntity: Payment::class, mappedBy: 'booking')]
+    #[ORM\OrderBy(['dueDate' => 'ASC', 'id' => 'ASC'])]
+    private Collection $payments;
+
     public function __construct(
         ProductSide $side,
         \DateTimeImmutable $startDate,
@@ -129,6 +138,7 @@ class Booking
         $this->createdBy = $createdBy;
         $this->slotSeconds = null !== $slots ? $slotSeconds : null;
         $this->serviceLines = new ArrayCollection();
+        $this->payments = new ArrayCollection();
     }
 
     public function getId(): ?int
@@ -350,21 +360,43 @@ class Booking
     }
 
     /**
-     * The part of the sold price that falls on the period, by days: a booking for September–November
-     * sold for 90 000 brings 30 000 to October. Null when no price is set.
+     * The part of the sold price that falls on the period, by days (the shipment of the period): a booking for
+     * September–November sold for 90 000 brings 30 000 to October. Null when no price is set.
+     * Counted as "shipped by the last day" minus "shipped by the day before the first", each in whole kopecks,
+     * so the months of a booking add up to its price exactly.
      */
     public function getSoldPriceWithin(\DateTimeInterface $from, \DateTimeInterface $to): ?float
     {
         if (null === $this->soldPrice) {
             return null;
         }
-        $start = max($this->startDate->format('Y-m-d'), $from->format('Y-m-d'));
-        $end = min($this->endDate->format('Y-m-d'), $to->format('Y-m-d'));
-        if ($start > $end) {
+        $days = $this->getDaysWithin($from, $to);
+        if (0 === $days) {
             return 0.0;
         }
+        $before = $this->getDaysWithin($this->startDate, (new \DateTimeImmutable($from->format('Y-m-d')))->modify('-1 day'));
+        $kopecks = (int) round((float) $this->soldPrice * 100);
+        $total = $this->getDays();
+        $shipped = static fn (int $daysGone) => (int) round($kopecks * $daysGone / $total);
 
-        return round((float) $this->soldPrice * MonthCalendar::days(new \DateTimeImmutable($start), new \DateTimeImmutable($end)) / $this->getDays(), 2);
+        return ($shipped($before + $days) - $shipped($before)) / 100;
+    }
+
+    /** Booked days that fall on the period [$from, $to] */
+    public function getDaysWithin(\DateTimeInterface $from, \DateTimeInterface $to): int
+    {
+        $start = max($this->startDate->format('Y-m-d'), $from->format('Y-m-d'));
+        $end = min($this->endDate->format('Y-m-d'), $to->format('Y-m-d'));
+
+        return $start > $end ? 0 : MonthCalendar::days(new \DateTimeImmutable($start), new \DateTimeImmutable($end));
+    }
+
+    /** Services are one-off: they are shipped whole on the first day of the booking */
+    public function getServicesWithin(\DateTimeInterface $from, \DateTimeInterface $to): float
+    {
+        $start = $this->startDate->format('Y-m-d');
+
+        return $start >= $from->format('Y-m-d') && $start <= $to->format('Y-m-d') ? $this->getServicesTotal() : 0.0;
     }
 
     public function setSoldPrice(?float $soldPrice): static
@@ -397,6 +429,26 @@ class Booking
         $this->serviceLines->removeElement($line);
 
         return $this;
+    }
+
+    /**
+     * @return Collection<int, Payment>
+     */
+    public function getPayments(): Collection
+    {
+        return $this->payments;
+    }
+
+    /** Sum of the scheduled payments */
+    public function getScheduledTotal(): float
+    {
+        return round(array_sum($this->payments->map(static fn (Payment $payment) => (float) $payment->getAmount())->toArray()), 2);
+    }
+
+    /** Every scheduled payment has come; false without a schedule */
+    public function isScheduleSettled(): bool
+    {
+        return !$this->payments->isEmpty() && $this->payments->forAll(static fn (int $i, Payment $payment) => $payment->isPaid());
     }
 
     /** Services sold with the booking, rubles; apart from the sold price of the placement */

@@ -5,6 +5,8 @@ namespace App\Tests\Controller\Admin;
 use App\Dto\BookingRequest;
 use App\Entity\AdditionalService;
 use App\Entity\Booking;
+use App\Entity\BookingServiceLine;
+use App\Entity\Payment;
 use App\Entity\Category;
 use App\Entity\District;
 use App\Entity\Product;
@@ -361,8 +363,11 @@ final class BookingControllerTest extends AdminWebTestCase
         self::assertResponseRedirects($this->url($this->billboard).'?month=2026-11');
     }
 
-    /** Revenue of the tab: the sum of "Продано за" of the paid bookings on it, as typed; the unpaid ones await payment */
-    public function testBookingsTableShowsTheRevenueOfTheTab(): void
+    /**
+     * Shipments at the top of the page: a confirmed booking brings its "Продано за" to a month by the days it runs
+     * there, the months of a booking adding up to its price exactly; holds and cancelled bookings ship nothing.
+     */
+    public function testStructurePageShowsShipmentsByDays(): void
     {
         $manager = static::getContainer()->get(BookingManager::class);
         $long = $this->hold($this->side($this->billboard, 'A'), '2026-09', 'Надолго', months: 3); // 30 + 31 + 30 days
@@ -372,18 +377,129 @@ final class BookingControllerTest extends AdminWebTestCase
         $cancelled = $this->hold($this->side($this->billboard, 'B'), '2026-10', 'Передумал');
         $manager->setSoldPrice($cancelled, 50000);
         $manager->cancel($cancelled);
-        $this->hold($this->side($this->billboard, 'B'), '2026-11', 'Без суммы');
+        $manager->confirm($this->hold($this->side($this->billboard, 'B'), '2026-11', 'Без суммы'));
 
-        $revenue = fn (string $query) => preg_replace('/\s+/u', ' ', trim($this->client->request('GET', $this->url($this->billboard).$query)->filter('[data-revenue]')->text()));
+        $page = fn (string $query) => $this->client->request('GET', $this->url($this->billboard).$query);
+        $revenue = fn (string $query) => preg_replace('/\s+/u', ' ', trim($page($query)->filter('[data-revenue]')->text()));
 
-        // the paid 90 000 counts whole in every month it takes; the unpaid 20 000 only awaits payment
-        self::assertStringContainsString('Выручка за сентябрь 2026', $revenue(''));
-        self::assertStringContainsString('Итого 90 000 ₽ ждут оплаты 20 000 ₽', $revenue(''));
-        // a cancelled booking brings nothing
-        self::assertStringContainsString('Итого 90 000 ₽ ждут оплаты 0 ₽', $revenue('?month=2026-10'));
+        // the card is above the occupancy grids and the bookings list
+        $html = $page('')->html();
+        self::assertLessThan(strpos($html, 'id="booking-grids"'), strpos($html, 'id="booking-revenue"'));
+
+        // 90 000 × 30 / 91; the hold of 20 000 is not shipped yet
+        self::assertStringContainsString('Отгрузка за сентябрь 2026 Итого 29 670,33 ₽', $revenue(''));
+        self::assertStringContainsString('Оплачено 29 670,33 ₽ Ждёт оплаты 0 ₽', $revenue(''));
+        self::assertStringContainsString('Ждут подтверждения: 1 на 20 000 ₽', $revenue(''));
+        // 90 000 × 61 / 91 − September; a cancelled booking brings nothing
+        self::assertStringContainsString('Итого 30 659,34 ₽', $revenue('?month=2026-10'));
+        // the rest of the 90 000, and a confirmed booking without a price
+        self::assertStringContainsString('Итого 29 670,33 ₽', $revenue('?month=2026-11'));
         self::assertStringContainsString('без суммы: 1', $revenue('?month=2026-11'));
-        self::assertStringContainsString('Выручка за всё время', $revenue('?month=all'));
-        self::assertStringContainsString('Итого 90 000 ₽ ждут оплаты 20 000 ₽', $revenue('?month=all'));
+        self::assertStringContainsString('Отгрузка за всё время Итого 90 000 ₽', $revenue('?month=all'));
+
+        // every month of the structure, a month leading to its tab
+        $months = $page('')->filter('[data-shipments] a')->each(static fn ($a) => [$a->attr('data-shipment'), preg_replace('/\s+/u', ' ', $a->filter('span')->last()->text())]);
+        self::assertSame([['2026-09', '29 670,33 ₽'], ['2026-10', '30 659,34 ₽'], ['2026-11', '29 670,33 ₽']], $months);
+    }
+
+    /** The bookings of a structure: one side at a time, sorted by a column; an action keeps both */
+    public function testStructureBookingsBySideAndSortedByColumns(): void
+    {
+        $manager = static::getContainer()->get(BookingManager::class);
+        $a = $this->hold($this->side($this->billboard, 'A'), '2026-09', 'Сторона А');
+        $manager->setSoldPrice($a, 10000);
+        $b = $this->hold($this->side($this->billboard, 'B'), '2026-09', 'Сторона Б');
+        $manager->setSoldPrice($b, 30000);
+        $sideB = $this->side($this->billboard, 'B')->getId();
+
+        $rows = fn (string $query) => $this->client->request('GET', $this->url($this->billboard).$query)->filter('#booking-list tbody tr')
+            ->each(static fn ($row) => $row->attr('id'));
+        $idA = 'booking-'.$a->getId();
+        $idB = 'booking-'.$b->getId();
+
+        self::assertSame([$idB], $rows('?list_side='.$sideB));
+        self::assertSelectorTextContains('[data-list-sides] .chip-on', 'B');
+        // the tab's shipments are of that side alone: nothing confirmed on B yet
+        self::assertSelectorTextContains('[data-revenue]', "Ждут подтверждения: 1 на 30\u{a0}000");
+
+        self::assertSame([$idA, $idB], $rows('?sort=side'));
+        self::assertSame([$idB, $idA], $rows('?sort=side&dir=desc'));
+        // by the price the biggest first, a second click the other way
+        self::assertSame([$idB, $idA], $rows('?sort=sold'));
+        self::assertSame('sold', $this->client->getCrawler()->filter('th[aria-sort="descending"] a')->attr('data-list-sort'));
+        self::assertSame([$idA, $idB], $rows('?sort=sold&dir=asc'));
+
+        // confirming from the list comes back to the same side and order
+        $page = $this->url($this->billboard).'?list_side='.$sideB.'&sort=sold';
+        $crawler = $this->client->request('GET', $page);
+        $form = $crawler->filter('form[action="/admin/bookings/'.$b->getId().'/confirm"]')->form();
+        $this->client->request('POST', $form->getUri(), $form->getPhpValues(), server: ['HTTP_REFERER' => 'http://localhost'.$page]);
+        self::assertResponseRedirects($this->url($this->billboard).'?list_side='.$sideB.'&sort=sold');
+    }
+
+    /**
+     * The booking's payment schedule: its price split by the months it runs, due on the day picked, in the payment
+     * calendar; the first payment confirms the hold, the last one marks the booking paid.
+     */
+    public function testBookingIsSplitIntoPaymentsByMonth(): void
+    {
+        $manager = static::getContainer()->get(BookingManager::class);
+        $booking = $this->hold($this->side($this->billboard, 'A'), '2026-09', months: 3); // 30 + 31 + 30 days
+        $manager->setSoldPrice($booking, 90000);
+        $booking->addServiceLine(new BookingServiceLine('Монтаж', 'выезд', '1', '3000'));
+        $this->em->flush();
+        $card = '/admin/bookings/'.$booking->getId();
+
+        $crawler = $this->client->request('GET', $card);
+        $form = $crawler->filter('form[data-booking-schedule]')->form();
+        $form['day'] = '31';
+        $this->client->submit($form);
+        self::assertResponseRedirects($card.'#payments');
+        $crawler = $this->client->followRedirect();
+        self::assertSelectorTextContains('[role=alert]', 'График платежей составлен: 3');
+        self::assertSelectorNotExists('form[data-booking-schedule]'); // once
+
+        // each month pays for its days, the services go into the first one; a short month — its last day
+        $payments = $this->em->getRepository(Payment::class)->findBy([], ['dueDate' => 'ASC']);
+        self::assertSame(['32670.33', '30659.34', '29670.33'], array_map(static fn (Payment $p) => $p->getAmount(), $payments));
+        self::assertSame(['2026-09-30', '2026-10-31', '2026-11-30'], array_map(static fn (Payment $p) => $p->getDueDate()->format('Y-m-d'), $payments));
+        self::assertSame('Бронь «Щит на Ленина», сторона A — Сентябрь 2026 и услуги', $payments[0]->getTitle());
+        self::assertSame($this->customer->getId(), $payments[0]->getClient()->getId());
+        self::assertCount(3, $crawler->filter('#payments tbody tr[data-payment]'));
+
+        // in the payment calendar, with a link back to the booking
+        self::assertStringContainsString('Бронь #'.$booking->getId(), $this->client->request('GET', '/admin/payments?month=2026-10')->filter('#list')->text());
+
+        $pay = function (Payment $payment): void {
+            $crawler = $this->client->request('GET', '/admin/bookings/'.$payment->getBooking()->getId());
+            $this->submitPostForm($crawler, '#payments form[action="/admin/payments/'.$payment->getId().'/pay"]');
+            self::assertResponseRedirects('/admin/bookings/'.$payment->getBooking()->getId().'#payments');
+        };
+
+        // the first payment fixes the side, the booking is not paid yet
+        $pay($payments[0]);
+        $booking = $this->reload($booking);
+        self::assertSame(BookingStatus::Confirmed, $booking->getStatus());
+        self::assertFalse($booking->isPaid());
+
+        // all of them: paid
+        $payments = $booking->getPayments()->getValues();
+        $pay($payments[1]);
+        $pay($payments[2]);
+        self::assertTrue($this->reload($booking)->isPaid());
+
+        // one taken back: not paid in full any more, still confirmed
+        $payment = $this->reload($booking)->getPayments()->last();
+        $crawler = $this->client->request('GET', $card);
+        $this->submitPostForm($crawler, '#payments form[action="/admin/payments/'.$payment->getId().'/unpay"]');
+        $booking = $this->reload($booking);
+        self::assertFalse($booking->isPaid());
+        self::assertSame(BookingStatus::Confirmed, $booking->getStatus());
+
+        // "Оплачено" on the booking pays what is left of its schedule
+        $crawler = $this->client->request('GET', $card);
+        $this->submitPostForm($crawler, 'form[action="'.$card.'/pay"]');
+        self::assertTrue($this->reload($booking)->getPayments()->forAll(static fn (int $i, Payment $p) => $p->isPaid()));
     }
 
     /** Services sold with a booking: picked when booking, added and removed later in the list, counted apart in the revenue */
@@ -457,15 +573,16 @@ final class BookingControllerTest extends AdminWebTestCase
         self::assertSelectorTextContains('[role=alert]', 'Услуга «Монтаж» добавлена к брони');
         self::assertSame(11800.0, $this->reload($booking)->getServicesTotal());
 
-        // not paid yet: nothing in the revenue, all awaits payment (compared without spaces)
+        // not confirmed yet: nothing shipped, the hold awaits confirmation (compared without spaces)
         $total = fn (string $query) => preg_replace('/\s+/u', '', $this->client->request('GET', $this->url($this->billboard).$query)->filter('[data-revenue]')->text());
-        self::assertStringContainsString('Размещение0₽Услуги0₽Итого0₽ждутоплаты71800₽', $total(''));
+        self::assertStringContainsString('Итого0₽', $total(''));
+        self::assertStringContainsString('Ждутподтверждения:1на41308,20₽', $total(''));
 
-        // paid: the rows as typed, in every month of the booking
-        static::getContainer()->get(BookingManager::class)->markPaid($this->reload($booking));
-        self::assertStringContainsString('Размещение60000₽Услуги11800₽Итого71800₽ждутоплаты0₽', $total(''));
-        self::assertStringContainsString('Размещение60000₽Услуги11800₽Итого71800₽', $total('?month=2026-10'));
-        self::assertStringContainsString('Размещение60000₽Услуги11800₽Итого71800₽', $total('?month=all'));
+        // paid: the placement by days (60 000 × 30 / 61), the services whole in the month the booking starts
+        $this->submitPostForm($this->client->request('GET', $this->url($this->billboard)), 'form[action="/admin/bookings/'.$booking->getId().'/pay"]');
+        self::assertStringContainsString('Итого41308,20₽Размещение29508,20₽Услуги11800₽Оплачено41308,20₽Ждётоплаты0₽', $total(''));
+        self::assertStringContainsString('Итого30491,80₽Размещение30491,80₽Услуги0₽', $total('?month=2026-10'));
+        self::assertStringContainsString('Итого71800₽Размещение60000₽Услуги11800₽', $total('?month=all'));
 
         // removed in the list
         $crawler = $this->client->request('GET', $this->url($this->billboard));
@@ -911,6 +1028,9 @@ final class BookingControllerTest extends AdminWebTestCase
         self::assertSame(['Экранный'], $clients('?kind=airtime'));
         self::assertSame(['Декабрь', 'Октябрь'], $clients('?kind=side'));
         self::assertSame(['Экранный'], $clients('?author='.$me->getId()));
+        // side "А" takes the Latin "A" too, "В" the Latin "B"
+        self::assertSame(['Экранный', 'Октябрь'], $clients('?side=А'));
+        self::assertSame(['Декабрь'], $clients('?side=В'));
 
         // the chips count under the other filters
         $crawler = $this->client->request('GET', '/admin/bookings?month=2026-10');

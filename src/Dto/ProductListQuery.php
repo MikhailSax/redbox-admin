@@ -65,7 +65,17 @@ final readonly class ProductListQuery
      */
     public function sideNames(): array
     {
-        return self::SIDE_SPELLINGS[$this->side] ?? [];
+        return self::sideSpellings($this->side);
+    }
+
+    /**
+     * Side names that count as the side letter $side ("А" or "В"), in Latin and as said aloud; empty for none.
+     *
+     * @return list<string>
+     */
+    public static function sideSpellings(?string $side): array
+    {
+        return null !== $side ? self::SIDE_SPELLINGS[$side] ?? [] : [];
     }
 
     public function isDescending(): bool

@@ -77,6 +77,11 @@ class MediaPlanFormType extends AbstractType
                 'label' => 'Срок',
                 'choices' => array_combine(array_map(static fn (int $n) => $n.' мес.', range(1, 12)), range(1, 12)),
             ])
+            ->add('paymentDay', ChoiceType::class, [
+                'label' => 'Оплата до',
+                'choices' => array_combine(array_map(static fn (int $day) => $day.'-го числа', range(1, 31)), range(1, 31)),
+                'help' => 'Срок каждого платежа в графике. В коротком месяце — последний день месяца.',
+            ])
             ->add('discountPercent', IntegerType::class, [
                 'label' => 'Скидка, %',
                 'attr' => ['min' => 0, 'max' => 90],

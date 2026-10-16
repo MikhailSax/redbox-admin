@@ -7,12 +7,14 @@ use App\Entity\Product;
 use App\Entity\User;
 use App\Repository\BookingRepository;
 use App\Repository\ProductRepository;
+use App\Repository\ProductSideRepository;
 use App\Repository\UserRepository;
 use Symfony\Component\Clock\ClockInterface;
 
 /**
  * Sales of a period: a sale is a booking confirmed (or paid) within it and still confirmed; it counts whole
  * — its "Продано за" and its services — in the month it was confirmed, whatever months it runs.
+ * Of all sides or of one side letter ($sideNames), of everyone or of one manager.
  * By structure (what sold, how many sides, months and days of airtime) and by who made the booking.
  */
 class SalesReport
@@ -20,6 +22,7 @@ class SalesReport
     public function __construct(
         private readonly BookingRepository $bookings,
         private readonly ProductRepository $products,
+        private readonly ProductSideRepository $sides,
         private readonly UserRepository $users,
         private readonly ClockInterface $clock,
     ) {
@@ -27,15 +30,19 @@ class SalesReport
 
     /**
      * @return array{
-     *     totals: array{sales: int, placement: float, services: float, total: float, paid: float, unpriced: int, average: float, products: int, allProducts: int},
+     *     totals: array{sales: int, placement: float, services: float, total: float, paid: float, unpriced: int, average: float, products: int, allProducts: int, sides: int, allSides: int},
      *     products: list<array{product: Product, sales: int, sides: list<string>, months: int, airtimeDays: int, placement: float, services: float, total: float, paid: float, unpriced: int, share: float}>,
      *     managers: list<array{user: ?User, sales: int, placement: float, services: float, total: float, paid: float, average: float, burned: int}>,
      *     idle: list<Product>,
      * }
+     *
+     * @param list<string> $sideNames
      */
-    public function build(\DateTimeImmutable $from, \DateTimeImmutable $to): array
+    public function build(\DateTimeImmutable $from, \DateTimeImmutable $to, array $sideNames = [], ?int $manager = null): array
     {
-        $sold = $this->bookings->findSold($from, $to);
+        $sold = $this->bookings->findSold($from, $to, $sideNames, $manager);
+        // surfaces: every side sold at least once in the period
+        $soldSides = array_unique(array_map(static fn (Booking $b) => $b->getSide()->getId(), $sold));
 
         $products = [];
         $managers = [];
@@ -60,7 +67,7 @@ class SalesReport
         }
 
         // Holds that ran out: the author's lost sales of the period
-        foreach ($this->bookings->countBurnedHoldsByAuthor($from, $to, $this->clock->now()) as $authorId => $burned) {
+        foreach ($this->bookings->countBurnedHoldsByAuthor($from, $to, $this->clock->now(), $sideNames, $manager) as $authorId => $burned) {
             if (!isset($managers[$authorId])) {
                 $user = 0 !== $authorId ? $this->users->find($authorId) : null;
                 $managers[$authorId] = ['user' => $user, 'sales' => 0, 'placement' => 0.0, 'services' => 0.0, 'total' => 0.0, 'paid' => 0.0, 'unpriced' => 0, 'average' => 0.0, 'burned' => 0];
@@ -99,6 +106,8 @@ class SalesReport
                 'average' => $totals['sales'] > 0 ? $totals['total'] / $totals['sales'] : 0.0,
                 'products' => \count($products),
                 'allProducts' => \count($all),
+                'sides' => \count($soldSides),
+                'allSides' => $this->sides->countNamed($sideNames),
             ],
             'products' => array_values($products),
             'managers' => array_values($managers),

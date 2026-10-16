@@ -55,6 +55,14 @@ class MediaPlan
     #[Assert\Range(notInRangeMessage: 'Скидка — от {{ min }} до {{ max }}%', min: 0, max: 90)]
     private int $discountPercent = 0;
 
+    /**
+     * Day of the month the client pays each month of the plan by (PaymentScheduler); a month shorter than that
+     * is paid by its last day.
+     */
+    #[ORM\Column(options: ['default' => 1])]
+    #[Assert\Range(notInRangeMessage: 'День оплаты — от {{ min }} до {{ max }} числа', min: 1, max: 31)]
+    private int $paymentDay = 1;
+
     #[ORM\Column(type: Types::TEXT, nullable: true)]
     private ?string $comment = null;
 
@@ -235,6 +243,24 @@ class MediaPlan
         $this->months = $months;
 
         return $this;
+    }
+
+    public function getPaymentDay(): int
+    {
+        return $this->paymentDay;
+    }
+
+    public function setPaymentDay(int $paymentDay): static
+    {
+        $this->paymentDay = $paymentDay;
+
+        return $this;
+    }
+
+    /** The day of $month the plan is paid by: the payment day, or the month's last day when it is shorter */
+    public function paymentDateIn(\DateTimeImmutable $month): \DateTimeImmutable
+    {
+        return MonthCalendar::dayOf($month, $this->paymentDay);
     }
 
     public function getDiscountPercent(): int

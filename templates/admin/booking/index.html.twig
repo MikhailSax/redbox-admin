@@ -30,6 +30,12 @@
             <option value="airtime" {{ query.kind == 'airtime' ? 'selected' }}>Экраны — эфир по дням</option>
             <option value="side" {{ query.kind == 'side' ? 'selected' }}>Статика — стороны на месяц</option>
         </select>
+        <select name="side" class="filter" aria-label="Сторона">
+            <option value="">Все стороны</option>
+            {% for side in constant('App\\Dto\\ProductListQuery::SIDES') %}
+                <option value="{{ side }}" {{ query.side == side ? 'selected' }}>Сторона {{ side }}</option>
+            {% endfor %}
+        </select>
         <select name="author" class="filter" aria-label="Кто оформил">
             <option value="">Оформил кто угодно</option>
             {% for author in authors %}
@@ -50,7 +56,7 @@
             {% import 'admin/_icons.html.twig' as ui %}
             {% set sort = query.sortKey %}
             {% set descending = query.isDescending %}
-            {% set filters = {q: query.q, month: query.month, kind: query.kind, author: query.author}|filter(v => v is not null and v != '') %}
+            {% set filters = {q: query.q, month: query.month, kind: query.kind, side: query.side, author: query.author}|filter(v => v is not null and v != '') %}
             {% set sorting = (sort != 'created' ? {sort: sort} : {})|merge(descending != (sort == 'created') ? {dir: descending ? 'desc' : 'asc'} : {}) %}
             {% set status_query = query.status ? {status: query.status} : {} %}
             <div class="mb-4 flex flex-wrap items-center gap-2">

@@ -224,6 +224,27 @@ final class PaymentControllerTest extends AdminWebTestCase
         self::assertSame(3, $this->em->getRepository(Payment::class)->count([]));
     }
 
+    /** The plan's payment day: every payment is due on it, a short month on its last day */
+    public function testPaymentDayOfTheMediaPlan(): void
+    {
+        $plan = $this->plan($this->company, months: 3);
+
+        $crawler = $this->client->request('GET', '/admin/media-plans/'.$plan->getId().'/edit');
+        [$values, $uri] = $this->formValues($crawler, 'Сохранить');
+        $values['media_plan_form']['paymentDay'] = '31';
+        $this->submit($uri, $values);
+        self::assertResponseRedirects();
+        $this->em->clear();
+        self::assertSame(31, $this->em->find(MediaPlan::class, $plan->getId())->getPaymentDay());
+
+        $crawler = $this->client->request('GET', '/admin/media-plans/'.$plan->getId());
+        self::assertStringContainsString('до 31-го числа', $crawler->filter('#payments form[action$="/payments/schedule"]')->attr('data-confirm'));
+        $this->submitPostForm($crawler, '#payments form[action$="/payments/schedule"]');
+
+        $payments = $this->em->getRepository(Payment::class)->findBy([], ['dueDate' => 'ASC']);
+        self::assertSame(['2026-10-31', '2026-11-30', '2026-12-31'], array_map(static fn (Payment $p) => $p->getDueDate()->format('Y-m-d'), $payments));
+    }
+
     /**
      * Money for a plan has to fix its sides: a hold left as a hold is dropped after 24 hours and the side goes
      * back on sale although the client has paid.

@@ -190,11 +190,15 @@ class BookingRepository extends ServiceEntityRepository
      * Sales of [$from, $to] for the reports: bookings confirmed (or paid, which confirms) within the days and still
      * confirmed. Imported bookings may carry no confirmation date: their creation date counts then.
      *
+     * $sideNames and $author narrow it to the sides of a letter and to who made the booking (see narrow()).
+     *
+     * @param list<string> $sideNames
+     *
      * @return list<Booking> with the side, the structure, its type, district, the author and the services
      */
-    public function findSold(\DateTimeImmutable $from, \DateTimeImmutable $to): array
+    public function findSold(\DateTimeImmutable $from, \DateTimeImmutable $to, array $sideNames = [], ?int $author = null): array
     {
-        return $this->createQueryBuilder('b')
+        return $this->narrow($this->createQueryBuilder('b'), $sideNames, $author)
             ->addSelect('s', 'p', 'pt', 'st', 'd', 'u', 'l')
             ->join('b.side', 's')
             ->join('s.product', 'p')
@@ -213,14 +217,44 @@ class BookingRepository extends ServiceEntityRepository
     }
 
     /**
+     * Confirmed bookings that take at least a day of [$from, $to]: what is shipped in the period.
+     * $sideNames and $author narrow it as in findSold().
+     *
+     * @param list<string> $sideNames
+     *
+     * @return list<Booking>
+     */
+    public function findShipped(\DateTimeImmutable $from, \DateTimeImmutable $to, array $sideNames = [], ?int $author = null): array
+    {
+        return $this->narrow($this->createQueryBuilder('b'), $sideNames, $author)
+            ->addSelect('s', 'p', 'pt', 'st', 'd', 'u', 'l')
+            ->join('b.side', 's')
+            ->join('s.product', 'p')
+            ->join('p.productType', 'pt')
+            ->leftJoin('s.productType', 'st')
+            ->leftJoin('p.district', 'd')
+            ->leftJoin('b.createdBy', 'u')
+            ->leftJoin('b.serviceLines', 'l')
+            ->andWhere('b.status = :confirmed')
+            ->andWhere('b.startDate <= :to AND b.endDate >= :from')
+            ->setParameter('confirmed', BookingStatus::Confirmed)
+            ->setParameter('from', $from, 'date_immutable')
+            ->setParameter('to', $to, 'date_immutable')
+            ->getQuery()
+            ->getResult();
+    }
+
+    /**
      * Holds that ran out unconfirmed within [$from, $to] (expired, or overdue and not swept yet), by author id
      * (0 = no author: imported or made from the website).
      *
+     * @param list<string> $sideNames
+     *
      * @return array<int, int>
      */
-    public function countBurnedHoldsByAuthor(\DateTimeImmutable $from, \DateTimeImmutable $to, \DateTimeImmutable $now): array
+    public function countBurnedHoldsByAuthor(\DateTimeImmutable $from, \DateTimeImmutable $to, \DateTimeImmutable $now, array $sideNames = [], ?int $author = null): array
     {
-        $rows = $this->createQueryBuilder('b')
+        $rows = $this->narrow($this->createQueryBuilder('b')->join('b.side', 's'), $sideNames, $author)
             ->select('IDENTITY(b.createdBy) AS author', 'COUNT(b.id) AS total')
             ->andWhere('b.expiresAt >= :from AND b.expiresAt < :until')
             ->andWhere('b.status = :expired OR (b.status = :hold AND b.expiresAt <= :now)')
@@ -239,6 +273,24 @@ class BookingRepository extends ServiceEntityRepository
         }
 
         return $counts;
+    }
+
+    /**
+     * Reports narrowed to the sides named $sideNames (one letter, see ProductListQuery::sideSpellings()) and to the
+     * bookings made by $author; the query must join the side as "s".
+     *
+     * @param list<string> $sideNames
+     */
+    private function narrow(QueryBuilder $qb, array $sideNames, ?int $author): QueryBuilder
+    {
+        if ([] !== $sideNames) {
+            $qb->andWhere('s.name IN (:sideNames)')->setParameter('sideNames', $sideNames);
+        }
+        if (null !== $author) {
+            $qb->andWhere('IDENTITY(b.createdBy) = :author')->setParameter('author', $author);
+        }
+
+        return $qb;
     }
 
     /** The list's joins and every filter but the status */
@@ -270,6 +322,10 @@ class BookingRepository extends ServiceEntityRepository
 
         if (null !== $query->author) {
             $qb->andWhere('IDENTITY(b.createdBy) = :author')->setParameter('author', $query->author);
+        }
+
+        if ([] !== $sideNames = $query->sideNames()) {
+            $qb->andWhere('s.name IN (:sideNames)')->setParameter('sideNames', $sideNames);
         }
 
         return $qb;

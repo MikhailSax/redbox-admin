@@ -1,0 +1,158 @@
+{#
+    Shipments of the period (ShipmentReport): confirmed bookings ship their "Продано за" by the days they run,
+    services whole in the month the booking starts. Variables: totals, byMonth, products, managers, from, to, query, keep.
+#}
+{% import 'admin/_icons.html.twig' as ui %}
+{% import 'admin/report/_sort.html.twig' as sorting %}
+<p class="mb-4 text-sm text-body">Отгрузка — на сколько в сумме загружены конструкции: «Продано за» подтверждённой брони делится по дням размещения, в период попадают только его дни. Услуги — целиком в месяц начала брони. Брони, ждущие подтверждения, не отгружаются.</p>
+
+{# Totals of the period #}
+<dl class="mb-8 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+    {% for tile in [
+        {label: 'Отгружено', value: totals.total|money, hint: 'размещение ' ~ totals.placement|money ~ ' · услуги ' ~ totals.services|money},
+        {label: 'Оплачено', value: totals.paid|money, hint: totals.total > 0 ? (totals.paid * 100 / totals.total)|round ~ '% отгруженного' : null},
+        {label: 'Ждёт оплаты', value: totals.unpaid|money, hint: 'отгружено по неоплаченным броням'},
+        {label: 'Броней', value: totals.bookings, hint: (totals.days ~ ' дн. размещения сторон') ~ (totals.unpriced ? ' · без суммы: ' ~ totals.unpriced : '')},
+        {label: 'Загружено поверхностей', value: (totals.allSides ? (totals.sides * 100 / totals.allSides)|round : 0) ~ '%', hint: totals.sides ~ ' из ' ~ totals.allSides ~ ' сторон' ~ (query.side ? ' ' ~ query.side : '') ~ ' · конструкций ' ~ totals.products ~ ' из ' ~ totals.allProducts},
+    ] %}
+        <div class="rounded-md bg-zinc-100 px-4 py-3" data-shipment-total="{{ loop.index }}">
+            <dt class="text-xs font-semibold text-body-subtle">{{ tile.label }}</dt>
+            <dd class="mt-1 text-xl font-semibold tabular-nums text-heading">{{ tile.value }}</dd>
+            {% if tile.hint %}<dd class="mt-0.5 text-xs text-body">{{ tile.hint }}</dd>{% endif %}
+        </div>
+    {% endfor %}
+</dl>
+
+{# By month #}
+{% set peak = max(byMonth|map(m => m.total)|merge([0])) %}
+<h2 class="mb-2 text-lg font-semibold text-heading">По месяцам</h2>
+<div class="table-card mb-8">
+    <table class="data-table" id="shipment-months">
+        <thead>
+            <tr>
+                <th scope="col" class="px-3">Месяц</th>
+                <th scope="col" class="px-3 text-right">Размещение</th>
+                <th scope="col" class="px-3 text-right">Услуги</th>
+                <th scope="col" class="px-3 text-right">Отгружено</th>
+                <th scope="col" class="px-3"><span class="sr-only">Доля</span></th>
+                <th scope="col" class="px-3 text-right">Оплачено</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in byMonth %}
+                <tr>
+                    <th scope="row" class="px-3 font-medium text-heading">{{ row.month|month_label }}</th>
+                    <td class="px-3 text-right tabular-nums whitespace-nowrap">{{ row.placement|money }}</td>
+                    <td class="px-3 text-right tabular-nums whitespace-nowrap">{{ row.services ? row.services|money : '—' }}</td>
+                    <td class="px-3 text-right font-semibold tabular-nums text-heading whitespace-nowrap">{{ row.total|money }}</td>
+                    <td class="px-3">
+                        <div class="h-1.5 w-32 overflow-hidden rounded-full bg-zinc-200"><div class="h-full bg-zinc-800" style="width: {{ peak > 0 ? (row.total * 100 / peak)|round(1) : 0 }}%"></div></div>
+                    </td>
+                    <td class="px-3 text-right tabular-nums whitespace-nowrap {{ row.paid < row.total ? 'text-fg-warning' : 'text-fg-success-strong' }}">{{ row.paid|money }}</td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{# By structure #}
+<h2 class="mb-2 text-lg font-semibold text-heading">По конструкциям</h2>
+<div class="table-card mb-8">
+    <table class="data-table" id="shipment-products">
+        <thead>
+            <tr>
+                {{ sorting.th('Конструкция', 'name', keep, align: 'left') }}
+                <th scope="col" class="px-3">Стороны</th>
+                {{ sorting.th('Броней', 'bookings', keep) }}
+                {{ sorting.th('Дней', 'days', keep, title: 'Дни размещения сторон в периоде') }}
+                {{ sorting.th('Размещение', 'placement', keep) }}
+                {{ sorting.th('Услуги', 'services', keep) }}
+                {{ sorting.th('Отгружено', 'total', keep) }}
+                <th scope="col" class="px-3">Доля</th>
+                {{ sorting.th('Оплачено', 'paid', keep) }}
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in products %}
+                <tr>
+                    <th scope="row" class="px-3 font-normal">
+                        <a href="{{ path('admin_booking_product', {id: row.product.id}) }}" class="font-medium text-heading hover:underline">{{ row.product.name }}</a>
+                        <div class="text-xs text-body-subtle">{{ row.product.typeLabel }}{% if row.product.district %} · {{ row.product.district.name }}{% endif %}</div>
+                    </th>
+                    <td class="px-3">
+                        <div class="flex gap-1">
+                            {% for side in row.sides %}<span class="inline-flex h-5 min-w-5 items-center justify-center rounded-sm bg-zinc-100 px-1 text-xs font-semibold text-heading">{{ side }}</span>{% endfor %}
+                        </div>
+                    </td>
+                    <td class="px-3 text-right tabular-nums">{{ row.bookings }}</td>
+                    <td class="px-3 text-right tabular-nums">{{ row.days }}</td>
+                    <td class="px-3 text-right tabular-nums whitespace-nowrap">
+                        {{ row.placement|money }}
+                        {% if row.unpriced %}<div class="text-xs text-fg-warning">без суммы: {{ row.unpriced }}</div>{% endif %}
+                    </td>
+                    <td class="px-3 text-right tabular-nums whitespace-nowrap">{{ row.services ? row.services|money : '—' }}</td>
+                    <td class="px-3 text-right font-semibold tabular-nums text-heading whitespace-nowrap"
+                        title="{{ byMonth|length > 1 ? byMonth|map(m => m.month|month_label ~ ': ' ~ row.months[m.month|date('Y-m')]|money)|join("\n") }}">{{ row.total|money }}</td>
+                    <td class="px-3">
+                        <div class="flex items-center gap-2" title="Доля в отгруженном за период">
+                            <div class="h-1.5 w-20 overflow-hidden rounded-full bg-zinc-200"><div class="h-full bg-zinc-800" style="width: {{ row.share|round(1) }}%"></div></div>
+                            <span class="text-xs tabular-nums text-body">{{ row.share|round }}%</span>
+                        </div>
+                    </td>
+                    <td class="px-3 text-right tabular-nums whitespace-nowrap {{ row.paid < row.total ? 'text-fg-warning' : 'text-fg-success-strong' }}">{{ row.paid|money }}</td>
+                </tr>
+            {% else %}
+                <tr>
+                    <td colspan="9" class="px-4 py-12 text-center">
+                        <span class="mx-auto mb-3 grid size-12 place-items-center rounded-full bg-zinc-100 text-zinc-400">{{ ui.icon('chart') }}</span>
+                        <p class="font-medium text-heading">За этот период отгрузок нет</p>
+                        <p class="mt-1 text-sm text-body">Отгрузка появляется, когда подтверждённая бронь занимает дни периода.</p>
+                    </td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{# By who made the booking: who collected how much #}
+<h2 class="mb-2 text-lg font-semibold text-heading">По менеджерам</h2>
+<div class="table-card">
+    <table class="data-table" id="shipment-managers">
+        <thead>
+            <tr>
+                {{ sorting.th('Оформил', 'name', keep, 'msort', 'mdir', 'left') }}
+                {{ sorting.th('Броней', 'bookings', keep, 'msort', 'mdir') }}
+                {{ sorting.th('Размещение', 'placement', keep, 'msort', 'mdir') }}
+                {{ sorting.th('Услуги', 'services', keep, 'msort', 'mdir') }}
+                {{ sorting.th('Собрал', 'total', keep, 'msort', 'mdir', title: 'Отгружено по броням, которые оформил менеджер') }}
+                {{ sorting.th('Оплачено', 'paid', keep, 'msort', 'mdir') }}
+                {{ sorting.th('Средняя бронь', 'average', keep, 'msort', 'mdir') }}
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in managers %}
+                <tr>
+                    <th scope="row" class="px-3 font-normal">
+                        <span class="flex items-center gap-2">
+                            {% if row.user %}
+                                <span class="avatar">{{ row.user.name|initials }}</span>
+                                <span class="font-medium text-heading">{{ row.user.name ?: row.user.email }}</span>
+                            {% else %}
+                                <span class="avatar">—</span>
+                                <span class="text-body" title="Импортированные брони и брони, оформленные без менеджера">Без менеджера</span>
+                            {% endif %}
+                        </span>
+                    </th>
+                    <td class="px-3 text-right tabular-nums">{{ row.bookings }}</td>
+                    <td class="px-3 text-right tabular-nums whitespace-nowrap">{{ row.placement|money }}</td>
+                    <td class="px-3 text-right tabular-nums whitespace-nowrap">{{ row.services ? row.services|money : '—' }}</td>
+                    <td class="px-3 text-right font-semibold tabular-nums text-heading whitespace-nowrap">{{ row.total|money }}</td>
+                    <td class="px-3 text-right tabular-nums whitespace-nowrap {{ row.paid < row.total ? 'text-fg-warning' : 'text-fg-success-strong' }}">{{ row.paid|money }}</td>
+                    <td class="px-3 text-right tabular-nums whitespace-nowrap">{{ row.average|money }}</td>
+                </tr>
+            {% else %}
+                <tr><td colspan="7" class="px-4 py-8 text-center text-body">За этот период отгрузок нет.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>

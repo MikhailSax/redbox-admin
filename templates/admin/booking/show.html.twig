@@ -90,7 +90,17 @@
 
             {# Money: the price and the services #}
             <section class="card">
-                <h2 class="mb-4 text-base font-semibold text-heading">Деньги</h2>
+                {# The total first, then what it is made of #}
+                {% set total = (booking.soldPrice ?? 0) + booking.servicesTotal %}
+                <div class="mb-4 flex flex-wrap items-baseline justify-between gap-3 border-b border-default pb-3">
+                    <h2 class="text-base font-semibold text-heading">Деньги</h2>
+                    {% if total > 0 %}
+                        <div class="flex items-baseline gap-2" data-booking-total>
+                            <span class="text-sm text-body">Итого с услугами</span>
+                            <span class="text-lg font-semibold tabular-nums text-heading">{{ total|money }}</span>
+                        </div>
+                    {% endif %}
+                </div>
                 <div class="grid gap-6 sm:grid-cols-2">
                     <div>
                         <div class="mb-1 text-xs font-semibold text-body-subtle">Продано за</div>
@@ -101,14 +111,42 @@
                         {{ include('admin/booking/_services.html.twig', {service_form: serviceForm, return: 'card'}) }}
                     </div>
                 </div>
-                {% set total = (booking.soldPrice ?? 0) + booking.servicesTotal %}
-                {% if total > 0 %}
-                    <div class="mt-5 flex items-baseline justify-between border-t border-default pt-3">
-                        <span class="text-sm text-body">Итого с услугами</span>
-                        <span class="text-lg font-semibold tabular-nums text-heading">{{ total|money }}</span>
-                    </div>
-                {% endif %}
             </section>
+
+            {# Payment schedule: when the client pays for the booking (PaymentScheduler, the payment calendar) #}
+            {% if is_manager %}
+                <section id="payments" class="scroll-mt-20">
+                    <div class="mb-3 flex flex-wrap items-end justify-between gap-3">
+                        <div>
+                            <h2 class="text-base font-semibold text-heading">График платежей</h2>
+                            <p class="text-sm text-body">
+                                {% if booking.payments is not empty %}
+                                    Запланировано {{ booking.scheduledTotal|money }} из {{ total|money }}.
+                                {% endif %}
+                                Платежи попадают в календарь платежей и карточку клиента. Первый пришедший платёж подтверждает бронь, все — отмечают её оплаченной.
+                            </p>
+                        </div>
+                        {% if booking.payments is empty and active and booking.client and total > 0 %}
+                            {# the split: one payment per month of the booking, due on the day picked #}
+                            <form method="post" action="{{ path('admin_booking_schedule_payments', {id: booking.id}) }}" class="flex flex-wrap items-center gap-2" data-booking-schedule>
+                                <input type="hidden" name="_token" value="{{ csrf_token('schedule-booking-' ~ booking.id) }}">
+                                <label for="payment-day" class="text-sm text-body">Оплата до</label>
+                                <select id="payment-day" name="day" class="filter">
+                                    {% for day in 1..31 %}<option value="{{ day }}">{{ day }}-го числа</option>{% endfor %}
+                                </select>
+                                <button type="submit" class="btn btn-primary btn-sm">{{ ui.icon('calendar', 'size-4') }} Разбить на платежи по месяцам</button>
+                            </form>
+                        {% endif %}
+                    </div>
+                    {% if booking.payments is not empty %}
+                        {{ include('admin/payment/_table.html.twig', {payments: booking.payments, return: 'booking', show_client: false, show_plan: false}) }}
+                    {% elseif not booking.client %}
+                        <p class="text-sm text-fg-warning">У брони нет клиента — выберите его в «Изменить», чтобы вести платежи.</p>
+                    {% elseif total <= 0 %}
+                        <p class="text-sm text-body">Укажите «Продано за» или добавьте услуги — тогда можно разбить сумму на платежи.</p>
+                    {% endif %}
+                </section>
+            {% endif %}
         </div>
 
         {# Details column, as in an issue view #}

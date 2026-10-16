@@ -22,6 +22,9 @@ use App\Service\BookingManager;
 use App\Service\ClientCardException;
 use App\Service\ClientCards;
 use App\Service\MonthCalendar;
+use App\Service\PaymentException;
+use App\Service\PaymentScheduler;
+use App\Service\ShipmentReport;
 use App\Twig\AdminExtension;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\Clock\ClockInterface;
@@ -87,6 +90,10 @@ final class BookingController extends AbstractController
         // the side and the month picked in the structures list: the new booking form starts with them
         #[MapQueryParameter] ?int $side = null,
         #[MapQueryParameter(filter: \FILTER_VALIDATE_REGEXP, options: ['regexp' => '/^\d{4}-(0[1-9]|1[0-2])$/'])] ?string $from = null,
+        // the bookings list: one side only, and the column it is sorted by
+        #[MapQueryParameter(name: 'list_side')] ?int $listSide = null,
+        #[MapQueryParameter] ?string $sort = null,
+        #[MapQueryParameter] ?string $dir = null,
     ): Response {
         $now = $this->clock->now();
         // Each side is booked by its own type: airtime sides by days, the others by months
@@ -160,6 +167,11 @@ final class BookingController extends AbstractController
 
         // The bookings list goes by month tabs: the current month and every month with a booking, or all at once
         $bookings = $allBookings = $this->bookings->findForProduct($product);
+        // one side picked: its bookings alone, in the list, the tabs and the shipments
+        $listSide = $product->getSides()->exists(static fn (int $i, ProductSide $s) => $s->getId() === $listSide) ? $listSide : null;
+        if (null !== $listSide) {
+            $bookings = $allBookings = array_values(array_filter($allBookings, static fn (Booking $b) => $b->getSide()->getId() === $listSide));
+        }
         $monthTabs = self::monthTabs($allBookings, $now);
         $defaultTab = self::defaultMonthTab($monthTabs, $now);
         $monthTab = 'all' === $month || isset($monthTabs[(string) $month]) ? $month : $defaultTab;
@@ -169,28 +181,36 @@ final class BookingController extends AbstractController
             $bookings = array_values(array_filter($allBookings, static fn (Booking $b) => $b->overlaps($tabMonth, MonthCalendar::lastDay($tabMonth))));
         }
 
-        // Revenue of the tab: "Продано за" and services of the paid bookings, as typed — the sum of the rows;
-        // bookings in force not paid yet are counted apart, as awaiting payment
-        $revenue = ['placement' => 0.0, 'services' => 0.0, 'total' => 0.0, 'unpaid' => 0.0, 'unpriced' => 0];
+        $sort = isset(self::PRODUCT_LIST_SORTS[(string) $sort]) ? $sort : null;
+        $descending = null !== $sort && ('desc' === $dir || ('asc' !== $dir && self::PRODUCT_LIST_SORTS[$sort]));
+        if (null !== $sort) {
+            // usort() is stable: ties keep the newest first
+            usort($bookings, static fn (Booking $a, Booking $b) => ($descending ? -1 : 1) * (self::listSortValue($sort, $a, $now) <=> self::listSortValue($sort, $b, $now)));
+        }
+
+        // Shipments of the tab: what the confirmed bookings bring to its month by days (a booking for three months
+        // brings a third of its price to each), services in the month the booking starts; the paid part apart.
+        // Holds ship nothing yet: they are shown apart, as awaiting confirmation.
+        $tabFrom = $tabMonth;
+        $tabTo = null !== $tabMonth ? MonthCalendar::lastDay($tabMonth) : null;
         $serviceForms = [];
         foreach ($bookings as $booking) {
-            if (!$booking->isActiveAt($now)) {
-                continue;
+            if ($booking->isActiveAt($now)) {
+                $serviceForms[$booking->getId()] = $this->serviceForm($booking)->createView();
             }
-            $serviceForms[$booking->getId()] = $this->serviceForm($booking)->createView();
-            $services = $booking->getServicesTotal();
-            $price = $booking->getSoldPrice();
-            if (null === $price) {
-                ++$revenue['unpriced'];
-            }
-            if (!$booking->isPaid()) {
-                $revenue['unpaid'] += ($price ?? 0) + $services;
-                continue;
-            }
-            $revenue['placement'] += $price ?? 0;
-            $revenue['services'] += $services;
         }
-        $revenue['total'] = $revenue['placement'] + $revenue['services'];
+        $confirmed = static fn (Booking $b) => BookingStatus::Confirmed === $b->getStatus();
+        $holds = array_filter($bookings, static fn (Booking $b) => BookingStatus::Hold === $b->getStatus() && $b->isActiveAt($now));
+        $revenue = ShipmentReport::sum(array_filter($bookings, $confirmed), $tabFrom, $tabTo);
+        $revenue['holds'] = \count($holds);
+        $revenue['holdsTotal'] = ShipmentReport::sum($holds, $tabFrom, $tabTo)['total'];
+
+        // The structure's shipments by month: how much it is loaded with money, every month a booking takes
+        $shipments = [];
+        $confirmedAll = array_filter($allBookings, $confirmed);
+        foreach ($monthTabs as $key => $tab) {
+            $shipments[$key] = ShipmentReport::sum($confirmedAll, $tab['month'], MonthCalendar::lastDay($tab['month']))['total'];
+        }
 
         return $this->render('admin/booking/product.html.twig', [
             'product' => $product,
@@ -202,6 +222,10 @@ final class BookingController extends AbstractController
             'monthTab' => $monthTab,
             'defaultMonthTab' => $defaultTab,
             'revenue' => $revenue,
+            'shipments' => $shipments,
+            'listSide' => $listSide,
+            'listSort' => $sort,
+            'listDescending' => $descending,
             'serviceForms' => $serviceForms,
             'availability' => $this->availability->forProduct($product->getId(), $now),
             'activeBookings' => $this->bookings->countActiveForProduct($product, $now),
@@ -278,6 +302,26 @@ final class BookingController extends AbstractController
             'mixed' => $airtime && $whole,
             'now' => $now,
         ]);
+    }
+
+    /**
+     * Payment schedule of the booking: what it is sold for split by the months it runs, due on the day of the month
+     * the manager picks, into the payment calendar.
+     */
+    #[Route('/admin/bookings/{id}/payments/schedule', name: 'admin_booking_schedule_payments', requirements: ['id' => Requirement::DIGITS], methods: ['POST'])]
+    #[IsCsrfTokenValid(new Expression('"schedule-booking-" ~ args["booking"].getId()'))]
+    #[IsGranted(User::ROLE_SUPER_MANAGER)]
+    public function schedulePayments(Request $request, Booking $booking, PaymentScheduler $scheduler): Response
+    {
+        $user = $this->getUser();
+        try {
+            $payments = $scheduler->scheduleBooking($booking, $request->getPayload()->getInt('day', 1), $user instanceof User ? $user : null);
+            $this->addFlash('success', \sprintf('График платежей составлен: %d — по месяцам брони. Сроки и суммы можно поправить.', \count($payments)));
+        } catch (PaymentException $e) {
+            $this->addFlash('error', $e->getMessage());
+        }
+
+        return $this->redirectToRoute('admin_booking_show', ['id' => $booking->getId(), '_fragment' => 'payments'], Response::HTTP_SEE_OTHER);
     }
 
     /** Post-paying clients: the side is theirs before the money comes */
@@ -472,6 +516,21 @@ final class BookingController extends AbstractController
         return $this->backToProduct($request, $booking);
     }
 
+    /** Columns the bookings list of a structure is sorted by: key => whether the first click sorts from the biggest */
+    private const PRODUCT_LIST_SORTS = ['side' => false, 'period' => false, 'client' => false, 'status' => false, 'sold' => true];
+
+    private static function listSortValue(string $sort, Booking $booking, \DateTimeImmutable $now): mixed
+    {
+        return match ($sort) {
+            'side' => [$booking->getSide()->getName(), $booking->getStartDate()],
+            'period' => [$booking->getStartDate(), $booking->getEndDate()],
+            'client' => mb_strtolower($booking->getClientTitle()),
+            'status' => $booking->getStatusAt($now)->label(),
+            'sold' => $booking->getSoldPrice() ?? -1.0,
+            default => null,
+        };
+    }
+
     /** The product's booking page, on the month tab the button was pressed on */
     private function backToProduct(Request $request, Booking $booking): Response
     {
@@ -480,8 +539,17 @@ final class BookingController extends AbstractController
             return $this->redirectToRoute('admin_booking_show', ['id' => $booking->getId()], Response::HTTP_SEE_OTHER);
         }
         $month = $request->getPayload()->getString('month');
+        $params = ['id' => $booking->getProduct()->getId(), 'month' => $month];
 
-        return $this->redirectToRoute('admin_booking_product', array_filter(['id' => $booking->getProduct()->getId(), 'month' => $month]), Response::HTTP_SEE_OTHER);
+        // the side picked and the sorting of the list stay as they were on the page the button was pressed on
+        $page = $this->generateUrl('admin_booking_product', ['id' => $booking->getProduct()->getId()]);
+        $referer = parse_url((string) $request->headers->get('referer'));
+        if (($referer['path'] ?? null) === $page) {
+            parse_str($referer['query'] ?? '', $query);
+            $params += array_intersect_key($query, array_flip(['list_side', 'sort', 'dir']));
+        }
+
+        return $this->redirectToRoute('admin_booking_product', array_filter($params, static fn ($value) => \is_string($value) && '' !== $value || \is_int($value)), Response::HTTP_SEE_OTHER);
     }
 
     /** "Add a service" of one booking in the list: named apart, so the forms of different rows don't share ids */
