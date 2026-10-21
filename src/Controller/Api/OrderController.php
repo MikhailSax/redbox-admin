@@ -9,6 +9,7 @@ use App\Entity\LeadItem;
 use App\Entity\ProductSide;
 use App\Entity\User;
 use App\Repository\PackageRepository;
+use App\Service\BookingManager;
 use App\Service\MediaPlanManager;
 use App\Service\MonthCalendar;
 use App\Service\Notifications;
@@ -40,6 +41,7 @@ final class OrderController extends AbstractController
         private readonly PackageRepository $packages,
         private readonly PackageOffers $packageOffers,
         private readonly ClockInterface $clock,
+        private readonly BookingManager $bookings,
     ) {
     }
 
@@ -70,11 +72,16 @@ final class OrderController extends AbstractController
             ->setClient($client);
 
         $unknown = [];
+        $problems = [];
         foreach ($order->items as $index => $item) {
             $side = $this->entityManager->find(ProductSide::class, (int) $item->sideId);
             // a side out of order is not on the website: as if it were gone
             if (null === $side || !$side->isWorking()) {
                 $unknown[] = $index;
+                continue;
+            }
+            if (null !== $problem = $this->staticProblem($side, new \DateTimeImmutable((string) $item->from), new \DateTimeImmutable((string) $item->to))) {
+                $problems[$index] = $problem;
                 continue;
             }
             $lead->addItem($this->item($side, $item));
@@ -85,6 +92,15 @@ final class OrderController extends AbstractController
                 'error' => 'unknown_sides',
                 'message' => 'Некоторых конструкций из заявки больше нет. Обновите страницу и попробуйте снова.',
                 'items' => $unknown,
+            ], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        if ([] !== $problems) {
+            return $this->json([
+                'error' => 'unavailable_sides',
+                'message' => implode(' ', array_unique($problems)),
+                'items' => array_keys($problems),
+                'problems' => $problems,
             ], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
@@ -149,6 +165,31 @@ final class OrderController extends AbstractController
             slots: $slots,
             monthlyPrice: number_format($monthly, 2, '.', ''),
         );
+    }
+
+    /**
+     * Why a static side can't be requested for the days: it is sold by whole calendar months, from a month
+     * that hasn't begun yet, and never over another client's booking (confirmed or a hold in force).
+     * Screens are sold by days and their slots are left for the manager to check.
+     */
+    private function staticProblem(ProductSide $side, \DateTimeImmutable $from, \DateTimeImmutable $to): ?string
+    {
+        if ($side->isAirtime()) {
+            return null;
+        }
+
+        $name = \sprintf('«%s», сторона %s', $side->getProduct()?->getName(), $side->getName());
+        if (!MonthCalendar::isWholeMonths($from, $to)) {
+            return \sprintf('%s продаётся целыми месяцами — с 1-го по последнее число.', $name);
+        }
+        if ($from < $this->clock->now()->setTime(0, 0)) {
+            return \sprintf('%s: месяц уже начался — выберите следующий.', $name);
+        }
+        if (null !== $this->bookings->availabilityProblem($side, $from, $to, null)) {
+            return \sprintf('%s уже занята на %s — выберите другие месяцы.', $name, MonthCalendar::periodLabel($from, $to));
+        }
+
+        return null;
     }
 
     /** "№7/23 · Щит на Ленина" */

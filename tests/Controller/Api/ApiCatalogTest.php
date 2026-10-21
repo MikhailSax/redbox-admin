@@ -248,6 +248,41 @@ final class ApiCatalogTest extends AdminWebTestCase
         self::assertSame(0, $this->em->getRepository(Lead::class)->count([]));
     }
 
+    public function testStaticSideIsRequestedByWholeFreeMonths(): void
+    {
+        $side = $this->billboard->getSides()->first();
+        // another client already holds November
+        $hold = new BookingRequest();
+        $hold->side = $side;
+        $hold->startMonth = '2026-11';
+        $hold->months = 1;
+        $hold->client = $this->createClientCard('Кафе «Лето»', 'cafe@example.com');
+        $hold->clientPhone = '+7 900 000-00-00';
+        static::getContainer()->get(BookingManager::class)->hold($hold);
+
+        $order = fn (string $from, string $to) => $this->post('/api/v1/orders', ['contactName' => 'Иван', 'phone' => '+7 900 111-22-33', 'agree' => true, 'items' => [['sideId' => $side->getId(), 'from' => $from, 'to' => $to]]]);
+
+        // from the 15th: a static side is sold from the 1st to the last day of a month
+        $days = $order('2026-10-15', '2026-11-14');
+        self::assertSame(422, $days['status']);
+        self::assertSame('unavailable_sides', $days['body']['error']);
+        self::assertStringContainsString('целыми месяцами', $days['body']['message']);
+
+        // September has begun (today is the 10th)
+        $begun = $order('2026-09-01', '2026-09-30');
+        self::assertSame(422, $begun['status']);
+        self::assertStringContainsString('месяц уже начался', $begun['body']['message']);
+
+        // October and November: November is the other client's
+        $taken = $order('2026-10-01', '2026-11-30');
+        self::assertSame(422, $taken['status']);
+        self::assertStringContainsString('уже занята', $taken['body']['message']);
+        self::assertSame(0, $this->em->getRepository(Lead::class)->count([]));
+
+        // October alone is free
+        self::assertSame(201, $order('2026-10-01', '2026-10-31')['status']);
+    }
+
     public function testApiNeedsNoLoginButTheCrmStillDoes(): void
     {
         self::assertSame(200, $this->request('GET', '/api/v1/filters')['status']);

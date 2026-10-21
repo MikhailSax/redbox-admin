@@ -35,7 +35,7 @@ class PackageOffers
     }
 
     /**
-     * [first day, last day] of $months months from $from: from the 15th of November for 2 months is up to the 14th of January.
+     * [first day, last day] of $months months from $from (the 1st): from November for 2 months is up to the 31st of December.
      *
      * @return array{0: \DateTimeImmutable, 1: \DateTimeImmutable}
      */
@@ -52,6 +52,10 @@ class PackageOffers
     public function offer(Package $package, \DateTimeImmutable $from, ?int $months = null): PackageOffer
     {
         $months = $package->clampMonths($months);
+        // static sides are sold by whole months: a package starts on the 1st (the next one when a day mid-month is asked)
+        if ('01' !== $from->format('d')) {
+            $from = MonthCalendar::firstDay($from)->modify('+1 month');
+        }
         [$from, $to] = self::period($from, $months);
         $tooEarly = $from < $this->clock->now()->setTime(0, 0);
 
@@ -94,8 +98,11 @@ class PackageOffers
             throw new PackageException(\sprintf('Пакет «%s» — на срок %s.', $package->getTitle(), $package->getMonthsLabel()));
         }
         [$from, $to] = self::period($from, $months);
+        if ('01' !== $from->format('d')) {
+            throw new PackageException('Пакет начинается с 1-го числа месяца — выберите месяц.');
+        }
         if ($from < $this->clock->now()->setTime(0, 0)) {
-            throw new PackageException('Начало размещения уже прошло — выберите другую дату.');
+            throw new PackageException('Этот месяц уже начался — выберите следующий.');
         }
 
         foreach (array_keys($selection) as $slotId) {

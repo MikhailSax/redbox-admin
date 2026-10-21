@@ -88,6 +88,9 @@ final class ApiPackagesTest extends AdminWebTestCase
         // in December all three are free
         $december = $this->get('/api/v1/packages/'.$package->getId().'?from=2026-12-01');
         self::assertCount(3, $december['slots'][1]['options']);
+
+        // a day mid-month moves the start to the 1st of the next month
+        self::assertSame('2026-12-01', $this->get('/api/v1/packages/'.$package->getId().'?from=2026-11-15')['from']);
     }
 
     public function testNotEnoughFreeSidesMakesThePackageUnavailable(): void
@@ -188,6 +191,11 @@ final class ApiPackagesTest extends AdminWebTestCase
         // a start in the past
         $past = $order([$pick($superSite, $this->superSite), $pick($billboards, $this->billboards[0]), $pick($billboards, $this->billboards[2])], from: '2026-10-01');
         self::assertSame(422, $past['status']);
+
+        // a start mid-month: packages are sold by whole months
+        $midMonth = $order([$pick($superSite, $this->superSite), $pick($billboards, $this->billboards[0]), $pick($billboards, $this->billboards[2])], from: '2026-11-15');
+        self::assertSame(422, $midMonth['status']);
+        self::assertStringContainsString('с 1-го числа', $midMonth['body']['message']);
 
         // a package that is off (the kernel reboots between requests and clears the entity manager: load it anew)
         $this->em->find(Package::class, $package->getId())->setActive(false);
