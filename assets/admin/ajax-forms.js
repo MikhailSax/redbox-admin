@@ -6,8 +6,8 @@
  *   <… id="…" data-ajax-region>  — replaced with the element of the same id from the page the redirect led to
  *   form[data-live-filter]       — lists filtered live (live-filter.js) are reloaded with their current query
  *
- * Flash messages of the answer become toasts. A redirect to another page (e.g. after deleting), an error
- * or an expired session falls back to a normal page load. Confirmations (confirm.js) run first: their
+ * Flash messages of the answer become toasts. A redirect to another page (e.g. after deleting) or an
+ * expired session falls back to a normal page load; an error answer is shown as the page. Confirmations (confirm.js) run first: their
  * requestSubmit() comes back here once confirmed. Once the regions are swapped, "ajax-forms:updated" is
  * dispatched on the document.
  */
@@ -46,8 +46,18 @@ document.addEventListener('submit', async (event) => {
     }
 
     try {
+        if (!response.ok) {
+            // the error page itself: loading response.url again would be a GET of a POST-only URL, a 405 hiding it
+            const html = await response.text();
+            document.open();
+            document.write(html);
+            document.close();
+
+            return;
+        }
+
         const url = new URL(response.url);
-        if (!response.ok || url.pathname !== location.pathname) {
+        if (url.pathname !== location.pathname) {
             location.href = response.url;
 
             return;
