@@ -33,7 +33,9 @@ document.addEventListener('submit', async (event) => {
     event.preventDefault();
 
     const submitter = event.submitter;
-    const body = new FormData(form, submitter ?? undefined); // before disabling: a disabled button is left out
+    const data = new FormData(form, submitter ?? undefined); // before disabling: a disabled button is left out
+    // encoded as the browser itself would: the hosting's nginx answers 403 to a multipart POST
+    const body = form.enctype === 'multipart/form-data' ? data : new URLSearchParams(data);
     submitter?.setAttribute('disabled', '');
     document.body.setAttribute('aria-busy', 'true');
     let response;

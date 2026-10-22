@@ -177,7 +177,8 @@ async function initConstructionMap(element) {
         if (!option || !option.value) {
             return;
         }
-        const body = new FormData();
+        // urlencoded, not FormData: the hosting's nginx answers 403 to a multipart POST
+        const body = new URLSearchParams();
         body.append('_token', option.dataset.token);
         body.append('sides[]', button.dataset.addSide);
         button.disabled = true;
