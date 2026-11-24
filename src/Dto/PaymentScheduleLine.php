@@ -20,7 +20,11 @@ final class PaymentScheduleLine
     ) {
     }
 
-    public function hasAmount(): bool
+    /**
+     * A sum is entered. Not named hasAmount(): the form reads "amount" through PropertyAccess, which would take
+     * a has*() method for the property and hand the money field a bool.
+     */
+    public function isFilled(): bool
     {
         return null !== $this->amount && '' !== trim($this->amount) && (float) $this->amount > 0;
     }
@@ -28,7 +32,7 @@ final class PaymentScheduleLine
     #[Assert\Callback]
     public function validateDueDate(ExecutionContextInterface $context): void
     {
-        if ($this->hasAmount() && null === $this->dueDate) {
+        if ($this->isFilled() && null === $this->dueDate) {
             $context->buildViolation('Укажите срок оплаты')->atPath('dueDate')->addViolation();
         }
     }

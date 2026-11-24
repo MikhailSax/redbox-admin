@@ -23,7 +23,7 @@ final class PaymentSchedule
     /** @return list<PaymentScheduleLine> */
     public function filled(): array
     {
-        return array_values(array_filter($this->lines, static fn (PaymentScheduleLine $line) => $line->hasAmount()));
+        return array_values(array_filter($this->lines, static fn (PaymentScheduleLine $line) => $line->isFilled()));
     }
 
     /** Sum of the amounts entered, rubles */
