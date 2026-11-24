@@ -22,8 +22,11 @@ class Lead
 {
     use TimestampableTrait;
 
+    /** An order of structures from the website's cart */
     public const SOURCE_SITE = 'site';
     public const SOURCE_CRM = 'crm';
+    /** The website's feedback form: a name, a phone and a message, no structures */
+    public const SOURCE_FEEDBACK = 'feedback';
 
     /** Payment terms the visitor asked for */
     public const PAYMENT_PREPAY = 'prepay';
@@ -150,6 +153,21 @@ class Lead
     public function isFromSite(): bool
     {
         return self::SOURCE_SITE === $this->source;
+    }
+
+    public function isFeedback(): bool
+    {
+        return self::SOURCE_FEEDBACK === $this->source;
+    }
+
+    /** Where the request came from, for the lists: "с сайта", "обратная связь", "вручную" */
+    public function getSourceLabel(): string
+    {
+        return match ($this->source) {
+            self::SOURCE_SITE => 'с сайта',
+            self::SOURCE_FEEDBACK => 'обратная связь',
+            default => 'вручную',
+        };
     }
 
     public function getClient(): ?User

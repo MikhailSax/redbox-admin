@@ -5,6 +5,11 @@ framework:
             policy: 'sliding_window'
             limit: 20
             interval: '1 hour'
+        # The feedback form of the website (POST /api/v1/feedback), per IP
+        feedback:
+            policy: 'sliding_window'
+            limit: 10
+            interval: '1 hour'
         # Sign-ups on the website (POST /api/v1/auth/register), per IP
         registrations:
             policy: 'sliding_window'

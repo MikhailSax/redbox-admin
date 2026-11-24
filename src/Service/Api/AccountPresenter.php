@@ -123,6 +123,8 @@ class AccountPresenter
     {
         return [
             'id' => $lead->getId(),
+            // "order" — structures from the cart, "feedback" — a message from the feedback form (no items)
+            'kind' => $lead->isFeedback() ? 'feedback' : 'order',
             'status' => $lead->getStatus()->value,
             'statusLabel' => $lead->getStatus()->label(),
             'closed' => $lead->getStatus()->isClosed(),

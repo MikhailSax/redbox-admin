@@ -44,13 +44,18 @@ final class LeadController extends AbstractController
     }
 
     #[Route('', name: 'index', methods: ['GET'])]
-    public function index(Request $request, #[MapQueryParameter] ?string $status = null, #[MapQueryParameter] ?string $q = null): Response
+    public function index(Request $request, #[MapQueryParameter] ?string $status = null, #[MapQueryParameter] ?string $q = null, #[MapQueryParameter] ?string $kind = null): Response
     {
         $filter = null !== $status ? LeadStatus::tryFrom($status) : null;
+        // orders of structures or messages from the website's feedback form; both without one
+        $kind = \array_key_exists((string) $kind, LeadRepository::KINDS) ? $kind : null;
         $params = [
-            'leads' => $this->leads->findForList($filter, $q),
+            'leads' => $this->leads->findForList($filter, $q, kind: $kind),
             'counts' => $this->leads->countByStatus(),
+            'kindCounts' => $this->leads->countByKind(),
+            'kinds' => LeadRepository::KINDS,
             'filter' => $filter,
+            'kind' => $kind,
             'q' => $q,
         ];
 

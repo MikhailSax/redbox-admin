@@ -21,7 +21,7 @@
                 <span class="lozenge lozenge-{{ tones[lead.status.tone] }}">{{ lead.status.label }}</span>
             </div>
             <p class="page-subtitle">
-                {{ lead.createdAt|date('d.m.Y H:i') }} · {{ lead.fromSite ? 'с сайта' : 'вручную' }}
+                {{ lead.createdAt|date('d.m.Y H:i') }} · {{ lead.sourceLabel }}
                 {%- if lead.client %} · <a href="{{ path('admin_client_show', {id: lead.client.id}) }}" class="font-medium text-heading hover:underline">личный кабинет</a>{% endif %}
                 {%- if lead.packageTitle %} · пакет
                     {% if lead.package and is_granted('ROLE_SUPER_MANAGER') %}<a href="{{ path('admin_package_edit', {id: lead.package.id}) }}" class="font-medium text-heading hover:underline">«{{ lead.packageTitle }}»</a>{% else %}<span class="font-medium text-heading">«{{ lead.packageTitle }}»</span>{% endif %}
@@ -54,6 +54,17 @@
     </div>
 
     <div class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
+        {% if lead.feedback %}
+        {# A message from the website's feedback form: no structures, the text is the request #}
+        <section class="card h-fit" data-lead-message>
+            <div class="mb-3 flex items-center gap-2">
+                <span class="lozenge lozenge-new">{{ ui.icon('inbox', 'size-3') }} Обратная связь</span>
+                <h2 class="text-base font-semibold text-heading">Сообщение с сайта</h2>
+            </div>
+            <p class="whitespace-pre-line text-heading">{{ lead.comment ?: '—' }}</p>
+            <p class="mt-4 text-sm text-body">Перезвоните клиенту. Если речь о размещении, сделайте медиаплан: клиент и контакты перейдут в него.</p>
+        </section>
+        {% else %}
         {# Requested structures #}
         <div class="table-card">
             <table class="data-table">
@@ -107,6 +118,7 @@
                 {% endif %}
             </table>
         </div>
+        {% endif %}
 
         <div class="grid content-start gap-6">
             {# Contacts #}
@@ -122,7 +134,7 @@
                     {% if lead.companyName %}<div><dt class="text-xs text-body-subtle">Организация</dt><dd class="text-heading">{{ lead.companyName }}</dd></div>{% endif %}
                     {% if lead.inn %}<div><dt class="text-xs text-body-subtle">ИНН / КПП</dt><dd class="text-heading tabular-nums">{{ lead.inn }}{% if lead.kpp %} / {{ lead.kpp }}{% endif %}</dd></div>{% endif %}
                     {% if lead.paymentLabel %}<div><dt class="text-xs text-body-subtle">Оплата</dt><dd class="text-heading">{{ lead.paymentLabel }}</dd></div>{% endif %}
-                    {% if lead.comment %}<div><dt class="text-xs text-body-subtle">Комментарий клиента</dt><dd class="whitespace-pre-line text-heading">{{ lead.comment }}</dd></div>{% endif %}
+                    {% if lead.comment and not lead.feedback %}<div><dt class="text-xs text-body-subtle">Комментарий клиента</dt><dd class="whitespace-pre-line text-heading">{{ lead.comment }}</dd></div>{% endif %}
                 </dl>
             </section>
 

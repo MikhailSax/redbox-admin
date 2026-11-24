@@ -94,6 +94,20 @@ class Notifications
             ]));
     }
 
+    /** A message from the website's feedback form: the staff's bell, and the client's feed when they were signed in */
+    public function feedbackReceived(Lead $lead): void
+    {
+        $title = \sprintf('Обратная связь №%d: %s', (int) $lead->getId(), $lead->getClientTitle());
+        $message = (string) $lead->getComment();
+        $body = \sprintf('%s · %s', $lead->getPhone() ?? 'без телефона', mb_strlen($message) > 120 ? mb_substr($message, 0, 119).'…' : $message);
+        $this->toStaff(NotificationType::LeadReceived, $title, $body, 'admin_lead_show', ['id' => $lead->getId()]);
+
+        $client = $lead->getClient();
+        if (null !== $client) {
+            $this->toClient($client, NotificationType::LeadAccepted, 'Сообщение отправлено', 'Менеджер перезвонит вам в рабочее время.', '/account/requests');
+        }
+    }
+
     /** A manager moved the request along: the client sees it in the account (only requests sent while signed in) */
     public function leadStatusChanged(Lead $lead, LeadStatus $before): void
     {

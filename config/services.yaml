@@ -23,6 +23,10 @@ parameters:
     app.reach.city: 'Улан-Удэ'
     app.reach.population: 435067
 
+    # The website, for links in e-mails and notifications; .env* set it. The default keeps the admin working
+    # where the environment misses it (an old .env.local.php on the hosting), instead of failing every page that mails
+    env(WEBSITE_URL): 'https://sibiradm.ru'
+
 when@test:
     parameters:
         app.uploads_dir: '%kernel.project_dir%/var/test/uploads'
