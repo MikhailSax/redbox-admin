@@ -1,0 +1,71 @@
+{#
+    Money of the period, planned against received (CashFlowReport), month by month.
+    Variables: totals, flow, from, to, now.
+#}
+<p class="mb-4 text-sm text-body">План — платежи календаря со сроком в этом месяце. Поступило — деньги, отмеченные оплаченными в этом месяце, за любой срок: погашенный старый долг попадает сюда же. Собрано — какая доля плана месяца уже оплачена.</p>
+
+<dl class="mb-8 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+    {% for tile in [
+        {key: 'planned', label: 'План', value: totals.planned|money, hint: 'по графикам платежей'},
+        {key: 'received', label: 'Поступило', value: totals.received|money, hint: totals.receivedEarlier ? 'из них долги прошлых месяцев ' ~ totals.receivedEarlier|money : null},
+        {key: 'collection', label: 'Собрано из плана', value: totals.collection ~ '%', hint: totals.plannedPaid|money ~ ' из ' ~ totals.planned|money},
+        {key: 'unpaid', label: 'Не оплачено из плана', value: totals.plannedUnpaid|money, hint: totals.overdue ? 'просрочено ' ~ totals.overdue|money : null, danger: totals.overdue > 0},
+        {key: 'gap', label: 'Факт минус план', value: totals.gap|money, hint: totals.gap < 0 ? 'пришло меньше, чем ждали' : 'пришло не меньше плана'},
+    ] %}
+        <div class="rounded-md bg-zinc-100 px-4 py-3" data-cashflow-total="{{ tile.key }}">
+            <dt class="text-xs font-semibold text-body-subtle">{{ tile.label }}</dt>
+            <dd class="mt-1 text-xl font-semibold tabular-nums {{ tile.danger ?? false ? 'text-fg-danger' : 'text-heading' }}">{{ tile.value }}</dd>
+            {% if tile.hint %}<dd class="mt-0.5 text-xs text-body">{{ tile.hint }}</dd>{% endif %}
+        </div>
+    {% endfor %}
+</dl>
+
+{# Plan and fact side by side, on one scale #}
+{% set peak = max(flow|map(m => max(m.planned, m.received))|merge([0])) %}
+<h2 class="mb-2 text-lg font-semibold text-heading">По месяцам</h2>
+<div class="table-card">
+    <table class="data-table" id="cashflow-months">
+        <thead>
+            <tr>
+                <th scope="col" class="px-3">Месяц</th>
+                <th scope="col" class="px-3 text-right">План</th>
+                <th scope="col" class="px-3 text-right">Оплачено из плана</th>
+                <th scope="col" class="px-3 text-right">Не оплачено</th>
+                <th scope="col" class="px-3 text-right">Собрано</th>
+                <th scope="col" class="px-3 text-right">Поступило</th>
+                <th scope="col" class="px-3"><span class="sr-only">План и факт</span></th>
+                <th scope="col" class="px-3 text-right">Факт − план</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in flow %}
+                {% set future = row.month|date('Y-m') > now|date('Y-m') %}
+                <tr data-cashflow-month="{{ row.month|date('Y-m') }}">
+                    <th scope="row" class="px-3 font-medium text-heading whitespace-nowrap">
+                        <a href="{{ path('admin_payment_index', {month: row.month|date('Y-m')}) }}" class="hover:underline">{{ row.month|month_label }}</a>
+                        {% if row.count %}<div class="text-xs font-normal text-body-subtle">оплачено {{ row.paidCount }} из {{ row.count }}</div>{% endif %}
+                    </th>
+                    <td class="px-3 text-right tabular-nums whitespace-nowrap">{{ row.planned|money }}</td>
+                    <td class="px-3 text-right tabular-nums whitespace-nowrap">{{ row.plannedPaid|money }}</td>
+                    <td class="px-3 text-right tabular-nums whitespace-nowrap">
+                        {{ row.plannedUnpaid ? row.plannedUnpaid|money : '—' }}
+                        {% if row.overdue %}<div class="text-xs text-fg-danger">просрочено {{ row.overdue|money }}</div>{% endif %}
+                    </td>
+                    <td class="px-3 text-right tabular-nums">{{ row.planned ? row.collection ~ '%' : '—' }}</td>
+                    <td class="px-3 text-right font-semibold tabular-nums text-heading whitespace-nowrap">
+                        {{ row.received|money }}
+                        {% if row.receivedEarlier %}<div class="text-xs font-normal text-body-subtle">долги {{ row.receivedEarlier|money }}</div>{% endif %}
+                    </td>
+                    <td class="px-3">
+                        <div class="w-32 space-y-1" title="План {{ row.planned|money }} · поступило {{ row.received|money }}">
+                            <div class="h-1.5 overflow-hidden rounded-full bg-zinc-200"><div class="h-full bg-zinc-400" style="width: {{ peak > 0 ? (row.planned * 100 / peak)|round(1) : 0 }}%"></div></div>
+                            <div class="h-1.5 overflow-hidden rounded-full bg-zinc-200"><div class="h-full bg-zinc-800" style="width: {{ peak > 0 ? (row.received * 100 / peak)|round(1) : 0 }}%"></div></div>
+                        </div>
+                    </td>
+                    <td class="px-3 text-right tabular-nums whitespace-nowrap {{ not future and row.gap < 0 ? 'text-fg-danger' : (row.gap > 0 ? 'text-fg-success-strong') }}">{{ row.gap > 0 ? '+' }}{{ row.gap|money }}</td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+<p class="mt-2 text-xs text-body-subtle">Серая полоса — план, чёрная — поступило.</p>

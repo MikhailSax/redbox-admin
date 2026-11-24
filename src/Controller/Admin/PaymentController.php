@@ -2,6 +2,7 @@
 
 namespace App\Controller\Admin;
 
+use App\Entity\Booking;
 use App\Entity\MediaPlan;
 use App\Entity\Payment;
 use App\Entity\User;
@@ -84,15 +85,20 @@ final class PaymentController extends AbstractController
     }
 
     /**
-     * ?client= and ?plan= prefill the form (links from the client card and the media plan).
+     * ?client=, ?plan= and ?booking= prefill the form (links from the client card, the media plan and the booking).
      */
     #[Route('/new', name: 'new', methods: ['GET', 'POST'])]
-    public function new(Request $request, #[MapQueryParameter] ?int $client = null, #[MapQueryParameter] ?int $plan = null): Response
+    public function new(Request $request, #[MapQueryParameter] ?int $client = null, #[MapQueryParameter] ?int $plan = null, #[MapQueryParameter] ?int $booking = null): Response
     {
         $payment = (new Payment())->setDueDate($this->clock->now()->modify(\sprintf('+%d days', PaymentStatus::SOON_DAYS)));
         $mediaPlan = null !== $plan ? $this->entityManager->find(MediaPlan::class, $plan) : null;
         if (null !== $mediaPlan) {
             $payment->setMediaPlan($mediaPlan)->setClient($mediaPlan->getClient())->setTitle(\sprintf('Медиаплан «%s»', $mediaPlan->getTitle()));
+        }
+        $forBooking = null !== $booking ? $this->entityManager->find(Booking::class, $booking) : null;
+        if (null !== $forBooking) {
+            $payment->setBooking($forBooking)->setClient($forBooking->getClient())
+                ->setTitle(\sprintf('Бронь «%s», сторона %s', $forBooking->getProduct()?->getName(), $forBooking->getSide()->getName()));
         }
         $owner = null !== $client ? $this->entityManager->find(User::class, $client) : null;
         if (null !== $owner && $owner->isClient()) {
@@ -220,6 +226,11 @@ final class PaymentController extends AbstractController
             $this->entityManager->persist($payment);
             $this->entityManager->flush();
             $this->addFlash('success', $successMessage);
+
+            // a payment added from the booking's card goes back there
+            if (null !== $payment->getBooking() && 'booking' === $request->query->get('return')) {
+                return $this->redirectToRoute('admin_booking_show', ['id' => $payment->getBooking()->getId(), '_fragment' => 'payments'], Response::HTTP_SEE_OTHER);
+            }
 
             return $this->redirectToRoute('admin_payment_index', ['month' => $payment->getDueDate()->format('Y-m')], Response::HTTP_SEE_OTHER);
         }

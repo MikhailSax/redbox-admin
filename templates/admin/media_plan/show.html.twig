@@ -339,12 +339,7 @@
             {% if plan.client %}
                 <div class="flex flex-wrap gap-2">
                     {% if plan.payments is empty %}
-                        <form method="post" action="{{ path('admin_media_plan_schedule_payments', {id: plan.id}) }}"
-                              data-confirm="{{ plan.total|money }} разобьётся на {{ plan.months }} {{ plan.months == 1 ? 'платёж' : (plan.months < 5 ? 'платежа' : 'платежей') }} — по одному на месяц, со сроком до {{ plan.paymentDay }}-го числа месяца размещения (меняется в параметрах). Услуги войдут в первый платёж."
-                              data-confirm-title="Составить график платежей?" data-confirm-button="Составить" data-confirm-variant="primary">
-                            <input type="hidden" name="_token" value="{{ token }}">
-                            <button type="submit" class="btn btn-primary btn-sm">{{ ui.icon('calendar', 'size-4') }} Разбить на платежи по месяцам</button>
-                        </form>
+                        <a href="{{ path('admin_media_plan_schedule_payments', {id: plan.id}) }}" class="btn btn-primary btn-sm" data-plan-schedule>{{ ui.icon('calendar', 'size-4') }} Составить график платежей</a>
                     {% endif %}
                     <a href="{{ path('admin_payment_new', {plan: plan.id}) }}" class="btn btn-secondary btn-sm">{{ ui.icon('plus', 'size-4') }} Платёж</a>
                 </div>

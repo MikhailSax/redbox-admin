@@ -9,13 +9,14 @@
     <div class="page-header">
         <div>
             <h1 class="page-title">Отчёты</h1>
-            <p class="page-subtitle">Продажи — что продано за период, отгрузки — на сколько загружены конструкции в эти месяцы, по дням размещения.</p>
+            <p class="page-subtitle">Продажи — что продано за период, отгрузки — на сколько загружены конструкции в эти месяцы, по дням размещения. Дебиторка — кто сколько должен сейчас, поступления — сколько денег ждали и сколько пришло.</p>
         </div>
     </div>
 
     {# The period: a preset or months from — to; applied as you choose (assets/admin/live-filter.js) #}
     <form method="get" action="{{ path('admin_report_index') }}" data-live-filter="report-results" class="mb-5 flex flex-wrap items-center gap-2">
-        <input type="hidden" name="view" value="{{ view == 'shipments' ? 'shipments' }}">
+        <input type="hidden" name="view" value="{{ view != 'sales' ? view }}">
+        {% if view != 'debts' %}
         <select name="from" class="filter" aria-label="С месяца">
             {% for m in months %}
                 <option value="{{ m|date('Y-m') }}" {{ m|date('Y-m') == from|date('Y-m') ? 'selected' }}>с {{ m|month_label|lower }}</option>
@@ -26,6 +27,8 @@
                 <option value="{{ m|date('Y-m') }}" {{ m|date('Y-m') == to|date('Y-m') ? 'selected' }}>по {{ m|month_label|lower }}</option>
             {% endfor %}
         </select>
+        {% endif %}
+        {% if view in ['sales', 'shipments'] %}
         <select name="side" class="filter" aria-label="Сторона">
             <option value="">Все стороны</option>
             {% for side in constant('App\\Dto\\ProductListQuery::SIDES') %}
@@ -38,6 +41,15 @@
                 <option value="{{ author.id }}" {{ query.manager == author.id ? 'selected' }}>{{ author.name ?: author.email }}{{ author == app.user ? ' (я)' }}</option>
             {% endfor %}
         </select>
+        {% endif %}
+        {% if view == 'debts' %}
+            <select name="type" class="filter" aria-label="Тип клиента">
+                <option value="">Все клиенты</option>
+                {% for type in clientTypes %}
+                    <option value="{{ type.value }}" {{ query.type == type.value ? 'selected' }}>{{ type.label }}</option>
+                {% endfor %}
+            </select>
+        {% endif %}
         {% for name in ['sort', 'dir', 'msort', 'mdir'] %}
             <input type="hidden" name="{{ name }}" value="{{ attribute(query, name) }}">
         {% endfor %}
@@ -50,15 +62,21 @@
             {% import 'admin/report/_sort.html.twig' as sorting %}
             {% import 'admin/_icons.html.twig' as ui %}
             {# Which report: sales by the month of confirmation, or shipments by the days of placement #}
-            {% set view_param = view == 'shipments' ? 'shipments' : null %}
+            {% set view_param = view != 'sales' ? view : null %}
             {# what every link of the report carries along: the period, the report, the filters and the sorting #}
-            {% set keep = {from: from|date('Y-m'), to: to|date('Y-m'), view: view_param, side: query.side, manager: query.manager, sort: query.sort, dir: query.dir, msort: query.msort, mdir: query.mdir}|filter(v => v is not null and v != '') %}
-            <nav class="mb-4 flex gap-1 border-b border-default text-sm font-medium" aria-label="Отчёт">
-                {% for key, label in {sales: 'Продажи', shipments: 'Отгрузки'} %}
-                    <a href="{{ path('admin_report_index', keep|merge({view: key == 'shipments' ? 'shipments' : null})|filter(v => v is not null)) }}" data-live-link data-report-view="{{ key }}"
-                       class="-mb-px border-b-2 px-4 py-2.5 {{ view == key ? 'border-brand text-fg-brand' : 'border-transparent text-body hover:text-heading' }}"{% if view == key %} aria-current="page"{% endif %}>{{ label }}</a>
+            {% set keep = {from: from|date('Y-m'), to: to|date('Y-m'), view: view_param, side: query.side, manager: query.manager, type: query.type, sort: query.sort, dir: query.dir, msort: query.msort, mdir: query.mdir}|filter(v => v is not null and v != '') %}
+            <div class="mb-4 flex flex-wrap items-end justify-between gap-3 border-b border-default">
+            <nav class="-mb-px flex flex-wrap gap-1 text-sm font-medium" aria-label="Отчёт">
+                {# another report has its own filters: the whole page reloads #}
+                {% for key, label in constant('App\\Dto\\ReportQuery::VIEW_LABELS') %}
+                    <a href="{{ path('admin_report_index', keep|filter((v, k) => k in ['from', 'to'])|merge({view: key != 'sales' ? key : null})|filter(v => v is not null)) }}" data-report-view="{{ key }}"
+                       class="border-b-2 px-4 py-2.5 {{ view == key ? 'border-brand text-fg-brand' : 'border-transparent text-body hover:text-heading' }}"{% if view == key %} aria-current="page"{% endif %}>{{ label }}</a>
                 {% endfor %}
             </nav>
+            {# the report on screen, with its period, filters and sorting #}
+            <a href="{{ path('admin_report_export', keep) }}" class="btn btn-secondary btn-sm mb-1.5" data-report-export>{{ ui.icon('download', 'size-4') }} Скачать Excel</a>
+            </div>
+            {% if view != 'debts' %}
             <div class="mb-6 flex flex-wrap gap-2">
                 {% for label, range in presets %}
                     {% set on = range[0]|date('Y-m') == from|date('Y-m') and range[1]|date('Y-m') == to|date('Y-m') %}
@@ -69,7 +87,13 @@
                 {% endif %}
             </div>
 
-            {% if view == 'shipments' %}
+            {% endif %}
+
+            {% if view == 'debts' %}
+                {{ include('admin/report/_debts.html.twig') }}
+            {% elseif view == 'cashflow' %}
+                {{ include('admin/report/_cashflow.html.twig') }}
+            {% elseif view == 'shipments' %}
                 {{ include('admin/report/_shipments.html.twig') }}
             {% else %}
             <p class="mb-4 text-sm text-body">Продажа — бронь, подтверждённая или оплаченная за период и не отменённая. Сумма — «Продано за» и услуги, целиком в месяц подтверждения.</p>

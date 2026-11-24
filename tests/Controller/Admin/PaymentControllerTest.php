@@ -178,7 +178,7 @@ final class PaymentControllerTest extends AdminWebTestCase
         self::assertSelectorTextContains('main', 'Медиаплан оформлен на другого клиента — ООО «Вектор»');
     }
 
-    public function testMediaPlanIsSplitIntoMonthlyPayments(): void
+    public function testMediaPlanPaymentScheduleIsTypedByTheManager(): void
     {
         // 3 months × 20 000 ₽ with 10% off = 54 000 ₽ of placement, plus 5 000 ₽ of printing
         $plan = $this->plan(null, months: 3, discount: 10);
@@ -188,7 +188,7 @@ final class PaymentControllerTest extends AdminWebTestCase
         // no client yet: nothing to schedule, the page says where to choose one
         $crawler = $this->client->request('GET', '/admin/media-plans/'.$plan->getId());
         self::assertSelectorTextContains('#payments', 'выберите клиента');
-        self::assertSelectorNotExists('#payments form[action$="/payments/schedule"]');
+        self::assertSelectorNotExists('#payments a[data-plan-schedule]');
 
         $crawler = $this->client->request('GET', '/admin/media-plans/'.$plan->getId().'/edit');
         [$values, $uri] = $this->formValues($crawler, 'Сохранить');
@@ -200,23 +200,37 @@ final class PaymentControllerTest extends AdminWebTestCase
         self::assertSame('ООО «Вектор»', $this->em->find(MediaPlan::class, $plan->getId())->getClientName()); // the PDF name comes from the client
 
         $crawler = $this->client->request('GET', '/admin/media-plans/'.$plan->getId());
-        $this->submitPostForm($crawler, '#payments form[action$="/payments/schedule"]');
+        $crawler = $this->client->request('GET', $crawler->filter('#payments a[data-plan-schedule]')->attr('href'));
+        self::assertResponseIsSuccessful();
+        // the months of the plan, empty: the manager types the sums
+        self::assertSame(['2026-10', '2026-11', '2026-12'], $crawler->filter('[data-schedule-line]')->each(static fn ($tr) => $tr->attr('data-schedule-line')));
+        self::assertSame(['', '', ''], $crawler->filter('[data-schedule-amount]')->each(static fn ($input) => (string) $input->attr('value')));
+        // due on the plan's payment day of each month
+        self::assertSame('2026-10-01', $crawler->filter('input[name="payment_schedule_form[lines][0][dueDate]"]')->attr('value'));
+
+        $form = $crawler->selectButton('Сохранить график')->form();
+        $form['payment_schedule_form[lines][0][amount]'] = '30000';
+        $form['payment_schedule_form[lines][1][amount]'] = '15000.50';
+        $form['payment_schedule_form[lines][2][amount]'] = '10000';
+        $this->client->submit($form, [], ['HTTP_ORIGIN' => 'http://localhost']);
         self::assertResponseRedirects('/admin/media-plans/'.$plan->getId().'#payments');
         $crawler = $this->client->followRedirect();
         self::assertSelectorTextContains('[role=alert]', 'График платежей составлен: 3');
+        // 55 000,50 of 59 000: the schedule is saved, the manager is warned of the difference
+        self::assertStringContainsString('не совпадает с итогом медиаплана', $crawler->filter('main')->text());
 
         $payments = $this->em->getRepository(Payment::class)->findBy([], ['dueDate' => 'ASC']);
-        self::assertSame(['23000.00', '18000.00', '18000.00'], array_map(static fn (Payment $p) => $p->getAmount(), $payments));
+        self::assertSame(['30000.00', '15000.50', '10000.00'], array_map(static fn (Payment $p) => $p->getAmount(), $payments));
         self::assertSame(['2026-10-01', '2026-11-01', '2026-12-01'], array_map(static fn (Payment $p) => $p->getDueDate()->format('Y-m-d'), $payments));
-        self::assertSame('Медиаплан «Осень» — Октябрь 2026 и услуги', $payments[0]->getTitle());
+        self::assertSame('Медиаплан «Осень» — Октябрь 2026', $payments[0]->getTitle());
         self::assertSame($this->company->getId(), $payments[1]->getClient()->getId());
-        self::assertSelectorTextContains('#payments', sprintf('запланировано %1$s из %1$s', AdminExtension::money(59000)));
         self::assertCount(3, $crawler->filter('#payments tbody tr[data-payment]'));
-        self::assertSelectorNotExists('#payments form[action$="/payments/schedule"]'); // once
+        self::assertSelectorNotExists('#payments a[data-plan-schedule]'); // once
 
         // a second schedule is refused
         try {
-            static::getContainer()->get(PaymentScheduler::class)->scheduleMediaPlan($this->em->find(MediaPlan::class, $plan->getId()));
+            $scheduler = static::getContainer()->get(PaymentScheduler::class);
+            $scheduler->draftMediaPlan($this->em->find(MediaPlan::class, $plan->getId()));
             self::fail('Expected PaymentException');
         } catch (PaymentException $e) {
             self::assertStringContainsString('уже есть график платежей', $e->getMessage());
@@ -224,7 +238,7 @@ final class PaymentControllerTest extends AdminWebTestCase
         self::assertSame(3, $this->em->getRepository(Payment::class)->count([]));
     }
 
-    /** The plan's payment day: every payment is due on it, a short month on its last day */
+    /** The plan's payment day is only the suggested due date; a short month gets its last day */
     public function testPaymentDayOfTheMediaPlan(): void
     {
         $plan = $this->plan($this->company, months: 3);
@@ -237,12 +251,8 @@ final class PaymentControllerTest extends AdminWebTestCase
         $this->em->clear();
         self::assertSame(31, $this->em->find(MediaPlan::class, $plan->getId())->getPaymentDay());
 
-        $crawler = $this->client->request('GET', '/admin/media-plans/'.$plan->getId());
-        self::assertStringContainsString('до 31-го числа', $crawler->filter('#payments form[action$="/payments/schedule"]')->attr('data-confirm'));
-        $this->submitPostForm($crawler, '#payments form[action$="/payments/schedule"]');
-
-        $payments = $this->em->getRepository(Payment::class)->findBy([], ['dueDate' => 'ASC']);
-        self::assertSame(['2026-10-31', '2026-11-30', '2026-12-31'], array_map(static fn (Payment $p) => $p->getDueDate()->format('Y-m-d'), $payments));
+        $crawler = $this->client->request('GET', '/admin/media-plans/'.$plan->getId().'/payments/schedule');
+        self::assertSame(['2026-10-31', '2026-11-30', '2026-12-31'], $crawler->filter('input[name$="[dueDate]"]')->each(static fn ($input) => $input->attr('value')));
     }
 
     /**

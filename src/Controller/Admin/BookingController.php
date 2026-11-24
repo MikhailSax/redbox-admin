@@ -24,6 +24,7 @@ use App\Service\ClientCards;
 use App\Service\MonthCalendar;
 use App\Service\PaymentException;
 use App\Service\PaymentScheduler;
+use App\Form\PaymentScheduleFormType;
 use App\Service\ShipmentReport;
 use App\Twig\AdminExtension;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -308,23 +309,53 @@ final class BookingController extends AbstractController
     }
 
     /**
-     * Payment schedule of the booking: what it is sold for split by the months it runs, due on the day of the month
-     * the manager picks, into the payment calendar.
+     * Payment schedule of the booking, typed by the manager: for each month it runs, how much the client pays and by
+     * when. Saved, the payments go into the payment calendar.
      */
-    #[Route('/admin/bookings/{id}/payments/schedule', name: 'admin_booking_schedule_payments', requirements: ['id' => Requirement::DIGITS], methods: ['POST'])]
-    #[IsCsrfTokenValid(new Expression('"schedule-booking-" ~ args["booking"].getId()'))]
+    #[Route('/admin/bookings/{id}/payments/schedule', name: 'admin_booking_schedule_payments', requirements: ['id' => Requirement::DIGITS], methods: ['GET', 'POST'])]
     #[IsGranted(User::ROLE_SUPER_MANAGER)]
     public function schedulePayments(Request $request, Booking $booking, PaymentScheduler $scheduler): Response
     {
-        $user = $this->getUser();
+        $card = $this->generateUrl('admin_booking_show', ['id' => $booking->getId(), '_fragment' => 'payments']);
         try {
-            $payments = $scheduler->scheduleBooking($booking, $request->getPayload()->getInt('day', 1), $user instanceof User ? $user : null);
-            $this->addFlash('success', \sprintf('График платежей составлен: %d — по месяцам брони. Сроки и суммы можно поправить.', \count($payments)));
+            $schedule = $scheduler->draftBooking($booking);
         } catch (PaymentException $e) {
             $this->addFlash('error', $e->getMessage());
+
+            return $this->redirect($card, Response::HTTP_SEE_OTHER);
         }
 
-        return $this->redirectToRoute('admin_booking_show', ['id' => $booking->getId(), '_fragment' => 'payments'], Response::HTTP_SEE_OTHER);
+        $form = $this->createForm(PaymentScheduleFormType::class, $schedule);
+        $form->handleRequest($request);
+        $total = round(($booking->getPlacementPrice() ?? 0) + $booking->getServicesTotal(), 2);
+
+        if ($form->isSubmitted() && $form->isValid()) {
+            $user = $this->getUser();
+            try {
+                $payments = $scheduler->scheduleBooking($booking, $schedule, $user instanceof User ? $user : null);
+                $this->addFlash('success', \sprintf('График платежей составлен: %d на %s', \count($payments), AdminExtension::money($schedule->total())));
+                if (abs($schedule->total() - $total) >= 0.01) {
+                    $this->addFlash('warning', \sprintf('Сумма графика не совпадает с итогом брони (%s): разница %s', AdminExtension::money($total), AdminExtension::money($schedule->total() - $total)));
+                }
+
+                return $this->redirect($card, Response::HTTP_SEE_OTHER);
+            } catch (PaymentException $e) {
+                $this->addFlash('error', $e->getMessage());
+            }
+        }
+
+        return $this->render('admin/payment/schedule.html.twig', [
+            'form' => $form,
+            'heading' => \sprintf('График платежей брони #%d', $booking->getId()),
+            'subject' => \sprintf('«%s», сторона %s · %s', $booking->getProduct()?->getName(), $booking->getSide()->getName(), $booking->getClient()?->getClientTitle()),
+            'back' => $card,
+            'backLabel' => 'Бронь #'.$booking->getId(),
+            'totals' => [
+                'Продано за' => $booking->getPlacementPrice() ?? 0,
+                'Услуги' => $booking->getServicesTotal(),
+            ],
+            'total' => $total,
+        ], new Response(status: $form->isSubmitted() ? Response::HTTP_UNPROCESSABLE_ENTITY : Response::HTTP_OK));
     }
 
     /** Post-paying clients: the side is theirs before the money comes */

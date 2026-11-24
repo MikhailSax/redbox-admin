@@ -2,6 +2,8 @@
 
 namespace App\Service;
 
+use App\Dto\PaymentSchedule;
+use App\Dto\PaymentScheduleLine;
 use App\Entity\Booking;
 use App\Entity\MediaPlan;
 use App\Entity\Payment;
@@ -10,7 +12,9 @@ use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Clock\ClockInterface;
 
 /**
- * Payment schedule of a media plan or of a booking: one payment per month of placement.
+ * Payment schedule of a media plan or of a booking, typed in by the manager: one line per month of placement
+ * with the sum the client pays for it. Nothing is split automatically — the draft only lists the months and
+ * suggests a due date; the amounts are empty until the manager enters them.
  */
 class PaymentScheduler
 {
@@ -21,45 +25,100 @@ class PaymentScheduler
     }
 
     /**
-     * Splits the plan total into its months, each due on the plan's payment day of its month (today at the earliest).
-     * Placement is divided equally; the kopecks left over and the one-off services go into the first payment.
-     *
-     * @return list<Payment>
+     * The months of the plan, each due on the plan's payment day of its month (today at the earliest).
      *
      * @throws PaymentException when the plan has no client, costs nothing or already has a schedule
      */
-    public function scheduleMediaPlan(MediaPlan $plan, ?User $createdBy = null): array
+    public function draftMediaPlan(MediaPlan $plan): PaymentSchedule
     {
-        $client = $plan->getClient();
-        if (null === $client) {
-            throw new PaymentException('Выберите клиента в параметрах медиаплана — платежи ведутся по клиентам.');
-        }
-        if (!$plan->getPayments()->isEmpty()) {
-            throw new PaymentException('У медиаплана уже есть график платежей. Измените или удалите платежи в нём.');
-        }
+        $this->checkMediaPlan($plan);
+        $today = $this->today();
 
-        // in kopecks, so the payments add up to the total exactly
-        $placement = (int) round($plan->getPlacementTotal() * 100);
-        $services = (int) round($plan->getServicesTotal() * 100);
-        if ($placement + $services <= 0) {
-            throw new PaymentException('В медиаплане нечего оплачивать — добавьте конструкции или услуги.');
-        }
+        return new PaymentSchedule(array_map(
+            static fn (\DateTimeImmutable $month) => new PaymentScheduleLine($month, dueDate: max($plan->paymentDateIn($month), $today)),
+            MonthCalendar::range($plan->getStartMonth(), $plan->getMonths()),
+        ));
+    }
 
-        $months = MonthCalendar::range($plan->getStartMonth(), $plan->getMonths());
-        $monthly = intdiv($placement, \count($months));
-        $today = $this->clock->now()->setTime(0, 0);
+    /**
+     * The months the booking runs, each due on the 1st of its month (today at the earliest).
+     *
+     * @throws PaymentException when the booking has no client, is not in force, costs nothing or already has a schedule
+     */
+    public function draftBooking(Booking $booking): PaymentSchedule
+    {
+        $this->checkBooking($booking);
+        $today = $this->today();
 
-        $payments = [];
-        foreach ($months as $i => $month) {
-            $kopecks = $monthly + (0 === $i ? $placement - $monthly * \count($months) + $services : 0);
+        return new PaymentSchedule(array_map(
+            static fn (\DateTimeImmutable $month) => new PaymentScheduleLine($month, dueDate: max($month, $today)),
+            MonthCalendar::between($booking->getStartDate(), $booking->getEndDate()),
+        ));
+    }
+
+    /**
+     * One payment per month with a sum entered, as the manager typed it.
+     *
+     * @return list<Payment>
+     *
+     * @throws PaymentException
+     */
+    public function scheduleMediaPlan(MediaPlan $plan, PaymentSchedule $schedule, ?User $createdBy = null): array
+    {
+        $this->checkMediaPlan($plan);
+
+        return $this->create($schedule, function (PaymentScheduleLine $line) use ($plan, $createdBy): Payment {
             $payment = (new Payment())
-                ->setClient($client)
+                ->setClient($plan->getClient())
                 ->setMediaPlan($plan)
-                ->setTitle(\sprintf('Медиаплан «%s» — %s%s', $plan->getTitle(), MonthCalendar::label($month), 0 === $i && $services > 0 ? ' и услуги' : ''))
-                ->setAmount(number_format($kopecks / 100, 2, '.', ''))
-                ->setDueDate(max($plan->paymentDateIn($month), $today))
+                ->setTitle(\sprintf('Медиаплан «%s» — %s', $plan->getTitle(), MonthCalendar::label($line->month)))
                 ->setCreatedBy($createdBy);
             $plan->getPayments()->add($payment);
+
+            return $payment;
+        });
+    }
+
+    /**
+     * One payment per month with a sum entered, as the manager typed it.
+     *
+     * @return list<Payment>
+     *
+     * @throws PaymentException
+     */
+    public function scheduleBooking(Booking $booking, PaymentSchedule $schedule, ?User $createdBy = null): array
+    {
+        $this->checkBooking($booking);
+
+        return $this->create($schedule, function (PaymentScheduleLine $line) use ($booking, $createdBy): Payment {
+            $payment = (new Payment())
+                ->setClient($booking->getClient())
+                ->setBooking($booking)
+                ->setTitle(\sprintf('Бронь «%s», сторона %s — %s', $booking->getProduct()?->getName(), $booking->getSide()->getName(), MonthCalendar::label($line->month)))
+                ->setCreatedBy($createdBy);
+            $booking->getPayments()->add($payment);
+
+            return $payment;
+        });
+    }
+
+    /**
+     * @param callable(PaymentScheduleLine): Payment $make
+     *
+     * @return list<Payment>
+     */
+    private function create(PaymentSchedule $schedule, callable $make): array
+    {
+        $lines = $schedule->filled();
+        if ([] === $lines) {
+            throw new PaymentException('Введите сумму хотя бы за один месяц.');
+        }
+
+        $payments = [];
+        foreach ($lines as $line) {
+            $payment = $make($line)
+                ->setAmount(number_format(round((float) $line->amount, 2), 2, '.', ''))
+                ->setDueDate($line->dueDate);
             $this->entityManager->persist($payment);
             $payments[] = $payment;
         }
@@ -68,19 +127,22 @@ class PaymentScheduler
         return $payments;
     }
 
-    /**
-     * Splits what the booking is sold for into the months it runs, each due on day $day of its month (today at the
-     * earliest; a shorter month — on its last day). Each month pays for its days, as the booking ships them
-     * (Booking::getSoldPriceWithin()), so the payments add up to the price exactly; the services go into the first one.
-     *
-     * @return list<Payment>
-     *
-     * @throws PaymentException when the booking has no client, is not in force, costs nothing or already has a schedule
-     */
-    public function scheduleBooking(Booking $booking, int $day, ?User $createdBy = null): array
+    private function checkMediaPlan(MediaPlan $plan): void
     {
-        $client = $booking->getClient();
-        if (null === $client) {
+        if (null === $plan->getClient()) {
+            throw new PaymentException('Выберите клиента в параметрах медиаплана — платежи ведутся по клиентам.');
+        }
+        if (!$plan->getPayments()->isEmpty()) {
+            throw new PaymentException('У медиаплана уже есть график платежей. Измените или удалите платежи в нём.');
+        }
+        if ($plan->getTotal() <= 0) {
+            throw new PaymentException('В медиаплане нечего оплачивать — добавьте конструкции или услуги.');
+        }
+    }
+
+    private function checkBooking(Booking $booking): void
+    {
+        if (null === $booking->getClient()) {
             throw new PaymentException('У брони нет клиента — платежи ведутся по клиентам. Выберите клиента в брони.');
         }
         if (!$booking->isActiveAt($this->clock->now())) {
@@ -89,38 +151,15 @@ class PaymentScheduler
         if (!$booking->getPayments()->isEmpty()) {
             throw new PaymentException('У брони уже есть график платежей. Измените или удалите платежи в нём.');
         }
-        if ($day < 1 || $day > 31) {
-            throw new PaymentException('Число оплаты — от 1 до 31.');
-        }
         if (($booking->getPlacementPrice() ?? 0) + $booking->getServicesTotal() <= 0) {
             throw new PaymentException($booking->getKind()->isSold()
                 ? 'В брони нечего оплачивать — укажите «Продано за» или добавьте услуги.'
                 : \sprintf('Бронь размещена как «%s» — платить не за что, кроме услуг, а их нет.', $booking->getKind()->label()));
         }
+    }
 
-        $today = $this->clock->now()->setTime(0, 0);
-        $product = $booking->getProduct();
-        $payments = [];
-        foreach (MonthCalendar::between($booking->getStartDate(), $booking->getEndDate()) as $month) {
-            $last = MonthCalendar::lastDay($month);
-            $services = $booking->getServicesWithin($month, $last);
-            $kopecks = (int) round((($booking->getSoldPriceWithin($month, $last) ?? 0) + $services) * 100);
-            if ($kopecks <= 0) {
-                continue;
-            }
-            $payment = (new Payment())
-                ->setClient($client)
-                ->setBooking($booking)
-                ->setTitle(\sprintf('Бронь «%s», сторона %s — %s%s', $product?->getName(), $booking->getSide()->getName(), MonthCalendar::label($month), $services > 0 ? ' и услуги' : ''))
-                ->setAmount(number_format($kopecks / 100, 2, '.', ''))
-                ->setDueDate(max(MonthCalendar::dayOf($month, $day), $today))
-                ->setCreatedBy($createdBy);
-            $booking->getPayments()->add($payment);
-            $this->entityManager->persist($payment);
-            $payments[] = $payment;
-        }
-        $this->entityManager->flush();
-
-        return $payments;
+    private function today(): \DateTimeImmutable
+    {
+        return $this->clock->now()->setTime(0, 0);
     }
 }

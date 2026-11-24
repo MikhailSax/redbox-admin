@@ -1,0 +1,65 @@
+{% extends 'admin/layout.html.twig' %}
+{% import 'admin/_icons.html.twig' as ui %}
+
+{#
+    Payment schedule typed by the manager, for a booking or a media plan (PaymentScheduler::draft*()).
+    Vars: form, heading, subject, back, backLabel, totals (label => rubles), total
+#}
+
+{% block title %}{{ heading }} — {{ parent() }}{% endblock %}
+
+{% block content %}
+    <nav class="mb-2 text-sm">
+        <a href="{{ back }}" class="text-body hover:text-heading">{{ backLabel }}</a>
+        <span class="mx-1 text-body-subtle">/</span>
+        <span class="text-heading">График платежей</span>
+    </nav>
+    <h1 class="page-title">{{ heading }}</h1>
+    <p class="mb-6 text-sm text-body">{{ subject }}</p>
+
+    <div class="grid gap-6 xl:grid-cols-[minmax(0,48rem)_1fr]">
+        <div>
+            {% form_theme form 'admin/form/theme.html.twig' %}
+            {{ form_start(form, {attr: {novalidate: 'novalidate', 'data-payment-schedule': '', 'data-schedule-total': total}}) }}
+                <div class="table-card mb-6">
+                    {% if form.vars.errors|length > 0 %}<div class="border-b border-default px-5 py-3">{{ form_errors(form) }}</div>{% endif %}
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Месяц</th>
+                                <th>Сумма</th>
+                                <th>Оплатить до</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for line in form.lines %}
+                                <tr data-schedule-line="{{ line.vars.data.month|date('Y-m') }}">
+                                    <td class="whitespace-nowrap font-medium text-heading">{{ line.vars.data.month|month_label }}</td>
+                                    <td>{{ form_widget(line.amount) }}{{ form_errors(line.amount) }}</td>
+                                    <td>{{ form_widget(line.dueDate) }}{{ form_errors(line.dueDate) }}</td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <div class="flex flex-wrap items-center gap-3">
+                    <button type="submit" class="btn btn-primary">{{ ui.icon('calendar', 'size-4') }} Сохранить график</button>
+                    <a href="{{ back }}" class="btn btn-secondary">Отмена</a>
+                </div>
+            {{ form_end(form) }}
+        </div>
+
+        <aside class="card h-fit">
+            <h2 class="mb-3 text-base font-semibold text-heading">К оплате</h2>
+            <dl class="space-y-2 text-sm">
+                {% for label, sum in totals %}
+                    <div class="flex justify-between gap-3"><dt class="text-body-subtle">{{ label }}</dt><dd class="tabular-nums text-heading">{{ sum|money }}</dd></div>
+                {% endfor %}
+                <div class="flex justify-between gap-3 border-t border-default pt-2 font-semibold"><dt class="text-heading">Итого</dt><dd class="tabular-nums text-heading">{{ total|money }}</dd></div>
+                <div class="flex justify-between gap-3"><dt class="text-body-subtle">В графике</dt><dd class="tabular-nums text-heading" data-schedule-sum>—</dd></div>
+                <div class="flex justify-between gap-3"><dt class="text-body-subtle">Осталось распределить</dt><dd class="tabular-nums" data-schedule-left>{{ total|money }}</dd></div>
+            </dl>
+            <p class="mt-4 text-xs text-body-subtle">Введите, сколько клиент платит в каждом месяце. Пустой месяц — без платежа. Сумма графика может отличаться от итога: об этом будет предупреждение. Платежи попадут в календарь и карточку клиента.</p>
+        </aside>
+    </div>
+{% endblock %}

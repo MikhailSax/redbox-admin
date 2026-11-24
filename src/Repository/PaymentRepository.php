@@ -132,6 +132,62 @@ class PaymentRepository extends ServiceEntityRepository
             ->getResult();
     }
 
+    /**
+     * Every payment not paid yet, whatever its due date, the earliest first; of one client type when given.
+     *
+     * @return list<Payment>
+     */
+    public function findUnpaid(?ClientType $clientType = null): array
+    {
+        $qb = $this->listQuery()->andWhere('p.paidAt IS NULL');
+        if (null !== $clientType) {
+            $qb->andWhere('c.clientType = :clientType')->setParameter('clientType', $clientType);
+        }
+
+        return $qb->getQuery()->getResult();
+    }
+
+    /**
+     * Payments the money came for between two moments (inclusive), by the time it came.
+     *
+     * @return list<Payment>
+     */
+    public function findPaidBetween(\DateTimeImmutable $from, \DateTimeImmutable $to): array
+    {
+        return $this->listQuery()
+            ->andWhere('p.paidAt BETWEEN :from AND :to')
+            ->setParameter('from', $from->setTime(0, 0))
+            ->setParameter('to', $to->setTime(23, 59, 59))
+            ->getQuery()
+            ->getResult();
+    }
+
+    /**
+     * Sum of the payments that came between two moments (inclusive).
+     */
+    public function sumPaidBetween(\DateTimeImmutable $from, \DateTimeImmutable $to): float
+    {
+        return (float) $this->createQueryBuilder('p')
+            ->select('COALESCE(SUM(p.amount), 0)')
+            ->andWhere('p.paidAt BETWEEN :from AND :to')
+            ->setParameter('from', $from->setTime(0, 0))
+            ->setParameter('to', $to->setTime(23, 59, 59))
+            ->getQuery()
+            ->getSingleScalarResult();
+    }
+
+    /**
+     * Sum of every payment not paid yet: what clients owe in all.
+     */
+    public function sumUnpaid(): float
+    {
+        return (float) $this->createQueryBuilder('p')
+            ->select('COALESCE(SUM(p.amount), 0)')
+            ->andWhere('p.paidAt IS NULL')
+            ->getQuery()
+            ->getSingleScalarResult();
+    }
+
     private function listQuery(): QueryBuilder
     {
         return $this->createQueryBuilder('p')

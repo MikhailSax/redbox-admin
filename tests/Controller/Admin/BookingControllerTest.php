@@ -459,34 +459,56 @@ final class BookingControllerTest extends AdminWebTestCase
     }
 
     /**
-     * The booking's payment schedule: its price split by the months it runs, due on the day picked, in the payment
-     * calendar; the first payment confirms the hold, the last one marks the booking paid.
+     * The booking's payment schedule: nothing is split automatically — the manager types what the client pays in
+     * each month it runs and by when; the payments go to the payment calendar. The first payment confirms the hold,
+     * the last one marks the booking paid.
      */
-    public function testBookingIsSplitIntoPaymentsByMonth(): void
+    public function testBookingPaymentScheduleIsTypedByTheManager(): void
     {
         $manager = static::getContainer()->get(BookingManager::class);
-        $booking = $this->hold($this->side($this->billboard, 'A'), '2026-09', months: 3); // 30 + 31 + 30 days
+        $booking = $this->hold($this->side($this->billboard, 'A'), '2026-09', months: 3);
         $manager->setSoldPrice($booking, 90000);
         $booking->addServiceLine(new BookingServiceLine('Монтаж', 'выезд', '1', '3000'));
         $this->em->flush();
         $card = '/admin/bookings/'.$booking->getId();
 
         $crawler = $this->client->request('GET', $card);
-        $form = $crawler->filter('form[data-booking-schedule]')->form();
-        $form['day'] = '31';
-        $this->client->submit($form);
+        $page = $crawler->filter('a[data-booking-schedule]')->attr('href');
+        $crawler = $this->client->request('GET', $page);
+        self::assertResponseIsSuccessful();
+        // one empty line per month: no sums are suggested
+        self::assertSame(['2026-09', '2026-10', '2026-11'], $crawler->filter('[data-schedule-line]')->each(static fn ($tr) => $tr->attr('data-schedule-line')));
+        self::assertSame(['', '', ''], $crawler->filter('[data-schedule-amount]')->each(static fn ($input) => (string) $input->attr('value')));
+
+        // nothing entered: refused
+        $form = $crawler->selectButton('Сохранить график')->form();
+        $this->client->submit($form, [], ['HTTP_ORIGIN' => 'http://localhost']);
+        self::assertResponseStatusCodeSame(422);
+        self::assertSelectorTextContains('form[data-payment-schedule]', 'Введите сумму хотя бы за один месяц');
+        self::assertSame(0, $this->em->getRepository(Payment::class)->count([]));
+
+        $form = $crawler->selectButton('Сохранить график')->form();
+        $form['payment_schedule_form[lines][0][amount]'] = '50000';
+        $form['payment_schedule_form[lines][0][dueDate]'] = '2026-09-15';
+        $form['payment_schedule_form[lines][1][amount]'] = '';            // nothing in October
+        $form['payment_schedule_form[lines][2][amount]'] = '43000';
+        $form['payment_schedule_form[lines][2][dueDate]'] = '2026-11-05';
+        $this->client->submit($form, [], ['HTTP_ORIGIN' => 'http://localhost']);
         self::assertResponseRedirects($card.'#payments');
         $crawler = $this->client->followRedirect();
-        self::assertSelectorTextContains('[role=alert]', 'График платежей составлен: 3');
-        self::assertSelectorNotExists('form[data-booking-schedule]'); // once
+        self::assertSelectorTextContains('[role=alert]', 'График платежей составлен: 2');
+        self::assertSelectorNotExists('a[data-booking-schedule]'); // once
 
-        // each month pays for its days, the services go into the first one; a short month — its last day
         $payments = $this->em->getRepository(Payment::class)->findBy([], ['dueDate' => 'ASC']);
-        self::assertSame(['32670.33', '30659.34', '29670.33'], array_map(static fn (Payment $p) => $p->getAmount(), $payments));
-        self::assertSame(['2026-09-30', '2026-10-31', '2026-11-30'], array_map(static fn (Payment $p) => $p->getDueDate()->format('Y-m-d'), $payments));
-        self::assertSame('Бронь «Щит на Ленина», сторона A — Сентябрь 2026 и услуги', $payments[0]->getTitle());
+        self::assertSame(['50000.00', '43000.00'], array_map(static fn (Payment $p) => $p->getAmount(), $payments));
+        self::assertSame(['2026-09-15', '2026-11-05'], array_map(static fn (Payment $p) => $p->getDueDate()->format('Y-m-d'), $payments));
+        self::assertSame('Бронь «Щит на Ленина», сторона A — Сентябрь 2026', $payments[0]->getTitle());
         self::assertSame($this->customer->getId(), $payments[0]->getClient()->getId());
-        self::assertCount(3, $crawler->filter('#payments tbody tr[data-payment]'));
+        self::assertCount(2, $crawler->filter('#payments tbody tr[data-payment]'));
+
+        // the schedule page is closed once there is a schedule
+        $this->client->request('GET', $page);
+        self::assertResponseRedirects($card.'#payments');
 
         // in the payment calendar, with a link back to the booking
         self::assertStringContainsString('Бронь #'.$booking->getId(), $this->client->request('GET', '/admin/payments?month=2026-10')->filter('#list')->text());
@@ -506,7 +528,6 @@ final class BookingControllerTest extends AdminWebTestCase
         // all of them: paid
         $payments = $booking->getPayments()->getValues();
         $pay($payments[1]);
-        $pay($payments[2]);
         self::assertTrue($this->reload($booking)->isPaid());
 
         // one taken back: not paid in full any more, still confirmed

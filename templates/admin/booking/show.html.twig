@@ -127,24 +127,22 @@
                                 Платежи попадают в календарь платежей и карточку клиента. Первый пришедший платёж подтверждает бронь, все — отмечают её оплаченной.
                             </p>
                         </div>
-                        {% if booking.payments is empty and active and booking.client and total > 0 %}
-                            {# the split: one payment per month of the booking, due on the day picked #}
-                            <form method="post" action="{{ path('admin_booking_schedule_payments', {id: booking.id}) }}" class="flex flex-wrap items-center gap-2" data-booking-schedule>
-                                <input type="hidden" name="_token" value="{{ csrf_token('schedule-booking-' ~ booking.id) }}">
-                                <label for="payment-day" class="text-sm text-body">Оплата до</label>
-                                <select id="payment-day" name="day" class="filter">
-                                    {% for day in 1..31 %}<option value="{{ day }}">{{ day }}-го числа</option>{% endfor %}
-                                </select>
-                                <button type="submit" class="btn btn-primary btn-sm">{{ ui.icon('calendar', 'size-4') }} Разбить на платежи по месяцам</button>
-                            </form>
-                        {% endif %}
+                        <div class="flex flex-wrap gap-2">
+                            {% if booking.payments is empty and active and booking.client and total > 0 %}
+                                {# the manager types what the client pays in each month of the booking #}
+                                <a href="{{ path('admin_booking_schedule_payments', {id: booking.id}) }}" class="btn btn-primary btn-sm" data-booking-schedule>{{ ui.icon('calendar', 'size-4') }} Составить график платежей</a>
+                            {% endif %}
+                            {% if booking.client and booking.client.emailVerified %}
+                                <a href="{{ path('admin_payment_new', {booking: booking.id, return: 'booking'}) }}" class="btn btn-secondary btn-sm">{{ ui.icon('plus', 'size-4') }} Платёж</a>
+                            {% endif %}
+                        </div>
                     </div>
                     {% if booking.payments is not empty %}
                         {{ include('admin/payment/_table.html.twig', {payments: booking.payments, return: 'booking', show_client: false, show_plan: false}) }}
                     {% elseif not booking.client %}
                         <p class="text-sm text-fg-warning">У брони нет клиента — выберите его в «Изменить», чтобы вести платежи.</p>
                     {% elseif total <= 0 %}
-                        <p class="text-sm text-body">Укажите «Продано за» или добавьте услуги — тогда можно разбить сумму на платежи.</p>
+                        <p class="text-sm text-body">Укажите «Продано за» или добавьте услуги — тогда можно составить график платежей.</p>
                     {% endif %}
                 </section>
             {% endif %}

@@ -33,3 +33,4 @@ if (document.querySelector('[data-map], [data-coordinate-picker]')) {
     import('./admin/map.js');
 }
 import './admin/service-line.js';
+import './admin/payment-schedule.js';

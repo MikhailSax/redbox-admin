@@ -2,19 +2,24 @@
 
 namespace App\Dto;
 
+use App\Enum\ClientType;
 use App\Service\MonthCalendar;
 use Symfony\Component\Validator\Constraints as Assert;
 
 /**
  * Period of the reports, bound from the query string: months "YYYY-MM" from and to, inclusive.
- * Either left out — the current month. $view picks the report: sales (by the month of confirmation)
- * or shipments (by the days the bookings run).
+ * Either left out — the current month. $view picks the report: sales (by the month of confirmation),
+ * shipments (by the days the bookings run), debts (receivables as of today, no period) or cash flow
+ * (payments planned and received by month).
  */
 final readonly class ReportQuery
 {
     public const SALES = 'sales';
     public const SHIPMENTS = 'shipments';
-    public const VIEWS = [self::SALES, self::SHIPMENTS];
+    public const DEBTS = 'debts';
+    public const CASHFLOW = 'cashflow';
+    public const VIEWS = [self::SALES, self::SHIPMENTS, self::DEBTS, self::CASHFLOW];
+    public const VIEW_LABELS = [self::SALES => 'Продажи', self::SHIPMENTS => 'Отгрузки', self::DEBTS => 'Дебиторка', self::CASHFLOW => 'Поступления'];
 
     public const PRODUCT_SORTS = ['name', 'sales', 'term', 'bookings', 'days', 'placement', 'services', 'total', 'paid'];
     public const MANAGER_SORTS = ['name', 'sales', 'bookings', 'total', 'paid', 'average', 'burned'];
@@ -42,6 +47,9 @@ final readonly class ReportQuery
         public ?string $msort = null,
         #[Assert\Choice(choices: ['asc', 'desc'])]
         public ?string $mdir = null,
+        /** Client type of the receivables, a ClientType value */
+        #[Assert\Choice(callback: [self::class, 'clientTypes'])]
+        public ?string $type = null,
     ) {
     }
 
@@ -116,6 +124,23 @@ final readonly class ReportQuery
     public function isShipments(): bool
     {
         return self::SHIPMENTS === $this->view;
+    }
+
+    /** The report shown: sales unless another is asked for */
+    public function viewName(): string
+    {
+        return \in_array($this->view, self::VIEWS, true) ? $this->view : self::SALES;
+    }
+
+    public function clientType(): ?ClientType
+    {
+        return null !== $this->type ? ClientType::tryFrom($this->type) : null;
+    }
+
+    /** @return list<string> */
+    public static function clientTypes(): array
+    {
+        return array_map(static fn (ClientType $type) => $type->value, ClientType::cases());
     }
 
     /**

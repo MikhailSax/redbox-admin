@@ -10,6 +10,7 @@ use App\Entity\MediaPlanServiceLine;
 use App\Entity\ProductSide;
 use App\Entity\User;
 use App\Form\MediaPlanFormType;
+use App\Form\PaymentScheduleFormType;
 use App\Form\NewClientFields;
 use App\Form\ServiceLineFormType;
 use App\Repository\MediaPlanRepository;
@@ -22,6 +23,7 @@ use App\Service\MonthCalendar;
 use App\Service\PaymentException;
 use App\Service\PaymentScheduler;
 use App\Service\ProductListing;
+use App\Twig\AdminExtension;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\Clock\ClockInterface;
@@ -369,22 +371,53 @@ final class MediaPlanController extends AbstractController
     }
 
     /**
-     * Payment schedule: the plan total split into one payment per month, added to the payment calendar.
+     * Payment schedule of the plan, typed by the manager: for each month of placement, how much the client pays and
+     * by when. Saved, the payments go into the payment calendar.
      */
-    #[Route('/{id}/payments/schedule', name: 'schedule_payments', requirements: ['id' => Requirement::DIGITS], methods: ['POST'])]
-    #[IsCsrfTokenValid(new Expression('"media-plan-" ~ args["plan"].getId()'))]
+    #[Route('/{id}/payments/schedule', name: 'schedule_payments', requirements: ['id' => Requirement::DIGITS], methods: ['GET', 'POST'])]
     #[IsGranted(User::ROLE_SUPER_MANAGER)]
-    public function schedulePayments(MediaPlan $plan, PaymentScheduler $scheduler): Response
+    public function schedulePayments(Request $request, MediaPlan $plan, PaymentScheduler $scheduler): Response
     {
+        $card = $this->generateUrl('admin_media_plan_show', ['id' => $plan->getId(), '_fragment' => 'payments']);
         try {
-            $user = $this->getUser();
-            $payments = $scheduler->scheduleMediaPlan($plan, $user instanceof User ? $user : null);
-            $this->addFlash('success', \sprintf('График платежей составлен: %d — по одному на месяц. Сроки и суммы можно поправить.', \count($payments)));
+            $schedule = $scheduler->draftMediaPlan($plan);
         } catch (PaymentException $e) {
             $this->addFlash('error', $e->getMessage());
+
+            return $this->redirect($card, Response::HTTP_SEE_OTHER);
         }
 
-        return $this->redirectToRoute('admin_media_plan_show', ['id' => $plan->getId(), '_fragment' => 'payments'], Response::HTTP_SEE_OTHER);
+        $form = $this->createForm(PaymentScheduleFormType::class, $schedule);
+        $form->handleRequest($request);
+        $total = $plan->getTotal();
+
+        if ($form->isSubmitted() && $form->isValid()) {
+            $user = $this->getUser();
+            try {
+                $payments = $scheduler->scheduleMediaPlan($plan, $schedule, $user instanceof User ? $user : null);
+                $this->addFlash('success', \sprintf('График платежей составлен: %d на %s', \count($payments), AdminExtension::money($schedule->total())));
+                if (abs($schedule->total() - $total) >= 0.01) {
+                    $this->addFlash('warning', \sprintf('Сумма графика не совпадает с итогом медиаплана (%s): разница %s', AdminExtension::money($total), AdminExtension::money($schedule->total() - $total)));
+                }
+
+                return $this->redirect($card, Response::HTTP_SEE_OTHER);
+            } catch (PaymentException $e) {
+                $this->addFlash('error', $e->getMessage());
+            }
+        }
+
+        return $this->render('admin/payment/schedule.html.twig', [
+            'form' => $form,
+            'heading' => 'График платежей медиаплана',
+            'subject' => \sprintf('«%s» · %s', $plan->getTitle(), $plan->getClient()?->getClientTitle()),
+            'back' => $card,
+            'backLabel' => 'Медиаплан «'.$plan->getTitle().'»',
+            'totals' => [
+                'Размещение' => $plan->getPlacementTotal(),
+                'Услуги' => $plan->getServicesTotal(),
+            ],
+            'total' => $total,
+        ], new Response(status: $form->isSubmitted() ? Response::HTTP_UNPROCESSABLE_ENTITY : Response::HTTP_OK));
     }
 
     #[Route('/{id}/pdf', name: 'pdf', requirements: ['id' => Requirement::DIGITS], methods: ['GET'])]
